@@ -1,4 +1,5 @@
-import { space, operators, keywords, reserves, qualifiers, constants, openingDelimiterTypes } from "./strings.js"
+import { operators, keywords, reserves, qualifiers, constants } from "./strings.js"
+import { openingDelimiterTypes } from "./strings.js"
 import { iife, not, put } from "./helpers.js"
 import tokenize from "./tokenizer.js"
 
@@ -31,7 +32,7 @@ export default function * qualify(source, literate=false, script=false) {
 	as required. */
 
 	function advance() {
-		
+
 		/* Advance the token stream by one token, updating the nonlocal
 		`token` and `next` variables, then return a reference to `token`,
 		so the result is only truthy until we run out of tokens. */

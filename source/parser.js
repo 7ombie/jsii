@@ -7,7 +7,7 @@ import { iife, not, put } from "./helpers.js"
 function * parse(source, literate=false, script=false) {
 
 	function look() { return token }
-	
+
 	function peek() { return next }
 
 	function advance() { return ([token, next] = [next, tokens.next().value])[0] }
@@ -48,9 +48,9 @@ function * parse(source, literate=false, script=false) {
 
 		/* This wraps the Pratt parsing function to ensure that the result
 		is an expression, and not a formal statement. */
-		
+
 		const candidate = gather(mass);
-		
+
 		if (candidate.type !== "key-word") return candidate;
 		else throw new SyntaxError("required an expression (not a formal statement)");
 	};
@@ -67,6 +67,8 @@ function * parse(source, literate=false, script=false) {
 
 		/* This wraps the Pratt parsing function to ensure that the result
 		a formal statement, and not just an expression. */
+
+        const candidate = gather(mass);
 
 		if (candidate.type === "key-word") return candidate;
 		else throw new SyntaxError("required a formal statement");

@@ -42,7 +42,7 @@ export default function * tokenize(source, literate=false, script=false) {
 			position, then validate `character` and return it, returning `undefined`
 			if the source (or interpolation, if we're inside a string interpolation)
 			is exhausted, and complaining if an illegal character is found.
-			
+
 			Note: The result of this function can be used as a predicate for the main
 			loop to ensure the loop will always break. This idea is used by a number
 			of `advance` functions across the codebase. */
@@ -55,16 +55,16 @@ export default function * tokenize(source, literate=false, script=false) {
 			// called to tokenize, and return `undefined` if so...
 
 			if (interpolating) {
-				
+
 				if (on(closeBrace) && nesting === 0) return undefined;
-			
+
 			} else if (character === undefined) return undefined;
 
 			// now we know that there is another character, so attempt to validate
 			// and return it, throwing an exception on an illegal character...
 
 			const code = character.charCodeAt();
-		
+
 			if (code > 31 && code < 127 || code === 10) return character;
 
 			const charcode = "0" + code.toString(16).toUpperCase().slice(-2);
@@ -185,7 +185,7 @@ export default function * tokenize(source, literate=false, script=false) {
 
 				// complain if we found a base-prefix without any digits after it...
 
-				if (token.value.length === 2 && token.type !== "decimal") { 
+				if (token.value.length === 2 && token.type !== "decimal") {
 
 					throw new SyntaxError("numeric prefix without digits");
 				}
@@ -202,7 +202,7 @@ export default function * tokenize(source, literate=false, script=false) {
 					if (character === period) throw new SyntaxError("fractions must be explicit");
 
 				} else token.type += "-integer";
-				
+
 				token.type += "-number-literal";
 
 			} else if (on(pound)) { // handle line comments...
@@ -221,7 +221,7 @@ export default function * tokenize(source, literate=false, script=false) {
 				else if (interpolating && on(closeBrace)) nesting--;
 
 			} else { // all else failed (for now)...
-	
+
 				throw new SyntaxError(`unexpected character (${character})`);
 
 			} yield token;

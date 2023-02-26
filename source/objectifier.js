@@ -30,7 +30,7 @@ class PrefixOperation extends ASTNode {
 	prefix(context) {
 
 		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
-		
+
 		return this;
 	};
 }
@@ -54,7 +54,7 @@ class OmnifixOperation extends ASTNode {
 	prefix(context) {
 
 		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
-		
+
 		return this;
 	};
 
@@ -132,7 +132,7 @@ class CompoundLiteral extends ASTNode {
 	/* This abstract base class models array, object and expression literals. */
 
 	constructor(token) {
-		
+
 		super(token);
 
 		const qualified = this.value.length !== 1;
@@ -181,7 +181,7 @@ class ArrayLiteral extends SpreadLiteral {
 }
 
 class Terminal extends ASTNode {
-	
+
 	prefix(context) { return this }
 }
 

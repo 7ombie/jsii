@@ -74,7 +74,7 @@ export const constants = [
 	"true",
 	"void",
 ];
-	
+
 // export an array of valid keywords (including qualified keywords)...
 
 export const keywords = [
@@ -188,7 +188,7 @@ export const reserves = [
 	"attribute",
 	"assert",
 	"augment",
-	"auto",	
+	"auto",
 	"await",
 	"be",
 	"borrow",
@@ -280,7 +280,7 @@ export const reserves = [
 	"private",
 	"property",
 	"protected",
-	"prototype",	
+	"prototype",
 	"public",
 	"query",
 	"raise",
