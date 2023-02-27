@@ -7,7 +7,7 @@ import { wordInitials, wordCharacters } from "./strings.js"
 
 import { iife, not, put } from "./helpers.js"
 
-export default function * tokenize(source, literate=false, script=false) {
+export default function * tokenize(source, literate=false, script=false) {                          // the first stage...
 
 	/* This generator takes a source string and yields its lexemes, one by one,
 	in order, recursively handling string interpolations (to any depth). Note
@@ -22,7 +22,7 @@ export default function * tokenize(source, literate=false, script=false) {
 		to handle string interpolations, `interpolating` will be set to `true`,
 		while it is always `false` outside of recursive invocations. */
 
-		class Token {
+		class Token {                                                                               // the token class...
 
 			/* This class models a simple, unqualified token. The type is just
 			a string, as it will often be mutated by the qualifier stage. We
@@ -36,7 +36,7 @@ export default function * tokenize(source, literate=false, script=false) {
 			}
 		}
 
-	    function advance() {
+	    function advance() {                                                                        // the advance function...
 
 			/* Advance the nonlocal `index`, `character` and `next` variables by one
 			position, then validate `character` and return it, returning `undefined`
@@ -72,27 +72,27 @@ export default function * tokenize(source, literate=false, script=false) {
 			throw new SyntaxError(`illegal character code (0x${charcode})`);
 	    }
 
-		function on(characters) { return characters.includes(character) }
+		function on(characters) { return characters.includes(character) }                           // the on character helper
 
-		function at(characters) { return characters.includes(next) }
+		function at(characters) { return characters.includes(next) }                                // the at character helper
 
-		function onSOL() { return index - 1 === onside }
+		function onSOL() { return index - 1 === onside }                                            // the on SOL helper
 
-		function gatherWhile(characters) {
+		function gatherWhile(characters) {                                                          // gather while ...
 
 			/* Gather while the character is in the given character set. */
 
 			while (at(characters) && advance()) token.value += character;
 		}
 
-		function gatherUntil(characters) {
+		function gatherUntil(characters) {                                                          // gather until...
 
 			/* Gather up to (and not including) the first given character. */
 
 			while (not(at(characters)) && advance()) token.value += character;
 		}
 
-		function terminate() {
+		function terminate() {                                                                      // terminate lines...
 
 			/* Check if we're on a newline. If so, update the nonlocal `line`
 			and `onside` variables. Then, create and return a new terminator
@@ -107,22 +107,22 @@ export default function * tokenize(source, literate=false, script=false) {
 
 		let token;
 
-	    while (advance()) {
+	    while (advance()) {                                                                         // main loop...
 
 			// at this point, `index, `character` and `next` have been updated,
 			// and we know that `character` is a legal character (and not EOF)...
 
 			token = new Token();
 
-			if (literate && onSOL() && not(on(whitespace))) {
+			if (literate && onSOL() && not(on(whitespace))) {                                       // literate commentary...
 
 				gatherUntil("\n");
 				continue;
 			}
 
-	        if (on(space)) continue; // skip insignificant whitespace
+	        if (on(space)) continue;                                                                // insignificant whitespace
 
-	        if (on(terminators)) { // handle newlines and commas...
+	        if (on(terminators)) {                                                                  // terminators...
 
 				yield terminate();
 
@@ -131,7 +131,14 @@ export default function * tokenize(source, literate=false, script=false) {
 				continue;
 			}
 
-			if (character === quote) { // handle string literals...
+            if (on(pound)) {                                                                        // line comments...
+
+				gatherUntil(newline);
+
+                continue;
+            }
+
+			if (character === quote) {                                                              // string literals...
 
 				// strings are gathered upto the closing quote, and recur
 				// whenever an open brace is discovered, upto the closing
@@ -153,14 +160,14 @@ export default function * tokenize(source, literate=false, script=false) {
 
 				advance(); // skip end-quote
 
-			} else if (on(symbolics)) { // handle non-word operators...
+			} else if (on(symbolics)) {                                                             // symbolic operators...
 
 				gatherWhile(symbolics);
 
 				if (operators.includes(token.value)) token.type = "operator";
 				else throw new SyntaxError(`unrecognized operator (${token.value})`);
 
-			} else if (on(wordInitials)) { // handle words (generally)...
+			} else if (on(wordInitials)) {                                                          // unclassified words...
 
 				// here, we just gather word tokens, without worrying if they are
 				// keywords, operators, reserved etc, as the qualifier concatenates
@@ -170,7 +177,7 @@ export default function * tokenize(source, literate=false, script=false) {
 
 				gatherWhile(wordCharacters);
 
-			} else if (on(digits.decimal)) { // handle all number literals...
+			} else if (on(digits.decimal)) {                                                        // number literals...
 
 				// check for a base-prefix, then gather the corresponding digits...
 
@@ -205,14 +212,6 @@ export default function * tokenize(source, literate=false, script=false) {
 
 				token.type += "-number-literal";
 
-			} else if (on(pound)) { // handle line comments...
-
-				[token.type, token.value] = ["comment", empty];
-
-				gatherUntil(newline);
-
-				token.value = token.value.trim();
-
 			} else if (character in delimiters) { // handle delimiters...
 
 				token.type = delimiters[character];
@@ -230,7 +229,7 @@ export default function * tokenize(source, literate=false, script=false) {
 		// ensure every (complete) token stream ends with at least one linefeed
 		// terminator token, and always (finally) terminates with an EOF token...
 
-		if (interpolating) return undefined;
+		if (interpolating) return undefined;                                                        // finalize token stream...
 
 		yield new Token("terminator", "<LF>");
 		yield new Token("terminator", "<EOF>");
@@ -239,8 +238,8 @@ export default function * tokenize(source, literate=false, script=false) {
 	// create the variables that track across an entire source file, and return
 	// a lexeme generator (as returned by the `gather` generator function)...
 
-	let [character, next] = [empty, empty];
+	let [character, next] = [empty, empty];                                                         // initialize lexer state...
     let [index, onside, line, nesting] = [-1, -1, 1, 0];
 
-	yield * gather(false);
+	yield * gather(false);                                                                          // generate token stream
 }

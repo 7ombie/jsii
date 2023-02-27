@@ -7,7 +7,11 @@ function upgradeWord(token) {
 
 	/* Take a word type token (that may be qualified (like `not in`)) and
 	type it to a keyword, operator, qualifier, reserved word or variable,
-	and then complain if it's reserved, else return the token. */
+	and then complain if it's reserved, else return the token.
+
+    Note: While this function may return a qualfier-word, it will be caught
+    aat the end of the `classify` function, if it has not become something
+    valid (via recursion) by that point. */
 
 	if (keywords.includes(token.value)) token.type = "key-word";
 	else if (constants.includes(token.value)) token.type = "constant-word";

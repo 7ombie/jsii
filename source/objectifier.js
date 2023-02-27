@@ -14,79 +14,43 @@ class ASTNode {
 		this.pull = masses.prefix[token.value] ?? this.mass;
 	}
 
-	prefix() { throw new SyntaxError("unexpected token in prefix position") };
+	prefix() { throw new SyntaxError("unexpected token in prefix position") }
 
-	infix() { throw new SyntaxError("unexpected token in infix position") };
+	infix() { throw new SyntaxError("unexpected token in infix position") }
 }
 
-class Comment extends ASTNode {}
 class Delimiter extends ASTNode {}
 class Terminator extends ASTNode {}
 
-class PrefixOperation extends ASTNode {
+class Terminal extends ASTNode {
 
-	static operators = prefixOperators;
+	prefix(context) { return this }
+}
+
+class Comment extends Terminal {}
+class Constant extends Terminal {}
+class Identifier extends Terminal {}
+class NumberLiteral extends Terminal {}
+class StringLiteral extends Terminal {}
+
+class PassLike extends Terminal {
+
+	static keywords = ["pass", "debug"];
+}
+
+class BreakLike extends ASTNode {
+
+	static keywords = ["break", "continue"];
 
 	prefix(context) {
 
-		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
+		if (context.onTerminator()) { this.label = null; return this }
 
-		return this;
-	};
-}
+        this.label = context.gatherExpression();
 
-class InfixOperation extends ASTNode {
-
-	static operators = infixOperators;
-
-	infix(left, context) {
-
-		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
-
-		return this;
-	};
-}
-
-class OmnifixOperation extends ASTNode {
-
-	static operators = prefixOperators.filter(operator => infixOperators.includes(operator));
-
-	prefix(context) {
-
-		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
-
-		return this;
-	};
-
-	infix(left, context) {
-
-		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
-
-		return this;
-	};
-}
-
-class DotOperation extends ASTNode {
-
-	static message = "property accessor rvalue must be an identifier";
-
-	infix(left, context) {
-
-		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
-
-		if (this.right.type === "variable-name") return this;
-		else throw new SyntaxError(DotOperation.message);
-	};
-}
-
-class ExponentiationOperation extends ASTNode {
-
-	infix(left, context) {
-
-		[this.left, this.right] = [left, context.gatherExpression(this.mass - 1)];
-
-		return this;
-	};
+		if (this.label.type === "variable-name") return this;
+		else throw new SyntaxError("labels must be plain identifiers");
+	}
 }
 
 class ReturnLike extends ASTNode {
@@ -102,6 +66,18 @@ class ReturnLike extends ASTNode {
 	}
 }
 
+class Block extends ASTNode {
+
+	static keywords = ["do", "else"];
+
+	prefix(context) {
+
+		this.statements = [...context.gatherBlock(true)];
+
+		return this;
+	}
+}
+
 class PredicatedBlock extends ASTNode {
 
 	static keywords = ["if", "else if", "while", "until", "unless"];
@@ -109,18 +85,6 @@ class PredicatedBlock extends ASTNode {
 	prefix(context) {
 
 		this.predicate = context.gatherExpression();
-		this.statements = [...context.gatherBlock(true)];
-
-		return this;
-	}
-}
-
-class UnconditionalBlock extends ASTNode {
-
-	static keywords = ["else"];
-
-	prefix(context) {
-
 		this.statements = [...context.gatherBlock(true)];
 
 		return this;
@@ -142,7 +106,7 @@ class CompoundLiteral extends ASTNode {
 	}
 }
 
-class SpreadLiteral extends CompoundLiteral {
+class SequentialLiteral extends CompoundLiteral {
 
 	/* This abstract base class extends the class for compund literals to
 	implement the specifics of parsing comma-separated expressions (array
@@ -163,32 +127,95 @@ class SpreadLiteral extends CompoundLiteral {
 
 			if (check()) break;
 			else if (context.onComma()) context.advance();
-			else throw new SyntaxError(`expected comma (found ${context.look().value})`);
+			else throw new SyntaxError("required comma not found");
 		}
 
 		context.advance(); // drop closing paren or bracket that `check` already validated
+
+        return this;
 	}
 }
 
-class ExpressionLiteral extends SpreadLiteral {
+class ExpressionLiteral extends SequentialLiteral {
 
 	prefix(context) { return super.prefix(context, context.onCloseParen) }
 }
 
-class ArrayLiteral extends SpreadLiteral {
+class ArrayLiteral extends SequentialLiteral {
 
 	prefix(context) { return super.prefix(context, context.onCloseBracket) }
 }
 
-class Terminal extends ASTNode {
 
-	prefix(context) { return this }
+class PrefixOperation extends ASTNode {
+
+	static operators = prefixOperators;
+
+	prefix(context) {
+
+		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
+
+		return this;
+	}
 }
 
-class Constant extends Terminal {}
-class Identifier extends Terminal {}
-class NumberLiteral extends Terminal {}
-class StringLiteral extends Terminal {}
+class InfixOperation extends ASTNode {
+
+	static operators = infixOperators;
+
+	infix(left, context) {
+
+		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
+
+		return this;
+	}
+}
+
+class OmnifixOperation extends ASTNode {
+
+	static operators = prefixOperators.filter(operator => infixOperators.includes(operator));
+
+	prefix(context) {
+
+		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
+
+		return this;
+	}
+
+	infix(left, context) {
+
+		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
+
+		return this;
+	}
+}
+
+class ExponentiationOperation extends ASTNode {
+
+	infix(left, context) {
+
+		[this.left, this.right] = [left, context.gatherExpression(this.mass - 1)];
+
+		return this;
+	}
+}
+
+class DotOperation extends ASTNode {
+
+	infix(left, context) {
+
+        if (context.onProperty()) {
+
+            this.left = left;
+            this.right = context.gatherToken();
+            this.right.type = "property-name";
+
+            return this;
+        }
+
+        throw new SyntaxError("property access requires a property name");
+	}
+}
 
 export default function * classify(source, literate=false, script=false) {
 
@@ -219,9 +246,11 @@ export default function * classify(source, literate=false, script=false) {
 
 		} else if (type === "key-word") {
 
-			if (PredicatedBlock.keywords.includes(value)) yield new PredicatedBlock(token);
+            if (Block.keywords.includes(value)) yield new Block(token);
+			else if (PredicatedBlock.keywords.includes(value)) yield new PredicatedBlock(token);
 			else if (ReturnLike.keywords.includes(value)) yield new ReturnLike(token);
-			else if (UnconditionalBlock.keywords.includes(value)) yield new UnconditionalBlock(token);
+            else if (BreakLike.keywords.includes(value)) yield new BreakLike(token);
+            else if (PassLike.keywords.includes(value)) yield new PassLike(token);
 
 		} else yield new Terminator(token);
 	}

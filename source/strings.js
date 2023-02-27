@@ -64,6 +64,13 @@ export const openingDelimiterTypes = [
 	"open-brace-delimiter",
 ];
 
+export const propertyTypes = [
+    "variable-name",
+    "constant-word",
+    "operator-word",
+    "key-word",
+];
+
 // export an array of primitive constants...
 
 export const constants = [
@@ -83,6 +90,8 @@ export const keywords = [
 	"async generator",
 	"break",
 	"continue",
+    "debug",
+    "do",
 	"do async lambda",
 	"do async function",
 	"do async generator",
@@ -98,6 +107,7 @@ export const keywords = [
 	"if",
 	"in",
 	"let",
+    "pass",
 	"put",
 	"return",
 	"unless",
@@ -156,12 +166,12 @@ function infix(mass, ...operators) {
 prefix(2, "->", "=>");
 prefix(14, "+", "-", "not");
 
-infix(2, "->", "=");
+infix(2, "->", "=>");
 infix(3, "??");
-infix(8, "in", "is", "is not", "not in", "of");
-infix(9, "<", ">");
+infix(8, "is", "is not", "in", "not in");
+infix(9, "<", ">", ">=", "<=");
 infix(11, "+", "-");
-infix(12, "*", "/", "//");
+infix(12, "*", "/", "//", "%");
 infix(13, "**");
 infix(17, ".", "?", "!");
 
@@ -265,6 +275,7 @@ export const reserves = [
 	"new",
 	"no",
 	"non",
+    "of",
 	"omni",
 	"on",
 	"once",
