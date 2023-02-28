@@ -92,6 +92,24 @@ export default function * tokenize(source, literate=false, script=false) {      
 			while (not(at(characters)) && advance()) token.value += character;
 		}
 
+        function subparse(value, offset=1) {                                                        // subparse operators...
+
+            /* Recursively subparse an unbroken sequence of symbolic operator
+            characters, splitting them into an array of individual operators. */
+
+            if (offset > value.length) throw SyntaxError(`unrecognized operator (${value[0]})`);
+
+            if (not(value)) return []; // TODO: confirm we need this check
+
+            if (operators.includes(value)) return [value];
+
+            const start = value.slice(0, -offset);
+            const end = value.slice(-offset);
+
+            if (operators.includes(start)) return [start, ...subparse(end)];
+            else return subparse(value, offset + 1);
+        }
+
 		function terminate() {                                                                      // terminate lines...
 
 			/* Check if we're on a newline. If so, update the nonlocal `line`
@@ -116,7 +134,8 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 			if (literate && onSOL() && not(on(whitespace))) {                                       // literate commentary...
 
-				gatherUntil("\n");
+				gatherUntil(newline);
+
 				continue;
 			}
 
@@ -128,22 +147,22 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 				while (at(deadspace) && advance()) if (on(terminators)) yield terminate();
 
-				continue;
-			}
+                continue;
+            }
 
-            if (on(pound)) {                                                                        // line comments...
+			if (on(pound)) {                                                                        // line comments...
 
 				gatherUntil(newline);
 
                 continue;
             }
 
-			if (character === quote) {                                                              // string literals...
+            if (on(quote)) {                                                                        // string literals...
 
-				// strings are gathered upto the closing quote, and recur
-				// whenever an open brace is discovered, upto the closing
-				// brace - the `value` is an array of strings and nested
-				// arrays of tokens, representing interpolations...
+				// strings are gathered upto the closing quote, and recur whenever an open
+                // brace is discovered, upto a properly nested closing brace - the `value`
+                // is an array of strings and nested arrays of tokens, representing each
+                // interpolation
 
 				[token.type, token.value] = ["string-literal", [empty]];
 
@@ -164,14 +183,15 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 				gatherWhile(symbolics);
 
-				if (operators.includes(token.value)) token.type = "operator";
-				else throw new SyntaxError(`unrecognized operator (${token.value})`);
+                for (const value of subparse(token.value)) yield new Token("operator", value);      // TODO: column numbers !!!!!!!!!!
+
+                continue;
 
 			} else if (on(wordInitials)) {                                                          // unclassified words...
 
 				// here, we just gather word tokens, without worrying if they are
 				// keywords, operators, reserved etc, as the qualifier concatenates
-				// subjects to qualifiers before classifying the result...
+				// subjects to qualifiers before classifying the result
 
 				token.type = "unclassified-word";
 
@@ -179,7 +199,7 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 			} else if (on(digits.decimal)) {                                                        // number literals...
 
-				// check for a base-prefix, then gather the corresponding digits...
+				// check for a base-prefix, then gather the corresponding digits
 
 				if (on("0") && at(bases)) {
 
@@ -190,7 +210,7 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 				gatherWhile(digits[token.type]);
 
-				// complain if we found a base-prefix without any digits after it...
+				// complain if we found a base-prefix without any digits after it
 
 				if (token.value.length === 2 && token.type !== "decimal") {
 
@@ -198,7 +218,7 @@ export default function * tokenize(source, literate=false, script=false) {      
 				}
 
 				// check for a dot - if found, and the type is decimal, gather and validate
-				// the token as a float, else just use the current value as an integer...
+				// the token as a float, else just use the current value as an integer
 
 				if (at(period) && token.type === "decimal") {
 
@@ -216,8 +236,11 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 				token.type = delimiters[character];
 
-				if (interpolating && on(openBrace)) nesting++;
-				else if (interpolating && on(closeBrace)) nesting--;
+				if (interpolating) {
+
+                    if (on(openBrace)) nesting++;
+				    else if (on(closeBrace)) nesting--;
+                }
 
 			} else { // all else failed (for now)...
 

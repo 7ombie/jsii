@@ -46,12 +46,7 @@ export default function * qualify(source, literate=false, script=false) {
 
 	function classify(token) {
 
-		/* This helper takes a reference to a token (so that it can be called
-		recursively). It updates the token type, and returns it, recursively
-		consuming and concatenating qualifiers into a single token, so long
-		as required. */
-
-		// if it is not a word token, it cannot be a qualifier...
+        // if it is not a word token, it cannot be a qualifier...
 
 		if (not(token.type.endsWith("-word"))) return token;
 
@@ -60,40 +55,44 @@ export default function * qualify(source, literate=false, script=false) {
 
 		const [reference, suffixes] = [token, qualifiers[token.value]];
 
-		if (suffixes?.includes(next.value)) { // handle the recursive case...
+		if (suffixes?.includes(next.value)) {
 
 			token.value = `${token.value} ${next.value}`;
 
-			advance(); return classify(upgradeWord(reference));
-		}
+			advance();
 
-		if (suffixes?.includes(true)) { // handle qualified delimiters...
+            return classify(upgradeWord(reference));
 
-			if (openingDelimiterTypes.includes(next.type)) {
+        } else if (suffixes?.includes(true) && openingDelimiterTypes.includes(next.type)) {
 
-				token.type = `${token.value}-${next.type}`;
-				token.value = `${token.value} ${next.value}`;
+            token.type = `${token.value}-${next.type}`;
+            token.value = `${token.value} ${next.value}`;
 
-				advance(); return reference;
-			}
-		}
+            advance();
 
-		// at this point, we know that the token is not able to prefix the token
-		// that follows it, so it needs to handled as a regular word token...
+            return reference;
 
-		upgradeWord(reference);
+		} else {
 
-		// catch any valid qualifiers that stopped recurring before they became
-		// a valid production (in case of `do =`, `do async +` etc)...
+            // at this point, we know that the token is not able to prefix the token
+            // that follows it, so it needs to handled as a regular word token...
 
-		if (reference.type !== "qualifier-word") return reference;					// `word`
-		else throw new SyntaxError(`unfinished qualifier (${reference.value})`);
-	};
+            upgradeWord(reference);
+
+            // catch any valid qualifiers that stopped recurring before they became
+            // a valid production (in case of `do =`, `do async +` etc)...
+
+            if (reference.type !== "qualifier-word") return reference;
+            else throw new SyntaxError(`unfinished qualifier (${reference.value})`);
+        }
+	}
 
 	// prime the local variables, before checking and yielding each token in
 	// the token stream (concatenating qualifiers along the way)...
 
 	const tokens = tokenize(source, literate, script); let token, next;
 
-	advance(); while (advance()) yield classify(token);
+	advance();
+
+    while (advance()) yield classify(token);
 }

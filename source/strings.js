@@ -171,7 +171,7 @@ infix(3, "??");
 infix(8, "is", "is not", "in", "not in");
 infix(9, "<", ">", ">=", "<=");
 infix(11, "+", "-");
-infix(12, "*", "/", "//", "%");
+infix(12, "*", "/", "//");                                                                              // TODO: restore "%"
 infix(13, "**");
 infix(17, ".", "?", "!");
 
@@ -325,5 +325,8 @@ export const reserves = [
 	"use",
 	"version",
 	"virtual",
-	"with"
+	"with",
+    "?!",                                                                                           // TODO: reserve operators
+    "<->",
+    "<=>",
 ];

@@ -242,7 +242,7 @@ export default function * classify(source, literate=false, script=false) {
 			else if (OmnifixOperation.operators.includes(value)) yield new OmnifixOperation(token);
 			else if (PrefixOperation.operators.includes(value)) yield new PrefixOperation(token);
 			else if (InfixOperation.operators.includes(value)) yield new InfixOperation(token);
-			else yield new Operation(token);
+			else throw SyntaxError("unimplemented operator");
 
 		} else if (type === "key-word") {
 
@@ -251,6 +251,7 @@ export default function * classify(source, literate=false, script=false) {
 			else if (ReturnLike.keywords.includes(value)) yield new ReturnLike(token);
             else if (BreakLike.keywords.includes(value)) yield new BreakLike(token);
             else if (PassLike.keywords.includes(value)) yield new PassLike(token);
+            else throw SyntaxError("unimplemented keyword");
 
 		} else yield new Terminator(token);
 	}

@@ -134,10 +134,10 @@ function * parse(source, literate=false, script=false) {
 }
 
 const source = `
-1 --1
+if x > y yield from 1++1
 `;
 
-// for (const lexeme of tokenize(source)) put("lexeme:", lexeme);
-for (const token of qualify(source, false)) put("token:", token);
-// for (const object of objectify(source)) put("object:", object);
+//for (const lexeme of tokenize(source)) put("lexeme:", lexeme);
+//for (const token of qualify(source, false)) put("token:", token);
+//for (const object of objectify(source)) put("object:", object);
 for (const node of parse(source)) console.log(node);
