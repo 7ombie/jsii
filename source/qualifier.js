@@ -1,17 +1,18 @@
 import { operators, keywords, reserves, qualifiers, constants } from "./strings.js"
 import { openingDelimiterTypes } from "./strings.js"
-import { iife, not, put } from "./helpers.js"
 import tokenize from "./tokenizer.js"
+
+import { iife, not, put } from "./helpers.js"
 
 function upgradeWord(token) {
 
 	/* Take a word type token (that may be qualified (like `not in`)) and
 	type it to a keyword, operator, qualifier, reserved word or variable,
-	and then complain if it's reserved, else return the token.
+	then return it.
 
-    Note: While this function may return a qualfier-word, it will be caught
-    aat the end of the `classify` function, if it has not become something
-    valid (via recursion) by that point. */
+    Note: While this function may return a unfinished qualifier or reserved
+    word, that is required, as we still accept those words as property names,
+    so must wait until the parser establishes the context. */
 
 	if (keywords.includes(token.value)) token.type = "key-word";
 	else if (constants.includes(token.value)) token.type = "constant-word";
@@ -20,8 +21,7 @@ function upgradeWord(token) {
 	else if (reserves.includes(token.value)) token.type = "reserved-word";
 	else token.type = "variable-name";
 
-	if (token.type !== "reserved-word") return token;
-	else throw new SyntaxError(`reserved word (${token.value})`);
+	return token;
 }
 
 export default function * qualify(source, literate=false, script=false) {
@@ -72,19 +72,7 @@ export default function * qualify(source, literate=false, script=false) {
 
             return reference;
 
-		} else {
-
-            // at this point, we know that the token is not able to prefix the token
-            // that follows it, so it needs to handled as a regular word token...
-
-            upgradeWord(reference);
-
-            // catch any valid qualifiers that stopped recurring before they became
-            // a valid production (in case of `do =`, `do async +` etc)...
-
-            if (reference.type !== "qualifier-word") return reference;
-            else throw new SyntaxError(`unfinished qualifier (${reference.value})`);
-        }
+		} else return upgradeWord(reference);
 	}
 
 	// prime the local variables, before checking and yielding each token in

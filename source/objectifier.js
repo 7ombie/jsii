@@ -1,7 +1,8 @@
-import { empty, space, masses, delimiters } from "./strings.js"
+import { empty, masses, propertyTypes } from "./strings.js"
 import { prefixOperators, infixOperators, dotOperators } from "./strings.js"
-import { iife, not, put } from "./helpers.js"
 import qualify from "./qualifier.js"
+
+import { iife, not, put } from "./helpers.js"
 
 class ASTNode {
 
@@ -41,6 +42,60 @@ class Identifier extends Terminal {}
 class NumberLiteral extends Terminal {}
 class StringLiteral extends Terminal {}
 
+class Block extends ASTNode {
+
+    /* This models formal statements that have a control-flow block after
+    the keyword. */
+
+	static keywords = ["do", "else"];
+
+	prefix(parser) {
+
+		this.statements = parser.gatherBlock();
+
+		return this;
+	}
+}
+
+class PredicatedBlock extends ASTNode {
+
+    /* This models formal statements that have a required predicate after
+    the keyword, followed by a control-flow block. */
+
+	static keywords = ["while", "until", "unless"];
+
+	prefix(parser) {
+
+		this.predicate = parser.gatherExpression();
+		this.statements = parser.gatherBlock();
+
+        return this;
+	}
+}
+
+class PredicatedConjunction extends ASTNode {
+
+    /* This models formal statements that have a required predicate after
+    the keyword, followed by a control-flow block, optionally followed by
+    one or more clauses (which do not need to be on their own line, when
+    the preceeding block is braced).
+
+    Note that the `clause` property is a single formal statement or null,
+    that (when present) may recursively reference another clause. */
+
+	static keywords = ["if", "else if"];
+    static clauses = ["else if", "else"];
+
+	prefix(parser) {
+
+		this.predicate = parser.gatherExpression();
+		this.statements = parser.gatherBlock();
+        this.clause = parser.gatherGivenClause(...PredicatedConjunction.clauses);
+
+        return this;
+	}
+}
+
 class PassLike extends Terminal {
 
     /* This models formal statements that are just a keyword. */
@@ -55,11 +110,11 @@ class BreakLike extends ASTNode {
 
 	static keywords = ["break", "continue"];
 
-	prefix(context) {
+	prefix(parser) {
 
-		if (context.onTerminator()) { this.label = null; return this }
+		if (parser.on("terminator")) { this.label = null; return this }
 
-        this.label = context.gatherExpression();
+        this.label = parser.gatherExpression();
 
 		if (this.label.type === "variable-name") return this;
 		else throw new SyntaxError("labels must be plain identifiers");
@@ -73,63 +128,12 @@ class ReturnLike extends ASTNode {
 
 	static keywords = ["return", "yield"];
 
-	prefix(context) {
+	prefix(parser) {
 
-		if (context.onTerminator()) this.right = null;
-		else this.right = context.gatherExpression();
-
-		return this;
-	}
-}
-
-class Block extends ASTNode {
-
-    /* This models formal statements that have a control-flow block after
-    the keyword. */
-
-	static keywords = ["do", "else"];
-
-	prefix(context) {
-
-		this.statements = context.gatherBlock();
+		if (parser.on("terminator")) this.right = null;
+		else this.right = parser.gatherExpression();
 
 		return this;
-	}
-}
-
-class PredicatedBlock extends ASTNode {
-
-    /* This models formal statements that have a required predicate after
-    the keyword, followed by a control-flow block. */
-
-	static keywords = ["while", "until", "unless"];
-
-	prefix(context) {
-
-		this.predicate = context.gatherExpression();
-		this.statements = context.gatherBlock();
-
-        return this;
-	}
-}
-
-class PredicatedConjunction extends ASTNode {
-
-    /* This models formal statements that have a required predicate after
-    the keyword, followed by a control-flow block, optionally followed by
-    one or more clauses (which do not need to be on their own line, when
-    the preceeding block is braced). */
-
-	static keywords = ["if", "else if"];
-    static clauses = ["else", "else if"];
-
-	prefix(context) {
-
-		this.predicate = context.gatherExpression();
-		this.statements = context.gatherBlock();
-        this.clause = context.gatherGivenClause(PredicatedConjunction.clauses);
-
-        return this;
 	}
 }
 
@@ -154,25 +158,25 @@ class SequentialLiteral extends CompoundLiteral {
 	implement the specifics of parsing comma-separated expressions (array
 	literals and parenthesized expressions etc). */
 
-	prefix(context, check) {
+	prefix(parser, check) {
 
 		while (not(check())) {
 
-			if (context.onComma()) {
+			if (parser.on("comma-delimiter")) {
 
 				this.expressions.push(null);
-				context.advance();
+				parser.advance();
 				continue;
 			}
 
-			this.expressions.push(context.gatherExpression());
+			this.expressions.push(parser.gatherExpression());
 
 			if (check()) break;
-			else if (context.onComma()) context.advance();
+			else if (parser.on("comma-delimiter")) parser.advance();
 			else throw new SyntaxError("required comma not found");
 		}
 
-		context.advance(); // drop closing paren or bracket that `check` already validated
+		parser.advance(); // drop closing paren or bracket that `check` already validated
 
         return this;
 	}
@@ -183,7 +187,7 @@ class ExpressionLiteral extends SequentialLiteral {
     /* Expression literals are basically group expressions, and look like
     an array literal, but wrapped in parens. */
 
-	prefix(context) { return super.prefix(context, context.onCloseParen) }
+	prefix(parser) { return super.prefix(parser, parser.onCloseParen) }
 }
 
 class ArrayLiteral extends SequentialLiteral {
@@ -191,7 +195,7 @@ class ArrayLiteral extends SequentialLiteral {
     /* Array literals are just like JS, except that they are also used
     for destructuring assignments. */
 
-	prefix(context) { return super.prefix(context, context.onCloseBracket) }
+	prefix(parser) { return super.prefix(parser, parser.onCloseBracket) }
 }
 
 class PrefixOperation extends ASTNode {
@@ -200,9 +204,9 @@ class PrefixOperation extends ASTNode {
 
 	static operators = prefixOperators;
 
-	prefix(context) {
+	prefix(parser) {
 
-		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
+		[this.left, this.right] = [null, parser.gatherExpression(this.pull)];
 
 		return this;
 	}
@@ -214,9 +218,9 @@ class InfixOperation extends ASTNode {
 
 	static operators = infixOperators;
 
-	infix(left, context) {
+	infix(left, parser) {
 
-		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
+		[this.left, this.right] = [left, parser.gatherExpression(this.mass)];
 
 		return this;
 	}
@@ -228,16 +232,16 @@ class OmnifixOperation extends ASTNode {
 
     static operators = prefixOperators.filter(operator => infixOperators.includes(operator));
 
-	prefix(context) {
+	prefix(parser) {
 
-		[this.left, this.right] = [null, context.gatherExpression(this.pull)];
+		[this.left, this.right] = [null, parser.gatherExpression(this.pull)];
 
 		return this;
 	}
 
-	infix(left, context) {
+	infix(left, parser) {
 
-		[this.left, this.right] = [left, context.gatherExpression(this.mass)];
+		[this.left, this.right] = [left, parser.gatherExpression(this.mass)];
 
 		return this;
 	}
@@ -247,9 +251,9 @@ class ExponentiationOperation extends ASTNode {
 
     /* Special-case the exponentiation-operator, as it is right-associative. */
 
-    infix(left, context) {
+    infix(left, parser) {
 
-		[this.left, this.right] = [left, context.gatherExpression(this.mass - 1)];
+		[this.left, this.right] = [left, parser.gatherExpression(this.mass - 1)];
 
 		return this;
 	}
@@ -260,23 +264,23 @@ class DotOperation extends ASTNode {
     /* Special-case the dot-operators (`.`, `!` and `?`) to ensure the infix
     versions have an identifier on the rightside. */
 
-	infix(left, context) {
+	infix(left, parser) {
 
-        if (context.onProperty()) {
+        if (parser.on(...propertyTypes)) {
 
             this.left = left;
-            this.right = context.gatherToken();
+            this.right = parser.gatherToken();
             this.right.type = "property-name";
 
             return this;
-        }
 
-        throw new SyntaxError("property access requires a property name");
+        } else throw new SyntaxError("property access requires a property name");
 	}
 }
 
 export default function * classify(source, literate=false, script=false) {
 
+    // note: we don't need to handle unfinished qualifiers and reserved words
 	for (const token of qualify(source, literate, script)) {
 
 		const { type, value } = token;
@@ -293,7 +297,7 @@ export default function * classify(source, literate=false, script=false) {
  			else if (type.includes("open-paren")) yield new ExpressionLiteral(token);
 			else yield new Delimiter(token);
 
-		} else if (type.includes("operator")) {
+		} else if (type.startsWith("operator")) {
 
 			if (value === "**") yield new ExponentiationOperation(token);
 			else if (dotOperators.includes(value)) yield new DotOperation(token);
@@ -312,6 +316,6 @@ export default function * classify(source, literate=false, script=false) {
             else if (PassLike.keywords.includes(value)) yield new PassLike(token);
             else throw SyntaxError("unimplemented keyword");
 
-		} else yield new Terminator(token);
+        } else yield new Terminator(token);
 	}
 }

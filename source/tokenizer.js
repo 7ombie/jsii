@@ -1,8 +1,7 @@
-import { quote, pound, dollar, bar, backslash, openBrace, closeBrace, semicolon } from "./strings.js"
-import { empty, space, newline, period, comma } from "./strings.js"
-import { terminators, delimiters, qualifiers, bases } from "./strings.js"
+import { quote, pound, dollar, openBrace, closeBrace, semicolon } from "./strings.js"
+import { empty, space, newline, period } from "./strings.js"
+import { terminators, delimiters, bases, operators } from "./strings.js"
 import { digits, symbolics, whitespace, deadspace } from "./strings.js"
-import { operators, keywords, reserves } from "./strings.js"
 import { wordInitials, wordCharacters } from "./strings.js"
 
 import { iife, not, put } from "./helpers.js"
