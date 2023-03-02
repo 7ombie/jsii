@@ -13,9 +13,9 @@ export const [openBrace, closeBrace] = ["{", "}"];
 
 // export the various character groups as strings...
 
-export const terminators = comma + newline;
 export const whitespace = space + newline;
-export const deadspace = comma + whitespace;
+export const deadspace = semicolon + whitespace;
+export const terminators = semicolon + newline;
 
 export const bases = "xbXB";
 export const binaries = "01";
@@ -49,13 +49,14 @@ export const digits = {
 // an array of opening delimiter type names...
 
 export const delimiters = {
+    ",": "comma-delimiter",
+	":": "colon-delimiter",
 	"(": "open-paren-delimiter",
 	"[": "open-bracket-delimiter",
 	"{": "open-brace-delimiter",
 	")": "close-paren-delimiter",
 	"]": "close-bracket-delimiter",
 	"}": "close-brace-delimiter",
-	":": "colon-delimiter",
 }
 
 export const openingDelimiterTypes = [
@@ -171,7 +172,7 @@ infix(3, "??");
 infix(8, "is", "is not", "in", "not in");
 infix(9, "<", ">", ">=", "<=");
 infix(11, "+", "-");
-infix(12, "*", "/", "//");                                                                              // TODO: restore "%"
+infix(12, "*", "/", "//");                                                    // TODO: restore "%"
 infix(13, "**");
 infix(17, ".", "?", "!");
 

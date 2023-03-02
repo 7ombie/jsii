@@ -1,4 +1,4 @@
-import { quote, pound, dollar, bar, backslash, openBrace, closeBrace } from "./strings.js"
+import { quote, pound, dollar, bar, backslash, openBrace, closeBrace, semicolon } from "./strings.js"
 import { empty, space, newline, period, comma } from "./strings.js"
 import { terminators, delimiters, qualifiers, bases } from "./strings.js"
 import { digits, symbolics, whitespace, deadspace } from "./strings.js"
@@ -120,7 +120,7 @@ export default function * tokenize(source, literate=false, script=false) {      
 
 			if (endline) { onside = index; line++ }
 
-			return new Token("terminator", endline ? "<LF>" : comma);
+			return new Token("terminator", endline ? "<LF>" : semicolon);
 		}
 
 		let token;

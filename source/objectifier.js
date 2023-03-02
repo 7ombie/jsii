@@ -5,7 +5,14 @@ import qualify from "./qualifier.js"
 
 class ASTNode {
 
+    /* This class defines the constructor that every AST node uses, as well as
+    default prefix and infix methods that just raise syntax errors, which are
+    redefined by the Pratt parsing methods of the various subclasses. */
+
 	constructor(token) {
+
+        /* This constructor copies the fields from a qualified token over to the
+        new instance, then resolves both of the masses (binding powers). */
 
 		this.type = token.type;
 		this.value = token.value;
@@ -19,26 +26,32 @@ class ASTNode {
 	infix() { throw new SyntaxError("unexpected token in infix position") }
 }
 
-class Delimiter extends ASTNode {}
-class Terminator extends ASTNode {}
-
 class Terminal extends ASTNode {
 
-	prefix(context) { return this }
+    /* This models terminal tokens (literals, variables, delimiters etc). */
+
+	prefix(_) { return this }
 }
 
 class Comment extends Terminal {}
 class Constant extends Terminal {}
+class Delimiter extends Terminal {}
+class Terminator extends Terminal {}
 class Identifier extends Terminal {}
 class NumberLiteral extends Terminal {}
 class StringLiteral extends Terminal {}
 
 class PassLike extends Terminal {
 
+    /* This models formal statements that are just a keyword. */
+
 	static keywords = ["pass", "debug"];
 }
 
 class BreakLike extends ASTNode {
+
+    /* This models formal statements that follow the keyword with an
+    optional identifier (label). */
 
 	static keywords = ["break", "continue"];
 
@@ -55,12 +68,15 @@ class BreakLike extends ASTNode {
 
 class ReturnLike extends ASTNode {
 
-	static keywords = ["return", "yield", "yield from"];
+    /* This models formal statements that follow the keyword with an
+    optional expression. */
+
+	static keywords = ["return", "yield"];
 
 	prefix(context) {
 
 		if (context.onTerminator()) this.right = null;
-		else this.right = context.gatherExpression(0);
+		else this.right = context.gatherExpression();
 
 		return this;
 	}
@@ -68,11 +84,14 @@ class ReturnLike extends ASTNode {
 
 class Block extends ASTNode {
 
+    /* This models formal statements that have a control-flow block after
+    the keyword. */
+
 	static keywords = ["do", "else"];
 
 	prefix(context) {
 
-		this.statements = [...context.gatherBlock(true)];
+		this.statements = context.gatherBlock();
 
 		return this;
 	}
@@ -80,14 +99,37 @@ class Block extends ASTNode {
 
 class PredicatedBlock extends ASTNode {
 
-	static keywords = ["if", "else if", "while", "until", "unless"];
+    /* This models formal statements that have a required predicate after
+    the keyword, followed by a control-flow block. */
+
+	static keywords = ["while", "until", "unless"];
 
 	prefix(context) {
 
 		this.predicate = context.gatherExpression();
-		this.statements = [...context.gatherBlock(true)];
+		this.statements = context.gatherBlock();
 
-		return this;
+        return this;
+	}
+}
+
+class PredicatedConjunction extends ASTNode {
+
+    /* This models formal statements that have a required predicate after
+    the keyword, followed by a control-flow block, optionally followed by
+    one or more clauses (which do not need to be on their own line, when
+    the preceeding block is braced). */
+
+	static keywords = ["if", "else if"];
+    static clauses = ["else", "else if"];
+
+	prefix(context) {
+
+		this.predicate = context.gatherExpression();
+		this.statements = context.gatherBlock();
+        this.clause = context.gatherGivenClause(PredicatedConjunction.clauses);
+
+        return this;
 	}
 }
 
@@ -101,7 +143,7 @@ class CompoundLiteral extends ASTNode {
 
 		const qualified = this.value.length !== 1;
 
-		this.items = new Array();
+		this.expressions = new Array();
 		this.qualifier = qualified ? this.value.slice(0, -1).trim() : empty;
 	}
 }
@@ -118,12 +160,12 @@ class SequentialLiteral extends CompoundLiteral {
 
 			if (context.onComma()) {
 
-				this.items.push(null);
+				this.expressions.push(null);
 				context.advance();
 				continue;
 			}
 
-			this.items.push(context.gatherExpression());
+			this.expressions.push(context.gatherExpression());
 
 			if (check()) break;
 			else if (context.onComma()) context.advance();
@@ -138,16 +180,23 @@ class SequentialLiteral extends CompoundLiteral {
 
 class ExpressionLiteral extends SequentialLiteral {
 
+    /* Expression literals are basically group expressions, and look like
+    an array literal, but wrapped in parens. */
+
 	prefix(context) { return super.prefix(context, context.onCloseParen) }
 }
 
 class ArrayLiteral extends SequentialLiteral {
 
+    /* Array literals are just like JS, except that they are also used
+    for destructuring assignments. */
+
 	prefix(context) { return super.prefix(context, context.onCloseBracket) }
 }
 
-
 class PrefixOperation extends ASTNode {
+
+    /* Implement operators which only have a prefix version. */
 
 	static operators = prefixOperators;
 
@@ -161,6 +210,8 @@ class PrefixOperation extends ASTNode {
 
 class InfixOperation extends ASTNode {
 
+    /* Implement operators which only have an infix version. */
+
 	static operators = infixOperators;
 
 	infix(left, context) {
@@ -173,7 +224,9 @@ class InfixOperation extends ASTNode {
 
 class OmnifixOperation extends ASTNode {
 
-	static operators = prefixOperators.filter(operator => infixOperators.includes(operator));
+    /* Implement operators which have prefix and infix versions. */
+
+    static operators = prefixOperators.filter(operator => infixOperators.includes(operator));
 
 	prefix(context) {
 
@@ -192,7 +245,9 @@ class OmnifixOperation extends ASTNode {
 
 class ExponentiationOperation extends ASTNode {
 
-	infix(left, context) {
+    /* Special-case the exponentiation-operator, as it is right-associative. */
+
+    infix(left, context) {
 
 		[this.left, this.right] = [left, context.gatherExpression(this.mass - 1)];
 
@@ -201,6 +256,9 @@ class ExponentiationOperation extends ASTNode {
 }
 
 class DotOperation extends ASTNode {
+
+    /* Special-case the dot-operators (`.`, `!` and `?`) to ensure the infix
+    versions have an identifier on the rightside. */
 
 	infix(left, context) {
 
@@ -248,6 +306,7 @@ export default function * classify(source, literate=false, script=false) {
 
             if (Block.keywords.includes(value)) yield new Block(token);
 			else if (PredicatedBlock.keywords.includes(value)) yield new PredicatedBlock(token);
+            else if (PredicatedConjunction.keywords.includes(value)) yield new PredicatedConjunction(token);
 			else if (ReturnLike.keywords.includes(value)) yield new ReturnLike(token);
             else if (BreakLike.keywords.includes(value)) yield new BreakLike(token);
             else if (PassLike.keywords.includes(value)) yield new PassLike(token);

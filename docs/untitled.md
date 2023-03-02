@@ -947,15 +947,22 @@ McFly rethinks the whole `in` header-block grammars for iteration, for-in loops 
 
 Note: Logic uses `and`, `or` and `not`.
 
-+ !     Bitwise NOT
-+ ?     Count Leading Zeros
++ `!`       Bitwise NOT                         ! x         -> ~x
++ `?`       Count Leading Zeros                 ? x         -> Math.clz32(x)
 
-+ AND:  &
-+ OR:   |
-+ XOR:  ||
-+ LSH:  <<
-+ RSH:  >>
-+ URSH: >>>
++ `&`       Bitwise AND                         x & y       -> x & y
++ `|`       Bitwise OR                          x | y       -> x | y
++ `||`      XOR                                 x || y      -> x ^ y
++ `<<`      Zero Left Shift                     x << y      -> x << y
++ `>>`      Zero Right Shift                    x >> y      -> x >>> y
++ `>>>`     Arithmetic Right Shift              x >>> y     -> x >> y
+
++ `&=`      Bitwise AND Assignment
++ `|=`      Bitwise OR Assignment
++ `||=`     XOR Assignment
++ `<<=`     Zero Shift Left Assignment
++ `>>=`     Zero Shift Right Assignment
++ `>>>=`    Arithmetic Shift Right Assignment
 
 ### Operators
 
