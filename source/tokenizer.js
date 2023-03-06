@@ -93,7 +93,7 @@ export default function * tokenize(source, literate=false) {
         the line number by 256, then adding the column number to the result. Both
         values are zero-indexed. */
 
-        return line * 256 + (index - onside);
+        return line * 256 + (index - onside - 1);
     }
 
 	function * gatherStream() {
@@ -169,7 +169,7 @@ export default function * tokenize(source, literate=false) {
     };
 
 	let [character, next, interpolating] = [empty, empty, false];
-    let [index, onside, line, nesting] = [-1, -1, 1, 0];
+    let [index, onside, line, nesting] = [-1, -1, 0, 0];
 
 	yield * gatherStream();
 }

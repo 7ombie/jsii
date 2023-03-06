@@ -8,14 +8,10 @@ spam + "foo" // 2
 
 for (const token of tokenize(source)) {
 
-    // const { mass, pull, location, value } = token;
+    const type = token.constructor.name;
+    const locator = `(${Math.floor(token.location / 256)}:${token.location % 256})`;
 
-    // const type = token.constructor.name;
-    // const locator = `[${Math.floor(location / 256)}:${token.location % 256}]`;
-    // const weights = mass + pull ? `(${mass}, ${pull})` : ``;
-    // const header = `${locator} ${type} ${weights}`.padEnd(32);
-
-    console.log("token:", token);
+    console.log("token:", `${type}${locator}`.padEnd(24), token);
 }
 
 for (const statement of parse(source)) console.log("statement:", statement);

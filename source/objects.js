@@ -27,13 +27,10 @@ class Token {
 
     /* This is the internal, abstract base class for all other token classes. */
 
-	constructor(location) {
+    mass = 0;
+    value = empty;
 
-		this.mass = 0;
-        this.pull = 0;
-		this.value = empty;
-        this.location = location;
-	}
+	constructor(location) { this.location = location }
 
 	prefix() { console.log(this); throw new SyntaxError(`invalid prefix`) }
 
@@ -243,6 +240,8 @@ export class Operator extends Token {
     It is used by the lexer to gather an unbroken sequence of our symbolic
     operator characters, split it into individual operators (see `slice`),
     then yield the operators as concrete tokens, one at a time. */
+
+    pull = 0;
 
     static slice(value, offset=1) {
 
