@@ -27,7 +27,7 @@ class Token {
 
     /* This is the internal, abstract base class for all other token classes. */
 
-    mass = 0;
+    LBP = 0;
     value = empty;
 
 	constructor(location) { this.location = location }
@@ -164,7 +164,7 @@ export class Delimiter extends Terminal {
     }
 }
 
-class SuffixDelimiter extends Delimiter { mass = 17 }
+class SuffixDelimiter extends Delimiter { LBP = 17 }
 
 export class Word extends Terminal {
 
@@ -241,7 +241,7 @@ export class Operator extends Token {
     operator characters, split it into individual operators (see `slice`),
     then yield the operators as concrete tokens, one at a time. */
 
-    pull = 0;
+    RBP = 0;
 
     static slice(value, offset=1) {
 
@@ -312,7 +312,7 @@ class PrefixOperator extends Operator {
 
     prefix(parser) {
 
-		this.right = parser.gatherExpression(this.pull);
+		this.right = parser.gatherExpression(this.RBP);
 
         return this;
 	}
@@ -326,7 +326,7 @@ class InfixOperator extends Operator {
 	infix(parser, left) {
 
 		this.left = left;
-        this.right = parser.gatherExpression(this.mass);
+        this.right = parser.gatherExpression(this.LBP);
 
 		return this;
 	}
@@ -342,7 +342,7 @@ class DotOperator extends Operator {
         // TODO: this should gather a property (not an expression)
 
 		this.left = left;
-        this.right = parser.gatherExpression(this.mass);
+        this.right = parser.gatherExpression(this.LBP);
 
 		return this;
 	}
@@ -364,7 +364,7 @@ class RightAssociativeOperator extends Operator {
     infix(parser, left) {
 
 		this.left = left;
-        this.right = parser.gatherExpression(this.mass - 1);
+        this.right = parser.gatherExpression(this.LBP - 1);
 
 		return this;
 	}
@@ -376,7 +376,7 @@ class GeneralOperator extends Operator {
 
     prefix(parser) {
 
-		this.right = parser.gatherExpression(this.pull);
+		this.right = parser.gatherExpression(this.RBP);
 
         return this;
 	}
@@ -384,7 +384,7 @@ class GeneralOperator extends Operator {
 	infix(parser, left) {
 
 		this.left = left;
-        this.right = parser.gatherExpression(this.mass);
+        this.right = parser.gatherExpression(this.LBP);
 
 		return this;
 	}
@@ -429,22 +429,22 @@ export class Command extends Keyword {}
 export class Let extends Keyword {}
 export class Var extends Keyword {}
 
-export class Is extends DotOperator { mass = 8 }
-export class In extends DotOperator { mass = 17 }
-export class Plus extends GeneralOperator { mass = 14; pull = 11 }
-export class Minus extends GeneralOperator { mass = 14; pull = 11 }
-export class Not extends GeneralOperator { mass = 9; pull = 14 }
-export class Dot extends DotOperator { mass = 17 }
-export class Ask extends PrefixDotOperator { mass = 17; pull = 14}
-export class Bang extends PrefixDotOperator { mass = 17; pull = 14 }
-export class Nullish extends PrefixOperator { mass = 3; pull = 14 }
-export class Lesser extends InfixOperator { mass = 9 }
-export class Greater extends InfixOperator { mass = 9 }
-export class NotLesser extends InfixOperator { mass = 9 }
-export class NotGreater extends InfixOperator { mass = 9 }
-export class Star extends InfixOperator { mass = 12 }
-export class Slash extends InfixOperator { mass = 12 }
-export class Floor extends InfixOperator { mass = 12 }
-export class Raise extends RightAssociativeOperator { mass = 13 }
-export class SkinnyArrow extends GeneralOperator { mass = 2; pull = 2 }
-export class FatArrow extends GeneralOperator { mass = 2; pull = 2 }
+export class Is extends DotOperator { LBP = 8 }
+export class In extends DotOperator { LBP = 17 }
+export class Plus extends GeneralOperator { LBP = 14; RBP = 11 }
+export class Minus extends GeneralOperator { LBP = 14; RBP = 11 }
+export class Not extends GeneralOperator { LBP = 9; RBP = 14 }
+export class Dot extends DotOperator { LBP = 17 }
+export class Ask extends PrefixDotOperator { LBP = 17; RBP = 14}
+export class Bang extends PrefixDotOperator { LBP = 17; RBP = 14 }
+export class Nullish extends PrefixOperator { LBP = 3; RBP = 14 }
+export class Lesser extends InfixOperator { LBP = 9 }
+export class Greater extends InfixOperator { LBP = 9 }
+export class NotLesser extends InfixOperator { LBP = 9 }
+export class NotGreater extends InfixOperator { LBP = 9 }
+export class Star extends InfixOperator { LBP = 12 }
+export class Slash extends InfixOperator { LBP = 12 }
+export class Floor extends InfixOperator { LBP = 12 }
+export class Raise extends RightAssociativeOperator { LBP = 13 }
+export class SkinnyArrow extends GeneralOperator { LBP = 2; RBP = 2 }
+export class FatArrow extends GeneralOperator { LBP = 2; RBP = 2 }

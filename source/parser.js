@@ -6,7 +6,7 @@ export default function * parse(source, literate=false) {
     // the following functions are used internally to implement the api that is
     // exposed to the parsing methods in `objectify.js`...
 
-    function gather(mass=0) {
+    function gather(RBP=0) {
 
 		/* This function implements the Pratt parsing function. */
 
@@ -16,7 +16,7 @@ export default function * parse(source, literate=false) {
 		token = advance();
 		left = current.prefix(api);
 
-		while (mass < token.mass) {
+		while (RBP < token.LBP) {
 
 	        current = token;
 	        token = advance();
