@@ -4,7 +4,7 @@ export const [empty, space, newline, tab, carriage] = ["", " ", "\n", "\t", "\r"
 export const [bang, atsign, pound, dollar, modulo] = ["!", "@", "#", "$", "%"];
 export const [caret, ampersand, asterisk, tilde] = ["^", "&", "*", "~"];
 export const [accent, apostrophe, quote, equals] = ["`", "'", "\"", "="];
-export const [lesser, greater, comma, period] = ["<", ">", ",", "."];
+export const [lesser, greater, comma, dot] = ["<", ">", ",", "."];
 export const [semicolon, colon, slash, backslash] = [";", ":", "/", "\\"];
 export const [plus, minus, underscore, questionmark] = ["+", "-", "_", "?"];
 export const [bar, openParen, closeParen] = ["|", "(", ")"];
@@ -15,19 +15,17 @@ export const [openBrace, closeBrace] = ["{", "}"];
 
 export const whitespace = space + newline;
 export const deadspace = semicolon + whitespace;
-
 export const terminators = semicolon + newline;
+export const delimiters = ",:{[()]}";
 
 export const bases = "xbXB";
 export const binaries = "01";
 export const decimals = binaries + "23456789";
 export const hexadecimals = decimals + "ABCDEF";
 
-export const dotOperators = period + bang + questionmark;
-
 export const symbolics = (
-	dotOperators + modulo + ampersand + asterisk + equals +
-	plus + minus + slash + backslash + lesser + greater
+	dot + questionmark + bang + modulo + ampersand + asterisk + bar +
+    equals + plus + minus + slash + backslash + lesser + greater
 );
 
 export const lowers = "abcdefghijklmnopqrstuvwxyz";
@@ -46,36 +44,28 @@ export const digits = {
 	hexadecimal: hexadecimals
 };
 
-// export a hash mapping delimiting chararacters to their type names, and
-// an array of opening delimiter type names...
+// export a list containing the every unique operator spelling...
 
-export const delimiters = {
-    ",": "comma-delimiter",
-	":": "colon-delimiter",
-	"(": "open-paren-delimiter",
-	"[": "open-bracket-delimiter",
-	"{": "open-brace-delimiter",
-	")": "close-paren-delimiter",
-	"]": "close-bracket-delimiter",
-	"}": "close-brace-delimiter",
-}
-
-export const openingDelimiterTypes = [
-	"open-paren-delimiter",
-	"open-bracket-delimiter",
-	"open-brace-delimiter",
-];
-
-// export an array containing all of the types that are also valid property
-// names (when using dot notation)...
-
-export const propertyTypes = [
-    "constant-word",
-    "key-word",
-    "operator-word",
-    "qualifier-word",
-    "reserved-word",
-    "variable-name",
+export const operators = [
+    "+",
+    "-",
+    "*",
+    "/",
+    "//",
+    "**",
+    "<",
+    ">",
+    ".",
+    "!",
+    "?",
+    "??",
+    "<=",
+    ">=",
+    "->",
+    "=>",
+    "in",
+    "is",
+    "not",
 ];
 
 // export an array containing all of the constant words...
@@ -93,30 +83,22 @@ export const constants = [
 	"void",
 ];
 
-// export an array of valid keywords (including qualified keywords)...
+// export an array of valid keywords...
 
 export const keywords = [
-	"async lambda",
-	"async function",
-	"async generator",
+    "async",
+    "await",
 	"break",
 	"continue",
     "debug",
     "do",
-	"do async lambda",
-	"do async function",
-	"do async generator",
-	"do lambda",
-	"do function",
-	"do generator",
 	"else",
-	"else if",
 	"lambda",
 	"for",
+    "from",
 	"function",
 	"generator",
 	"if",
-	"in",
 	"let",
     "pass",
 	"return",
@@ -125,79 +107,11 @@ export const keywords = [
 	"var",
 	"while",
 	"yield",
-	"yield from",
 ];
-
-// export a hash mapping valid qualfiers (including qualified qualifiers)
-// to an array containing every word they can qualify, and `true` if they
-// can qualify literals...
-
-export const qualifiers = {
-	"u8": [true],
-	"s8": [true],
-	"c8": [true],
-	"u16": [true],
-	"s16": [true],
-	"u32": [true],
-	"s32": [true],
-	"u64": [true],
-	"s64": [true],
-	"f32": [true],
-	"f64": [true],
-	"else": ["if"],
-	"is": ["not"],
-	"not": ["in"],
-	"do": ["async", "lambda", "function", "generator"],
-	"do async": ["lambda", "function", "generator"],
-	"async": ["lambda", "function", "generator"],
-	"yield": ["from"]
-};
-
-// export a struct containing two hashes, one mapping prefix operators to
-// their masses (their operator precedence), and another doing the same
-// for infix operators...
-
-export const masses = {prefix: Object.create(null), infix: Object.create(null)};
-
-function prefix(mass, ...operators) {
-
-	// define one or more prefix operators with the given mass...
-
-	for (const operator of operators) masses.prefix[operator] = mass;
-};
-
-function infix(mass, ...operators) {
-
-	// define one or more infix operators with the given mass...
-
-	for (const operator of operators) masses.infix[operator] = mass;
-};
-
-prefix(2, "->", "=>");
-prefix(14, "+", "-", "not");
-
-infix(2, "->", "=>");
-infix(3, "??");
-infix(8, "is", "is not", "in", "not in");
-infix(9, "<", ">", ">=", "<=");
-infix(11, "+", "-");
-infix(12, "*", "/", "//");                                                    // TODO: restore "%"
-infix(13, "**");
-infix(17, ".", "?", "!");
-
-// use the operators now defined inside `masses` to generate and export
-// three new arrays, containing every prefix, infix and unique operator
-// (as strings)...
-
-const unique = operator => ! prefixOperators.includes(operator);
-
-export const prefixOperators = Object.keys(masses.prefix);
-export const infixOperators = Object.keys(masses.infix);
-export const operators = [...prefixOperators, ...infixOperators.filter(unique)];
 
 // finish up by exporting an array containing all of the reserved words...
 
-export const reserves = [
+export const reserved = [
 	"abstract",
 	"access",
 	"alias",
