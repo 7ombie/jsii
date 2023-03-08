@@ -1,19 +1,16 @@
-import tokenize from "./tokenizer.js"
+import lex from "./lexer.js"
 import parse from "./parser.js"
+// import write from "./writer.js"
 
 let source = `
-x + 1
-spam + "foo" // 2
+0xFF.foo
+do async lambda { return x + 1 }
+do lambda { return x + 1 }
+async lambda { debug }
+do pass
 `;
 
-for (const token of tokenize(source)) {
-
-    const type = token.constructor.name;
-    const locator = `(${Math.floor(token.location / 256)}:${token.location % 256})`;
-
-    console.log("token:", `${type}${locator}`.padEnd(24), token);
-}
-
-for (const statement of parse(source)) console.log("statement:", statement);
-
-// TODO: make line a col numbers zero indexed
+console.log("source:", source + "\noutput...");
+for (const token of lex(source)) console.log("token:", token);
+for (const statement of parse(source, false)) console.log("statement:", statement);
+// write(source);
