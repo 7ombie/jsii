@@ -2,8 +2,9 @@ import lex from "./lexer.js"
 import parse from "./parser.js"
 import write from "./writer.js"
 
-let source = ` # TODO: test the numbers (especially dots and 'onPoint')
+let source = `
 0xE4.toString
+do async lambda { return 1 }
 `;
 
 console.log("source:", source + "\noutput...");

@@ -130,21 +130,21 @@ export default function * (source, literate=false) {
         interpolating = mode;
     }
 
-	function * gatherStream() { // api function
+    function * gatherStream() { // api function
 
         /* This generator function contains the main loop and branches that tokenize
         the source (recuring to parse token streams inside of string interpolations).
         The actual tokenization is handled by the respective `Token` subclasses. */
 
-	    while (advance()) {
+        while (advance()) {
 
             const location = locate();
 
-			if (literate && (index - 1 === lastNewline) && (!on(whitespace))) {
+            if (literate && (index - 1 === lastNewline) && (!on(whitespace))) {
 
-				lexer.gatherUntil(newline);
+                lexer.gatherUntil(newline);
 
-			} else if (on(space)) {
+            } else if (on(space)) {
 
                 continue;
 
@@ -176,10 +176,10 @@ export default function * (source, literate=false) {
 
             } else if (on(delimiters)) {
 
-				if (interpolating) {
+                if (interpolating) {
 
                     if (on(openBrace)) nesting++;
-				    else if (on(closeBrace)) nesting--;
+                    else if (on(closeBrace)) nesting--;
                 }
 
                 yield * Delimiter.lex(api, location);
@@ -187,15 +187,15 @@ export default function * (source, literate=false) {
             } else throw new SyntaxError(`unexpected character (${character})`);
         }
 
-		if (!interpolating) yield * Terminator.lex(api, locate());
+        if (!interpolating) yield * Terminator.lex(api, locate());
     }
 
     const api = {
         advance, on, at, peek, read, interpolate, gatherWhile, gatherUntil, gatherStream
     };
 
-	let [character, interpolating] = [empty, false];
+    let [character, interpolating] = [empty, false];
     let [index, line, lastNewline, nesting] = [-1, 0, -1, 0];
 
-	yield * gatherStream();
+    yield * gatherStream();
 }

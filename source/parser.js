@@ -15,7 +15,7 @@ export default function * (source, literate=false) {
 
     /* This generator implements the parser stage, and yields an AST node for each
     top-level statement. Like the lexer stage, the specifics of parsing any given
-    grammar are left to the corresponding token object in `objects.js`.
+    grammar are left to the corresponding grammar object in `objects.js`.
 
     The parser API object collects references to a subset of the functions defined
     below, and every token has `prefix` and `infix` methods that take a reference
@@ -24,71 +24,63 @@ export default function * (source, literate=false) {
 
     The `source` string and `literate` flag are passed along to the lexer stage. */
 
-    function gather(RBP=0) { // api function
+    function gather(RBP=0) { // internal
 
-		/* This function implements Pratt's Algorithm. */
+        /* This function implements Pratt's Algorithm. */
 
-		let current, result;
+        let current, result;
 
-		current = token;
-		token = advance();
-		result = current.prefix(api);
+        current = token;
+        token = advance();
+        result = current.prefix(api);
 
-		while (RBP < token.LBP) {
+        while (RBP < token.LBP) {
 
-	        current = token;
-	        token = advance();
-	        result = current.infix(api, result);
-		}
+            current = token;
+            token = advance();
+            result = current.infix(api, result);
+        }
 
-	    return result;
-	}
-
-	function * gatherStatements(nested=true) {
-
-		/* This is the (often) recursive, block-level parsing function that wraps
-		the Pratt parser to implement a statement grammar that replaces ASI with
-        LIST (Linewise Implicit Statement Termination). */
-
-		while (advance()) {
-
-			if (on(EOF) && nested) throw new SyntaxError("end of file inside block");
-
-			if (on(EOF)) break;
-
-			if (on(CloseBrace) && nested) { advance(); return }
-
-			if (on(Terminator)) continue;
-
-			yield gather();
-
-			if (on(Terminator)) continue;
-
-			if (on(CloseBrace) && nested) { advance(); return }
-
-			throw new SyntaxError("required terminator was not found");
-		}
-	}
-
-    function advance() { // api function
-
-        /* Advance the token stream by one token, then return a reference to the
-        newly current token. */
-
-        return ([token, next] = [next, tokens.next().value])[0];
+        return result;
     }
 
-    function currentThenAdvance() {
+    function * LIST(nested=true) { // internal
 
-        /* This internal helper notes the current token, advances the parser, then returns
-        the token (this is used by functions that gather a single-token construct, like
-        the `gatherProperty` and `gatherVariable` API functions). */
+        /* This is the (often) recursive, block-level parsing function that wraps the Pratt
+        parser to implement a statement grammar that replaces ASI with LIST (Linewise Implicit
+        Statement Termination). */
 
-        const current = token;
+        while (advance()) {
 
-        advance();
+            if (on(EOF)) break;
 
-        return current;
+            if (on(CloseBrace) && nested) { advance(); return }
+
+            if (on(Terminator)) continue;
+
+            yield gatherStatement();
+
+            if (on(Terminator)) continue;
+
+            if (on(CloseBrace) && nested) { advance(); return }
+
+            throw new SyntaxError("required terminator was not found");
+        }
+
+        if (nested) throw new SyntaxError("end of file inside block");
+    }
+
+    function advance(previous=false) { // api function
+
+        /* Advance the token stream by one token, then return a reference to the newly current
+        token, unless the `previous` argument is truthy. In which case, the previously current
+        token is returned instead. */
+
+        const old = token;
+
+        [token, next] = [next, tokens.next().value];
+
+        return previous ? old : token;
     }
 
     function on(type) { // api function
@@ -114,7 +106,7 @@ export default function * (source, literate=false) {
         the token is a property, the function advances the parser, then returns
         the token (which is noted before advancing), complaining otherwise. */
 
-        if (on(Word) || on(Operator) && token.isNamedOperator) return currentThenAdvance();
+        if (on(Word) || on(Operator) && token.named) return advance(true);
         else throw new SyntaxError("required a property (dint get one)");
     }
 
@@ -124,28 +116,70 @@ export default function * (source, literate=false) {
         before returning the token (which is noted before advancing), complaining
         if the token is not a variable. */
 
-        if (on(Variable)) return currentThenAdvance();
+        if (on(Variable)) return advance(true);
         else throw new SyntaxError("required a variable??");
     }
 
-	function gatherExpression() { // api function
+    function gatherExpression() { // api function
 
-		/* This wraps the Pratt parsing function to ensure that the result is an
-        expression (not a formal statement). */
+        /* This function wraps the Pratt function to ensure that the result is an expression
+        (not a formal statement), complaining otherwise. */
 
-		const candidate = gather();
+        const candidate = gather();
 
-		if (candidate.expression) return candidate;
-		else throw new SyntaxError("required an expression");
-	}
+        if (candidate.expression) return candidate;
+        else throw new SyntaxError("required an expression");
+    }
 
-    function walk(stopcheck, onmatch, fallback=false) {
+    function gatherStatement() { // api function
+
+        /* This function wraps the Pratt function to ensure that the result (which could be
+        a formal statement or expression) is valid in the current context (block-wise). */
+
+        const candidate = gather();
+
+        if (candidate.validate(api)) return candidate;
+        else throw new SyntaxError("invalid statement type, given current context");
+    }
+
+    function gatherFormalStatement() { // api function
+
+        /* This function wraps the Pratt function to ensure that the result is an expression
+        (not a formal statement), complaining otherwise. */
+
+        const candidate = gatherStatement();
+
+        if (candidate instanceof Keyword) return candidate;
+        else throw new SyntaxError("required a formal statement");
+    }
+
+    function gatherBlock(type) { // api function
+
+        /* This function takes a block type (an integer, see `walk`), and pushes it to the
+        block stack, before gathering a formal statement or an array of statements (of any
+        number and kind). Once the block has been parsed, the block type is popped off the
+        stack, and the parsed block is returned. */
+
+        let result;
+
+        stack.push(type);
+
+        if (on(OpenBrace)) result = [...LIST()];
+        else result = gatherFormalStatement();
+
+        stack.pop();
+
+        return result;
+    }
+
+    function walk(stopcheck, onmatch, fallback=false) { // api function
 
         /* This function allows statements (like `return` and `break`) that can only
         appear in specific contexts to establish whether they are in a valid context.
 
-        The process walks the `stack` of integer block types backwards (upwards), and
-        calls the `stopcheck` callback on each type to establish whether to stop yet.
+        The process walks the nonlocal `stack` of integer block types backwards (from
+        innermost to outermost), and calls the `stopcheck` callback on each type to
+        establish whether to stop yet.
 
         If the loop stops, the `onmatch` callback is passed the type that was stopped
         on, and the result is returned. The `fallback` bool is returned if the stack
@@ -173,62 +207,22 @@ export default function * (source, literate=false) {
         return fallback;
     }
 
-    function gatherBlock(type) { // api function
-
-        /* This function takes a block type (an integer, see `walk`) and pushes it to
-        the block stack, before gathering and returning a formal statement or an array
-        of zero or more statements (of any kind). */
-
-        function gatherFormalStatement() {
-
-            /* This helper gathers and returns a formal statement, or complains if the
-            parser returns something informal. */
-
-            const candidate = gather();
-
-            if (candidate instanceof Keyword) return candidate;
-            else throw new SyntaxError("required a formal statement");
-        }
-
-        function validate(statement) {
-
-            /* This helper validates a statement by simply calling its `validate` method,
-            passing a reference to the API, so the `validate` method can use the `walk`
-            API function to explore the block stack (where required). */
-
-            if (statement.validate(api)) return statement;
-            else throw new SyntaxError("invalid statement type, given current context");
-        }
-
-        let result;
-
-        stack.push(type);
-
-        if (on(OpenBrace)) result = [...gatherStatements()].map(validate);
-        else result = validate(gatherFormalStatement());
-
-        stack.pop();
-
-        return result;
-    }
-
-	const api = {
-        advance,
-        at,
-        walk,
-        gather,
-		gatherBlock,
-		gatherExpression,
-        gatherProperty,
+    const api = {
+        advance, on, at,
         gatherVariable,
-        on,
-	};
+        gatherProperty,
+        gatherExpression,
+        gatherStatement,
+        gatherFormalStatement,
+        gatherBlock,
+        walk,
+    };
 
     const [stack, tokens] = [[2, -1], lex(source, literate)];
 
-	let token, next;
+    let token, next;
 
     advance();
 
-    yield * gatherStatements(false);
+    yield * LIST(false);
 }

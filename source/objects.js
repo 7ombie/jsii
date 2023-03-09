@@ -42,7 +42,7 @@ class Token {
     operands = [];
     expression = false;
 
-	constructor(location, value=empty) {
+    constructor(location, value=empty) {
 
         this.location = location;
         this.value = value;
@@ -50,9 +50,9 @@ class Token {
 
     // root class default non-implementations...
 
-	prefix(parser) { throw new SyntaxError("invalid prefix") }
+    prefix(parser) { throw new SyntaxError("invalid prefix") }
 
-	infix(parser) { throw new SyntaxError("invalid infix") }
+    infix(parser) { throw new SyntaxError("invalid infix") }
 
     // root class default implementations...
 
@@ -78,7 +78,7 @@ class Terminal extends Token {
 
     /* This is the internal, abstract base class used by all terminal tokens. */
 
-	prefix(_) { return this }
+    prefix(_) { return this }
 }
 
 export class Terminator extends Terminal {
@@ -436,7 +436,7 @@ export class Operator extends Token {
         }
     }
 
-    get isNamedOperator() { return alphas.includes(this.value[0]) } // used by parser
+    get named() { return alphas.includes(this.value[0]) } // is operator valid as a property
 
     write(writer) {
 
@@ -464,7 +464,7 @@ class InfixOperator extends Operator {
     /* This base class provids functionality for operators that are only valid as infix
     operators. */
 
-	infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
+    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
 }
 
 class DotOperator extends Operator {
@@ -518,7 +518,7 @@ class GeneralOperator extends Operator {
 
     prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
 
-	infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
+    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
 }
 
 /// These are the concrete token classes that actually appear in token streams...
@@ -541,7 +541,7 @@ class Async extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(FunctionalBlock)) return this.push(parser.gather());
+        if (parser.on(FunctionalBlock)) return this.push(parser.gatherStatement());
         else throw new SyntaxError("async qualifier without valid subject");
     }
 }
@@ -643,8 +643,11 @@ class Do extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(Async) || parser.on(FunctionalBlock)) this.push(parser.gather());
-        else this.push(parser.gatherBlock(SIMPLEBLOCK));
+        if (parser.on(Async) || parser.on(FunctionalBlock)) {
+
+            this.push(parser.gatherStatement());
+
+        } else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
     }
