@@ -44,7 +44,7 @@ export const digits = {
 	hexadecimal: hexadecimals
 };
 
-// export a list containing the every unique operator spelling...
+// export an array containing the spelling for each unique operator...
 
 export const operators = [
     "+",
@@ -71,20 +71,20 @@ export const operators = [
 // export an array containing all of the constant words...
 
 export const constants = [
-    "arguments",
-	"false",
-    "global",
-	"Infinity",
-	"NaN",
 	"null",
-    "random",
+    "void",
+	"true",
+    "false",
+	"Infinity",
+    "NaN",
     "super",
     "this",
-	"true",
-	"void",
+    "global",
+    "random",
+    "arguments",
 ];
 
-// export an array of valid keywords...
+// export an array containing all of the keywords...
 
 export const keywords = [
     "async",

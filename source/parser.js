@@ -47,7 +47,7 @@ export default function * (source, literate=false) {
 
 		/* This is the (often) recursive, block-level parsing function that wraps
 		the Pratt parser to implement a statement grammar that replaces ASI with
-        LIST (Linewise Implicit Statement Termiation). */
+        LIST (Linewise Implicit Statement Termination). */
 
 		while (advance()) {
 
@@ -59,7 +59,7 @@ export default function * (source, literate=false) {
 
 			if (on(Terminator)) continue;
 
-			yield gatherStatement();
+			yield gather();
 
 			if (on(Terminator)) continue;
 
@@ -100,7 +100,7 @@ export default function * (source, literate=false) {
         the token is a property, the function advances the parser, then returns
         the token (which is noted before advancing), complaining otherwise. */
 
-        if (on(Word) || on(Operator) && token.named) {
+        if (on(Word) || on(Operator) && token.isNamedOperator) {
 
             const current = token;
 
@@ -122,21 +122,14 @@ export default function * (source, literate=false) {
 		else throw new SyntaxError("required an expression");
 	}
 
-	function gatherStatement() { // api function
-
-		/* This wraps the Pratt parsing function to make it part of the API. It is
-        used to gather any statement, formal or informal. */
-
-		return gather();
-	}
-
-    function check(stopcheck, onmatch, fallback=false) {
+    function walk(stopcheck, onmatch, fallback=false) {
 
         /* This function allows statements (like `return` and `break`) that can only
         appear in specific contexts to establish whether they are in a valid context.
 
         The process walks the `stack` of integer block types backwards (upwards), and
         calls the `stopcheck` callback on each type to establish whether to stop yet.
+
         If the loop stops, the `onmatch` callback is passed the type that was stopped
         on, and the result is returned. The `fallback` bool is returned if the stack
         is exhausted without a match.
@@ -152,31 +145,39 @@ export default function * (source, literate=false) {
             + class blocks = 5
 
         It is always possible to establish the validity of a statement by walking to
-        the last related statement, then checking if it is in a given range, falling
-        back to a bool if no related statement was found. */
+        the last related block, then checking whether its enumeration is within some
+        range, and falling back to a bool if the top-level is reached. */
 
-        for (let i = stack.length - 1; i >= 0; i--) {
+        for (let index = stack.length - 1; index >= 0; index--) {
 
-            if (stopcheck(stack[i])) return onmatch(stack[i]);
+            if (stopcheck(stack[index])) return onmatch(stack[index]);
         }
 
         return fallback;
     }
 
-	function gatherFormalStatement() {
-
-		/* This wraps the Pratt parsing function to ensure that the result is a
-        formal statement (not an expression). */
-
-        const candidate = gather();
-
-		if (candidate instanceof Keyword) return candidate;
-		else throw new SyntaxError("required a formal statement");
-	}
-
     function gatherBlock(type) { // api function
 
+        /* This function takes a block type (an integer, see `walk`) and pushes it to
+        the block stack, before gathering and returning a formal statement or an array
+        of zero or more statements (of any kind). */
+
+        function gatherFormalStatement() {
+
+            /* This helper gathers and returns a formal statement, or complains if the
+            parser returns something informal. */
+
+            const candidate = gather();
+
+            if (candidate instanceof Keyword) return candidate;
+            else throw new SyntaxError("required a formal statement");
+        }
+
         function validate(statement) {
+
+            /* This helper validates a statement by simply calling its `validate` method,
+            passing a reference to the API, so the `validate` method can use the `walk`
+            API function to explore the block stack (where required). */
 
             if (statement.validate(api)) return statement;
             else throw new SyntaxError("invalid statement in context");
@@ -197,11 +198,10 @@ export default function * (source, literate=false) {
 	const api = {
         advance,
         at,
-        check,
+        walk,
 		gatherBlock,
 		gatherExpression,
         gatherProperty,
-		gatherStatement,
         on,
 	};
 

@@ -1,4 +1,5 @@
 import {
+    alphas,
     bases,
     closeBrace,
     closeBracket,
@@ -38,6 +39,7 @@ class Token {
 
     LBP = 0;
     expression = false;
+    operands = new Array();
 
 	constructor(location, value=empty) {
 
@@ -50,6 +52,17 @@ class Token {
 	infix() { console.log(this); throw new SyntaxError(`invalid infix`) }
 
     validate() { return true }
+
+    push(...args) {
+
+        /* This helper is used by `prefix` and `infix` methods to push zero or more
+        operands to the operands array for the current instance. The method returns
+        a reference to `this`, as its caller will invariably need to do so too. */
+
+        args.forEach(arg => this.operands.push(arg));
+
+        return this;
+    }
 }
 
 class Terminal extends Token {
@@ -243,8 +256,7 @@ class OptionalExpressionStatement extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(Terminator)) this.expression = null;
-        else this.expression = parser.gatherExpression();
+        if (!parser.on(Terminator)) this.push(parser.gatherExpression());
 
         return this;
     }
@@ -277,7 +289,6 @@ export class Operator extends Token {
     at a time. */
 
     RBP = 0;
-    named = false;
     expression = true;
 
     static slice(value, offset=1) {
@@ -341,16 +352,24 @@ export class Operator extends Token {
         }
     }
 
+    get isNamedOperator() { return alphas.includes(this.value[0]) } // used by parser
+
     write(writer) {
 
         /* This provides a generic writer method for prefix and infix operators, (prefix
         operators have null `left` attributes) */
 
-        const separator = this.left ? space : empty;
+        if (this.operands.length === 1) {
 
-        this.left?.write(writer);
-        writer.push(separator, this.value, separator);
-        this.right.write(writer);
+            writer.push(this.value, space);
+            this.operands[0].write(writer);
+
+        } else {
+
+            this.operands[0].write(writer);
+            writer.push(space, this.value, space);
+            this.operands[1].write(writer);
+        }
     }
 }
 
@@ -359,13 +378,7 @@ class InfixOperator extends Operator {
     /* This base class provids functionality for operators that are only valid as infix
     operators. */
 
-	infix(parser, left) {
-
-		this.left = left;
-        this.right = parser.gatherExpression(this.LBP);
-
-		return this;
-	}
+	infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
 }
 
 class DotOperator extends Operator {
@@ -375,13 +388,7 @@ class DotOperator extends Operator {
 
     LBP = 17;
 
-    infix(parser, left) {
-
-		this.left = left;
-        this.right = parser.gatherProperty();
-
-        return this;
-	}
+    infix(parser, left) { return this.push(left, parser.gatherProperty()) }
 }
 
 class PrefixDotOperator extends DotOperator {
@@ -389,13 +396,7 @@ class PrefixDotOperator extends DotOperator {
     /* This base class extends the dot-operator class with functionality specific to the bang
     and ask operators, which are also bitwise prefix operators. */
 
-    prefix(parser) {
-
-        this.left = null;
-        this.right = parser.gatherExpression(this.RBP);
-
-        return this;
-    }
+    prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
 }
 
 class RightAssociativeOperator extends Operator {
@@ -403,34 +404,16 @@ class RightAssociativeOperator extends Operator {
     /* This is the base class for right-associative infix operators (this is only currently
     used for exponentiation). */
 
-    infix(parser, left) {
-
-		this.left = left;
-        this.right = parser.gatherExpression(this.LBP - 1);
-
-		return this;
-	}
+    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP - 1)) }
 }
 
 class GeneralOperator extends Operator {
 
     /* This is the base class for operators that have prefix and infix forms. */
 
-    prefix(parser) {
+    prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
 
-        this.left = null;
-		this.right = parser.gatherExpression(this.RBP);
-
-        return this;
-	}
-
-	infix(parser, left) {
-
-		this.left = left;
-        this.right = parser.gatherExpression(this.LBP);
-
-		return this;
-	}
+	infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
 }
 
 /// These are the concrete token classes that actually appear in token streams...
@@ -453,10 +436,8 @@ class Async extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(FunctionalBlock)) this.statements = parser.gatherStatement();
+        if (parser.on(FunctionalBlock)) return this.push(parser.gather());
         else throw new SyntaxError("async qualifier without valid subject");
-
-        return this;
     }
 }
 
@@ -476,7 +457,7 @@ class Await extends Keyword {
         is found, the validation *succeeds* (note the third argument), as top-level-await
         is permitted (modular source is assumed, but not required). */
 
-        return parser.check(t => t > SIMPLEBLOCK, t => Await.blocks.includes(t), true);
+        return parser.walk(t => t > SIMPLEBLOCK, t => Await.blocks.includes(t), true);
     }
 }
 
@@ -531,6 +512,13 @@ class Constant extends Word {
     and `global`). */
 
     expression = true;
+
+    write(writer) {
+
+        if (this.value === "void") writer.push("undefined");
+        else if (this.value === "random") writer.push("Math.random()");
+        else writer.push(this.value);
+    }
 }
 
 class Continue extends ExitStatement {
@@ -550,11 +538,8 @@ class Do extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(Async) || parser.on(FunctionalBlock)) {
-
-            this.statements = parser.gatherStatement();
-
-        } else this.statements = parser.gatherBlock(SIMPLEBLOCK);
+        if (parser.on(Async) || parser.on(FunctionalBlock)) this.push(parser.gather());
+        else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
     }
@@ -596,20 +581,21 @@ class If extends Keyword {
 
     prefix(parser) {
 
-        this.predicate = parser.gatherExpression();
-        this.statements = parser.gatherBlock(SIMPLEBLOCK);
-        this.clause = this.gatherOptionalElseClause(parser);
+        this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
+        this.push(this.gatherOptionalElseClause(parser));
 
         return this;
     }
 
     write(writer) {
 
-        writer.openPredicatedBlock("if", this.predicate);
-        writer.indentStatements(this.statements);
+        const [ predicate, statements, clause ] = this.operands;
+
+        writer.openPredicatedBlock("if", predicate);
+        writer.indentStatements(statements);
         writer.closeBlock();
 
-        this.clause?.write(writer);
+        if (clause) clause.write(writer);
     }
 
     gatherOptionalElseClause(parser) {
@@ -623,6 +609,7 @@ class If extends Keyword {
         if (parser.on(Terminator) && parser.at(Else)) {
 
             parser.advance();
+
             return parser.gatherBlock(SIMPLEBLOCK);
         }
 
@@ -638,29 +625,31 @@ class Else extends If {
 
     prefix(parser) {
 
-        if (parser.on(If)) { parser.advance(); return super.prefix(parser) }
+        if (parser.on(If)) {
 
-        this.clause = null;
-        this.predicate = null;
-        this.statements = parser.gatherBlock(SIMPLEBLOCK);
+            parser.advance();
 
-        return this;
+            return super.prefix(parser);
+
+        } else return this.push(null, parser.gatherBlock(SIMPLEBLOCK), null);
     }
 
     write(writer) {
 
-        if (this.predicate) {
+        const [ predicate, statements, clause ] = this.operands;
 
-            writer.openPredicatedBlock("else if", this.predicate);
-            writer.indentStatements(this.statements);
+        if (predicate) {
+
+            writer.openPredicatedBlock("else if", predicate);
+            writer.indentStatements(statements);
             writer.closeBlock();
 
-            this.clause?.write(writer);
+            if (clause) clause.write(writer);
 
         } else {
 
             writer.openUnconditionalBlock("else");
-            writer.indentStatements(this.statements);
+            writer.indentStatements(statements);
             writer.closeBlock();
         }
     }
@@ -668,24 +657,17 @@ class Else extends If {
 
 class LambdaStatement extends FunctionalBlock {
 
-    prefix(parser) {
-
-        this.statements = parser.gatherBlock(FUNCTIONBLOCK);
-
-        return this;
-    }
+    prefix(parser) { return this.push(parser.gatherBlock(FUNCTIONBLOCK)) }
 }
 
 class In extends InfixOperator {
 
     LBP = 17;
-    named = true;
 }
 
 class Is extends InfixOperator {
 
     LBP = 8;
-    named = true;
 }
 
 class Lesser extends InfixOperator {
@@ -707,7 +689,6 @@ class Not extends GeneralOperator {
 
     LBP = 9;
     RBP = 14;
-    named = true;
 }
 
 class NotGreater extends InfixOperator {
@@ -756,7 +737,7 @@ class Return extends OptionalExpressionStatement {
 
     validate(parser) {
 
-        return parser.check(t => t > SIMPLEBLOCK, t => t < CLASSBLOCK);
+        return parser.walk(t => t > SIMPLEBLOCK, t => t < CLASSBLOCK);
     }
 }
 
@@ -800,6 +781,6 @@ class Yield extends OptionalExpressionStatement {
 
     validate(parser) {
 
-        return parser.check(t => t > SIMPLEBLOCK, t => Yield.blocks.includes(t));
+        return parser.walk(t => t > SIMPLEBLOCK, t => Yield.blocks.includes(t));
     }
 }
