@@ -2,8 +2,8 @@ import lex from "./lexer.js"
 import parse from "./parser.js"
 import write from "./writer.js"
 
-let source = `
-random + x
+let source = ` # TODO: test the numbers (especially dots and 'onPoint')
+0xE4.toString
 `;
 
 console.log("source:", source + "\noutput...");

@@ -38,8 +38,9 @@ class Token {
     /* This is the internal, abstract base class for all other token classes. */
 
     LBP = 0;
+    RBP = 0;
+    operands = [];
     expression = false;
-    operands = new Array();
 
 	constructor(location, value=empty) {
 
@@ -47,11 +48,19 @@ class Token {
         this.value = value;
     }
 
-	prefix() { console.log(this); throw new SyntaxError(`invalid prefix`) }
+    // root class default non-implementations...
 
-	infix() { console.log(this); throw new SyntaxError(`invalid infix`) }
+	prefix(parser) { throw new SyntaxError("invalid prefix") }
 
-    validate() { return true }
+	infix(parser) { throw new SyntaxError("invalid infix") }
+
+    // root class default implementations...
+
+    validate(parser) { return true }
+
+    write(writer) { writer.push(this.value) }
+
+    // generic helpers...
 
     push(...args) {
 
@@ -67,15 +76,15 @@ class Token {
 
 class Terminal extends Token {
 
-    /* This is the abstract base class used by all terminal tokens. */
+    /* This is the internal, abstract base class used by all terminal tokens. */
 
 	prefix(_) { return this }
 }
 
 export class Terminator extends Terminal {
 
-    /* This is the abstract base class for the various statement terminators. It is also
-    used by the lexer to tokenize terminators. */
+    /* This is the base class for the various statement terminators. It is also used by the
+    lexer to tokenize terminators. */
 
     static * lex(lexer, location) {
 
@@ -87,8 +96,8 @@ export class Terminator extends Terminal {
 
 export class NumberLiteral extends Terminal {
 
-    /* This is the concrete class for all number literals. It is also used by the
-    lexer for number tokenization. */
+    /* This is the concrete class for all number literals. It is also used by the lexer for
+    number tokenization. */
 
     expression = true;
 
@@ -100,25 +109,59 @@ export class NumberLiteral extends Terminal {
 
         super(location, lexer.read());
 
-        if (lexer.on("0") && lexer.at(bases)) {
+        // first, check for a leading zero (which is invalid unless it starts a base prefix),
+        // then (either way) figure out the type (binary, decimal or hexadecimal)...
 
-            this.value += lexer.advance();
-            type = lexer.on("xX") ? "hexadecimal" : "binary";
+        if (lexer.on("0")) {
+
+            if (lexer.at(bases)) {
+
+                this.value += lexer.advance();
+                type = lexer.on("xX") ? "hexadecimal" : "binary";
+
+            } else throw new SyntaxError("cannot start decimal with leading zeroes");
 
         } else type = "decimal";
 
+        // gather as many digits as possible (from the appropriate set)...
+
         lexer.gatherWhile(digits[type], this);
+
+        // ensure that any base prefix is followed by at least one digit...
 
         if (type !== "decimal" && this.value.length === 2) {
 
             throw new SyntaxError(`${type} prefix without digits`);
         }
 
-        if (type === "decimal" && lexer.at(dot) && lexer.peek(+2, digits.decimal)) {
+        // now we have the integer part, use the `onPoint` method to establish whether or
+        // not the parser is now at a decimal point, and if so, gather it and the digits
+        // that will follow it...
+
+        if (this.onPoint(lexer, type)) {
 
             this.value += lexer.advance();
             lexer.gatherWhile(digits[type], this);
         }
+    }
+
+    onPoint(lexer, type) {
+
+        /* This helper method takes a reference to the Lexer API, and the type of number
+        currently being parsed (by the `constructor`) as a string ("binary", "decimal" or
+        "hexadecimal"). It returns `true` if the next character should be interpreted as
+        a decimal point, and `false` otherwise.
+
+        This is less trivial than it seems, as the grammar permits leading dots (ie `.5`),
+        but not trailing dots (ie `5.`), to allow methods to be invoked on number literals
+        directly (without parens). */
+
+        return (
+            type === "decimal"      &&
+            this.value[0] !== dot   &&
+            lexer.at(dot)           &&
+            lexer.peek(+2, digits.decimal)
+        );
     }
 }
 
@@ -161,19 +204,33 @@ export class Delimiter extends Terminal {
 
     static * lex(lexer, location) {
 
-        /* Yield a single delimiter token and exit. */
+        /* Yield a single delimiter token, unless it is a close brace, which must be pre-
+        fixed by an implicit terminator token. This allows methods that check for the end
+        of their respective grammars using `parser.on(Terminator)` to still function when
+        the statement was actually terminated by a curly brace ending a block.
+
+        Note: An extra terminator before a close brace will never invalidate (or validate)
+        anything (terminators are completely ignored inside object expressions, and blocks
+        can always contain extra lines at the end. */
 
         const value = lexer.read();
 
         switch (value) {
+
             case colon: yield new Colon(location, value); break;
             case comma: yield new Comma(location, value); break;
+
             case openParen: yield new OpenParen(location, value); break;
-            case openBracket: yield new OpenBracket(location, value); break;
-            case openBrace: yield new OpenBrace(location, value); break;
             case closeParen: yield new CloseParen(location, value); break;
+
+            case openBracket: yield new OpenBracket(location, value); break;
             case closeBracket: yield new CloseBracket(location, value); break;
-            case closeBrace: yield new CloseBrace(location, value); break;
+
+            case openBrace: yield new OpenBrace(location, value); break;
+            case closeBrace:
+
+                yield new Terminator(location, "<CB>");
+                yield new CloseBrace(location, value); break;
         }
     }
 }
@@ -201,8 +258,6 @@ export class Word extends Terminal {
         else if (reserved.includes(value)) yield new Reserved(location, value);
         else yield new Variable(location, value);
     }
-
-    write(writer) { writer.push(this.value) }
 }
 
 export class Keyword extends Word {
@@ -262,7 +317,36 @@ class OptionalExpressionStatement extends Keyword {
     }
 }
 
-class ExitStatement extends Keyword {}
+class BranchStatement extends Keyword {
+
+    /* This is the abstract base class for statements that are used to exit loops (`break`
+    and `continue`), each accepting an optional label. */
+
+    prefix(parser) {
+
+        if (!parser.on(Terminator)) this.push(parser.gatherVariable());
+
+        return this;
+    }
+
+    validate(parser) {
+
+        /* Walk the block stack, ignoring simple blocks, to check if the first non-simple
+        block is a loop block. If so, this statement is valid (return `true`), and not
+        otherwise (return `false`). */
+
+        return parser.walk($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    }
+
+    write(writer) {
+
+        const [ label ] = this.operands;
+
+        writer.push(this.value);
+
+        if (label) writer.push(space, label.value);
+    }
+}
 
 class PredicatedBlock extends Keyword {
 
@@ -359,16 +443,18 @@ export class Operator extends Token {
         /* This provides a generic writer method for prefix and infix operators, (prefix
         operators have null `left` attributes) */
 
-        if (this.operands.length === 1) {
+        const [ first, second ] = this.operands;
+
+        if (second) {
 
             writer.push(this.value, space);
-            this.operands[0].write(writer);
+            first.write(writer);
 
         } else {
 
-            this.operands[0].write(writer);
+            first.write(writer);
             writer.push(space, this.value, space);
-            this.operands[1].write(writer);
+            second.write(writer);
         }
     }
 }
@@ -389,6 +475,25 @@ class DotOperator extends Operator {
     LBP = 17;
 
     infix(parser, left) { return this.push(left, parser.gatherProperty()) }
+
+    write(writer) {
+
+        /* This provides a writer method for dot operators (which do not normally have any
+        whitespace before or after them). */
+
+        const [ left, right ] = this.operands;
+
+        if (left instanceof NumberLiteral) {
+
+            writer.push(openParen);
+            left.write(writer);
+            writer.push(closeParen);
+
+        } else left.write(writer);
+
+        writer.push(this.value);
+        right.write(writer);
+    }
 }
 
 class PrefixDotOperator extends DotOperator {
@@ -455,9 +560,9 @@ class Await extends Keyword {
         /* Climb the block stack till something functional is found, then return `true` if
         it is an asynchronous function block, and `false` otherwise. If nothing functional
         is found, the validation *succeeds* (note the third argument), as top-level-await
-        is permitted (modular source is assumed, but not required). */
+        is valid (unlike all other other such cases). */
 
-        return parser.walk(t => t > SIMPLEBLOCK, t => Await.blocks.includes(t), true);
+        return parser.walk($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
     }
 }
 
@@ -470,7 +575,7 @@ class Bang extends PrefixDotOperator {
     RBP = 14;
 }
 
-class Break extends ExitStatement {
+class Break extends BranchStatement {
 
     /* Implements the `break` statement, just like JavaScript. */
 }
@@ -521,7 +626,7 @@ class Constant extends Word {
     }
 }
 
-class Continue extends ExitStatement {
+class Continue extends BranchStatement {
 
     /* Implements the `continue` statement, just like JavaScript. */
 }
@@ -737,7 +842,10 @@ class Return extends OptionalExpressionStatement {
 
     validate(parser) {
 
-        return parser.walk(t => t > SIMPLEBLOCK, t => t < CLASSBLOCK);
+        /* Climb the block stack till something functional is found, then return `true` if
+        it is anything other than a class block, and `false` if it is one. */
+
+        return parser.walk($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 }
 
@@ -765,7 +873,7 @@ class Until extends PredicatedBlock {}
 
 class Var extends Keyword {}
 
-class Variable extends Word {
+export class Variable extends Word {
 
     expression = true;
 }
@@ -781,6 +889,9 @@ class Yield extends OptionalExpressionStatement {
 
     validate(parser) {
 
-        return parser.walk(t => t > SIMPLEBLOCK, t => Yield.blocks.includes(t));
+        /* Climb the block stack till something functional is found, then return `true` if
+        it is a block for a generator function, and `false` otherwise. */
+
+        return parser.walk($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }

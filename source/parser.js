@@ -6,6 +6,7 @@ import {
     Operator,
     Terminator,
     Word,
+    Variable,
 } from "./objects.js"
 
 import lex from "./lexer.js"
@@ -23,7 +24,7 @@ export default function * (source, literate=false) {
 
     The `source` string and `literate` flag are passed along to the lexer stage. */
 
-    function gather(RBP=0) {
+    function gather(RBP=0) { // api function
 
 		/* This function implements Pratt's Algorithm. */
 
@@ -77,6 +78,19 @@ export default function * (source, literate=false) {
         return ([token, next] = [next, tokens.next().value])[0];
     }
 
+    function currentThenAdvance() {
+
+        /* This internal helper notes the current token, advances the parser, then returns
+        the token (this is used by functions that gather a single-token construct, like
+        the `gatherProperty` and `gatherVariable` API functions). */
+
+        const current = token;
+
+        advance();
+
+        return current;
+    }
+
     function on(type) { // api function
 
         /* Take a `Token` subclass, and return `true` if the current token is an
@@ -100,15 +114,18 @@ export default function * (source, literate=false) {
         the token is a property, the function advances the parser, then returns
         the token (which is noted before advancing), complaining otherwise. */
 
-        if (on(Word) || on(Operator) && token.isNamedOperator) {
+        if (on(Word) || on(Operator) && token.isNamedOperator) return currentThenAdvance();
+        else throw new SyntaxError("required a property (dint get one)");
+    }
 
-            const current = token;
+    function gatherVariable() { // api function
 
-            advance();
+        /* This function gathers a single variable token, then advances the parser,
+        before returning the token (which is noted before advancing), complaining
+        if the token is not a variable. */
 
-            return current;
-
-        } else throw new SyntaxError("dot without word");
+        if (on(Variable)) return currentThenAdvance();
+        else throw new SyntaxError("required a variable??");
     }
 
 	function gatherExpression() { // api function
@@ -180,7 +197,7 @@ export default function * (source, literate=false) {
             API function to explore the block stack (where required). */
 
             if (statement.validate(api)) return statement;
-            else throw new SyntaxError("invalid statement in context");
+            else throw new SyntaxError("invalid statement type, given current context");
         }
 
         let result;
@@ -199,13 +216,15 @@ export default function * (source, literate=false) {
         advance,
         at,
         walk,
+        gather,
 		gatherBlock,
 		gatherExpression,
         gatherProperty,
+        gatherVariable,
         on,
 	};
 
-    const [stack, tokens] = [[2], lex(source, literate)];
+    const [stack, tokens] = [[2, -1], lex(source, literate)];
 
 	let token, next;
 
