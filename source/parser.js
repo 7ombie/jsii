@@ -2,6 +2,7 @@ import {
     CloseBrace,
     EOF,
     Keyword,
+    LineFeed,
     OpenBrace,
     Operator,
     Terminator,
@@ -26,7 +27,7 @@ export default function * (source, literate=false) {
 
     function gather(RBP=0) { // internal
 
-        /* This function implements Pratt's Algorithm. */
+        /* This function implements Pratt's Algorithm. It is textbook. */
 
         let current, result;
 
@@ -46,15 +47,15 @@ export default function * (source, literate=false) {
 
     function * LIST(nested=true) { // internal
 
-        /* This is the (often) recursive, block-level parsing function that wraps the Pratt
-        parser to implement a statement grammar that replaces ASI with LIST (Linewise Implicit
-        Statement Termination). */
+        /* This is the (often) recursive, block-level parsing function that wraps the
+        Pratt parser to implement a statement grammar that replaces ASI with LIST
+        (Linewise Implicit Statement Termination). */
 
         while (advance()) {
 
             if (on(EOF)) break;
 
-            if (on(CloseBrace) && nested) { advance(); return }
+            if (on(CloseBrace) && nested) return advance();
 
             if (on(Terminator)) continue;
 
@@ -62,7 +63,7 @@ export default function * (source, literate=false) {
 
             if (on(Terminator)) continue;
 
-            if (on(CloseBrace) && nested) { advance(); return }
+            if (on(CloseBrace) && nested) return advance();
 
             throw new SyntaxError("required terminator was not found");
         }
@@ -72,9 +73,10 @@ export default function * (source, literate=false) {
 
     function advance(previous=false) { // api function
 
-        /* Advance the token stream by one token, then return a reference to the newly current
-        token, unless the `previous` argument is truthy. In which case, the previously current
-        token is returned instead. */
+        /* Advance the token stream by one token, updating the nonlocal `token` and
+        `next` variables, then return a reference to the newly current token, unless
+        the `previous` argument is truthy. In which case, the token that was current
+        before the invocation is returned instead. */
 
         const old = token;
 
@@ -164,8 +166,7 @@ export default function * (source, literate=false) {
 
         stack.push(type);
 
-        if (on(OpenBrace)) result = [...LIST()];
-        else result = gatherFormalStatement();
+        if (on(OpenBrace)) { result = [...LIST()] } else { result = gatherFormalStatement() }
 
         stack.pop();
 
@@ -218,7 +219,7 @@ export default function * (source, literate=false) {
         walk,
     };
 
-    const [stack, tokens] = [[2, -1], lex(source, literate)];
+    const [stack, tokens] = [new Array(), lex(source, literate)];
 
     let token, next;
 

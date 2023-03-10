@@ -35,7 +35,23 @@ const CLASSBLOCK = 5;
 
 class Token {
 
-    /* This is the internal, abstract base class for all other token classes. */
+    /* This is the internal, abstract base class for all other token classes.
+
+    Our token classes define (or inherit) *token-wise grammars*. This includes a single token
+    grammar (used for tokenization), as well as a prefix grammar, an infix grammar or both
+    (used for parsing). Therefore, the implementation makes no distinction between its
+    *tokens* and its *AST nodes*. They are the same objects (from instantiation).
+
+    The lexer, parser and writer are relatively small, simple functions that each define some
+    local state and a high-level, declarative API, based around a handful of functions that
+    share that state, and are collected into an object to form an API that can be passed
+    around freely.
+
+    This module exports a set of token classes that define the methods that are invoked by the
+    lexer, parser and writer stages. Those methods take a reference to the relevant API object,
+    which they then use to implement the specifics of their respective grammars in a simple,
+    declarative style. This permits a very modular implementation, with textbook OOP token
+    classes, operated on by closure-heavy stages. */
 
     LBP = 0;
     RBP = 0;
@@ -43,6 +59,10 @@ class Token {
     expression = false;
 
     constructor(location, value=empty) {
+
+        /* This constructor takes the parameters that combine with the four defaults defined
+        above to create the complete set of six properties that all instances of every token
+        subclass use (we do not change the shape of the tokens during the parser stage). */
 
         this.location = location;
         this.value = value;
@@ -83,8 +103,9 @@ class Terminal extends Token {
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement terminators. It is also used by the
-    lexer to tokenize terminators. */
+    /* This is the base class for the various statement terminators, and is used directly
+    for the implicit terminators that preceed closing braces. It is also used by the lexer
+    to tokenize terminators, and by the parser to classify them. */
 
     static * lex(lexer, location) {
 
@@ -107,10 +128,11 @@ export class NumberLiteral extends Terminal {
 
         let type;
 
+        // initialize the instance with the current character as its initial value...
+
         super(location, lexer.read());
 
-        // first, check for a leading zero (which is invalid unless it starts a base prefix),
-        // then (either way) figure out the type (binary, decimal or hexadecimal)...
+        // establish the type (the base), and check for illegal leading zeroes...
 
         if (lexer.on("0")) {
 
@@ -123,45 +145,26 @@ export class NumberLiteral extends Terminal {
 
         } else type = "decimal";
 
-        // gather as many digits as possible (from the appropriate set)...
+        // gather as many digits as possible from the appropriate set...
 
         lexer.gatherWhile(digits[type], this);
 
-        // ensure that any base prefix is followed by at least one digit...
+        // establish whether the base (when present) is `empty` (lacks significant digits),
+        // and whether a point is `legal` (given the value so far) and `there` (present in
+        // the source), which requires that a digit follow the dot (as the dot operator is
+        // directly applicable to number literals (without parens))...
 
-        if (type !== "decimal" && this.value.length === 2) {
+        const empty = type !== "decimal" && this.value.length === 2;
+        const legal = type === "decimal" && this.value[0] !== dot;
+        const there = lexer.at(dot) && lexer.peek(+2, digits.decimal);
 
-            throw new SyntaxError(`${type} prefix without digits`);
-        }
+        if (empty) throw new SyntaxError(`${type} prefix without digits`);
 
-        // now we have the integer part, use the `onPoint` method to establish whether or
-        // not the parser is now at a decimal point, and if so, gather it and the digits
-        // that will follow it...
-
-        if (this.onPoint(lexer, type)) {
+        if (legal && there) {
 
             this.value += lexer.advance();
             lexer.gatherWhile(digits[type], this);
         }
-    }
-
-    onPoint(lexer, type) {
-
-        /* This helper method takes a reference to the Lexer API, and the type of number
-        currently being parsed (by the `constructor`) as a string ("binary", "decimal" or
-        "hexadecimal"). It returns `true` if the next character should be interpreted as
-        a decimal point, and `false` otherwise.
-
-        This is less trivial than it seems, as the grammar permits leading dots (ie `.5`),
-        but not trailing dots (ie `5.`), to allow methods to be invoked on number literals
-        directly (without parens). */
-
-        return (
-            type === "decimal"      &&
-            this.value[0] !== dot   &&
-            lexer.at(dot)           &&
-            lexer.peek(+2, digits.decimal)
-        );
     }
 }
 
@@ -210,8 +213,8 @@ export class Delimiter extends Terminal {
         the statement was actually terminated by a curly brace ending a block.
 
         Note: An extra terminator before a close brace will never invalidate (or validate)
-        anything (terminators are completely ignored inside object expressions, and blocks
-        can always contain extra lines at the end. */
+        anything (object expressions and blocks can always contain extra lines at the end,
+        and terminators are completely ignored inside object expressions anyway). */
 
         const value = lexer.read();
 
@@ -548,8 +551,8 @@ class Async extends Keyword {
 
 class Await extends Keyword {
 
-    /* Implements the `await` prefix operator, used to await promises, generally and
-    in for-loops. */
+    /* Implements the `await` prefix operator, used to await promises, generally and in
+    for-await-in loops. */
 
     expression = true;
 
@@ -708,13 +711,14 @@ class If extends Keyword {
 
     gatherOptionalElseClause(parser) {
 
-        /* This helper (which is also used by `Else`) takes a reference to the parser API and
-        attempts to gather an else-clause (accounting for terminators being optional before
-        clauses). It returns the else-clause when successful, and `null` otherwise. */
+        /* This helper (which is also used by `Else`) takes a reference to the parser API
+        and attempts to gather an else-clause (accounting for newlines being ignored when
+        they appear between a header and its clause). The helper returns the else-clause,
+        when successful, and `null` otherwise. */
 
         if (parser.on(Else)) return parser.gatherBlock(SIMPLEBLOCK);
 
-        if (parser.on(Terminator) && parser.at(Else)) {
+        if (parser.on(LineFeed) && parser.at(Else)) {
 
             parser.advance();
 
@@ -727,9 +731,22 @@ class If extends Keyword {
 
 class Else extends If {
 
-    /* This concrete token class extends the `If` class to handle `else` and `else if` clauses,
-    recuring in the later case (using `super.prefix`). In the former case, the `predicate` and
-    `clause` attributes are set to `null` before gathering a block. */
+    /* This concrete token class extends the `If` class to handle `else` and `else if`
+    clauses, recuring in the later case (using `super.prefix`). In the former case, the
+    `predicate` and `clause` attributes are set to `null` before gathering a block.
+
+    Gramatically speaking, the if-statement looks like this:
+
+        if <predicate> <block> [\else <block>]
+
+    The brackets indicate that the else-clause is optional, and the backslash indicates
+    that the else-clause is a clause, so it can (optionally) start a new line.
+
+    The ability to create more complex branches (with any number of if-else clauses) is
+    implicit, based on the ability to use a formal statement for a control-flow block,
+    to use a new line between a header and its clause, and recursion.
+
+    At the implementation-level, we handle if-else cases a bit more explicitly. */
 
     prefix(parser) {
 
@@ -785,7 +802,7 @@ class Lesser extends InfixOperator {
 
 class Let extends Keyword {}
 
-class LineFeed extends Terminator {}
+export class LineFeed extends Terminator {}
 
 class Minus extends GeneralOperator {
 

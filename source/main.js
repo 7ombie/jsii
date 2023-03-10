@@ -3,7 +3,7 @@ import parse from "./parser.js"
 import write from "./writer.js"
 
 let source = `
-0xE4.toString
+1.2.toString
 do async lambda { return 1 }
 `;
 
