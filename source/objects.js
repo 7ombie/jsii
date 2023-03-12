@@ -33,9 +33,9 @@ const ASYNCGENERATORBLOCK = 3;
 const ASYNCFUNCTIONBLOCK = 4;
 const CLASSBLOCK = 5;
 
-class Token {
+export class Token {
 
-    /* This is the internal, abstract base class for all other token classes.
+    /* This is the abstract base class for all other token classes.
 
     Our token classes define (or inherit) *token-wise grammars*. This includes a single token
     grammar (used for tokenization), as well as a prefix grammar, an infix grammar or both
@@ -305,21 +305,6 @@ export class Keyword extends Word {
     }
 }
 
-class Statement extends Keyword {}
-
-class OptionalExpressionStatement extends Keyword {
-
-    /* This is the abstract base class for statements that are follow their keyword with
-    an optional expression (`return` and `yield`). */
-
-    prefix(parser) {
-
-        if (!parser.on(Terminator)) this.push(parser.gatherExpression());
-
-        return this;
-    }
-}
-
 class BranchStatement extends Keyword {
 
     /* This is the abstract base class for statements that are used to exit loops (`break`
@@ -482,7 +467,8 @@ class DotOperator extends Operator {
     write(writer) {
 
         /* This provides a writer method for dot operators (which do not normally have any
-        whitespace before or after them). */
+        whitespace before or after them), and need to wrap parens around the left operand
+        if it is a number literal. */
 
         const [ left, right ] = this.operands;
 
@@ -505,14 +491,6 @@ class PrefixDotOperator extends DotOperator {
     and ask operators, which are also bitwise prefix operators. */
 
     prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
-}
-
-class RightAssociativeOperator extends Operator {
-
-    /* This is the base class for right-associative infix operators (this is only currently
-    used for exponentiation). */
-
-    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP - 1)) }
 }
 
 class GeneralOperator extends Operator {
@@ -551,12 +529,15 @@ class Async extends Keyword {
 
 class Await extends Keyword {
 
-    /* Implements the `await` prefix operator, used to await promises, generally and in
-    for-await-in loops. */
+    /* Implements the `await` prefix operator, used to await promises.
+
+    Note: For-await-in loops are handled by `For`. */
 
     expression = true;
 
     static blocks = [ASYNCGENERATORBLOCK, ASYNCFUNCTIONBLOCK];
+
+    prefix(parser) { return this.push(parser.gatherExpression()) }
 
     validate(parser) {
 
@@ -566,6 +547,14 @@ class Await extends Keyword {
         is valid (unlike all other other such cases). */
 
         return parser.walk($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
+    }
+
+    write(writer) {
+
+        const [ operand ] = this.operands;
+
+        writer.push(this.value, space);
+        operand.write(writer);
     }
 }
 
@@ -607,7 +596,7 @@ class Colon extends Delimiter {
     in object expressions. */
 }
 
-class Comma extends Delimiter {
+export class Comma extends Delimiter {
 
     /* Implements the `,` delimiter, used for delimiting expressions in groups, invocations and
     compound literals, as well as params, declarations etc. */
@@ -634,7 +623,7 @@ class Continue extends BranchStatement {
     /* Implements the `continue` statement, just like JavaScript. */
 }
 
-class Debug extends Statement {
+class Debug extends Keyword {
 
     /* Implements the `debug` statement, which compiles to `debugger`. */
 }
@@ -648,11 +637,27 @@ class Do extends Keyword {
 
         if (parser.on(Async) || parser.on(FunctionalBlock)) {
 
+            this.expression = true;
             this.push(parser.gatherStatement());
 
         } else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
+    }
+
+    write(writer) {
+
+        const [ operand ] = this.operands;
+
+        writer.push(this.value, space);
+
+        if (this.expression) operand.write(writer);
+        else {
+
+            writer.openBlock();
+            writer.indentStatements(operand);
+            writer.closeBlock();
+        }
     }
 }
 
@@ -836,9 +841,24 @@ export class OpenBrace extends Delimiter {}
 
 class OpenBracket extends SuffixDelimiter {}
 
-class OpenParen extends SuffixDelimiter {}
+class OpenParen extends SuffixDelimiter {
 
-class Pass extends Statement {}
+    prefix(parser) {
+
+        this.operands = parser.gatherCompoundExpression(CloseParen);
+
+        return this;
+    }
+
+    write(writer) {
+
+        const operands = this.operands.map(operand => operand.value).join(", ");
+
+        writer.push(openParen, operands, closeParen);
+    }
+}
+
+class Pass extends Keyword {}
 
 class Plus extends GeneralOperator {
 
@@ -846,9 +866,18 @@ class Plus extends GeneralOperator {
     RBP = 11;
 }
 
-class Raise extends RightAssociativeOperator {
+class Raise extends InfixOperator {
 
     LBP = 13;
+
+    infix(parser, left) {
+
+        /* Pratt parsers deduct `1` from the left binding power (when passing it along to
+        recursive invocations) to implement operators with right-associativity. In our case,
+        this rule only applies to the exponentiation operator. */
+
+        return this.push(left, parser.gatherExpression(this.LBP - 1));
+    }
 }
 
 class Reserved extends Word {
@@ -858,7 +887,16 @@ class Reserved extends Word {
     infix(parser) { throw new SyntaxError("reserved word") }
 }
 
-class Return extends OptionalExpressionStatement {
+class Return extends Keyword {
+
+    prefix(parser) {
+
+        /* Gather an expession, if the `return` is not followed by a terminator. */
+
+        if (!parser.on(Terminator)) this.push(parser.gatherExpression());
+
+        return this;
+    }
 
     validate(parser) {
 
@@ -900,12 +938,29 @@ export class Variable extends Word {
 
 class While extends PredicatedBlock {}
 
-class Yield extends OptionalExpressionStatement {
+class Yield extends Keyword {
 
     LBP = 2;
     expression = true;
 
     static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
+
+    prefix(parser) {
+
+        /* Gather an expession if the `yield` keyword is not followed by a terminator, a
+        comma or a closing paren, bracket or brace (terminating the current statement or
+        expression).
+
+        Note: Yield-expressions are the only case of a valid expression that ends with an
+        optional operand. Allowing for this is kind of clunky, but we only need to handle
+        it once (and this is not something we can (remotely) justify redesigning). */
+
+        const done = parser.on(Terminator, Comma, CloseParen, CloseBracket, CloseBrace);
+
+        if (!done) this.push(parser.gatherExpression());
+
+        return this;
+    }
 
     validate(parser) {
 

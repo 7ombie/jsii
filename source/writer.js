@@ -1,3 +1,4 @@
+import { Token } from "./objects.js"
 import parse from "./parser.js"
 
 export default function(source, literate) {
@@ -23,6 +24,11 @@ export default function(source, literate) {
         push("\n", keyword, " {");
     }
 
+    function openBlock() {
+
+        push("{");
+    }
+
     function closeBlock(keyword) {
 
         push("}");
@@ -31,17 +37,16 @@ export default function(source, literate) {
     function indentStatements(statements) {
 
         // TODO: indent etc...
-        for (const statement of statements) { statement.write(api) }
+
+        if (statements instanceof Token) statements.write(api);
+        else for (const statement of statements) { statement.write(api) }
     }
 
     const api = {
-        push, openPredicatedBlock, openUnconditionalBlock, closeBlock, indentStatements
+        push, openBlock, openPredicatedBlock, openUnconditionalBlock, closeBlock, indentStatements
     };
 
-    for (const statement of parse(source, literate)) {
+    for (const statement of parse(source, literate)) { statement.write(api); push("\n") }
 
-        // console.log(statement);
-        statement.write(api);
-        console.log(output.join(""));
-    }
+    console.log(output.join(""));
 }

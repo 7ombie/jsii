@@ -150,9 +150,9 @@ export default function * (source, literate=false) {
 
             } else if (on(terminators)) {
 
-                do { align() } while (at(deadspace) && advance())
-
                 yield * Terminator.lex(api, location);
+
+                do { align() } while (at(deadspace) && advance())
 
             } else if (on(quote)) {
 
