@@ -606,17 +606,29 @@ class Do extends Keyword {
     }
 }
 
-class Dot extends DotOperator {}
+class Dot extends DotOperator {
 
-export class EOF extends Terminator {}
+    /* This concrete class implements the dot operator (`.`), which is used for property
+    access. The points in number literals do not use this class. */
+}
+
+export class EOF extends Terminator {
+
+    /* This concrete class implements the implicit End Of File token that is appended
+    to every token stream, and used by the parser to check for the end of the file. */
+}
 
 class FatArrow extends GeneralOperator {
+
+    /* This concrete class implements the fat arrow function operator (`=>`). */
 
     LBP = 2;
     RBP = 2;
 }
 
 class Floor extends InfixOperator {
+
+    /* This concrete class implements the floor division operator (`//`). */
 
     LBP = 12;
 }
@@ -714,19 +726,31 @@ class Nullish extends InfixOperator {
 
 export class OpenBrace extends Delimiter {}
 
-class OpenBracket extends Caller {}
+class OpenBracket extends Caller {
+
+    prefix(parser) {
+
+        /* Gather an array expression (updating the operands array in place). */
+
+        return this.push(...parser.gatherCompoundExpression(CloseBracket));
+    }
+}
 
 class OpenParen extends Caller {
 
     prefix(parser) {
 
-        this.operands = parser.gatherCompoundExpression(CloseParen);
+        /* Gather a group expression (updating the operands array in place). */
 
-        return this;
+        return this.push(...parser.gatherCompoundExpression(CloseParen));
     }
 }
 
-class Pass extends Keyword {}
+class Pass extends Keyword {
+
+    /* This concrete class implements the `pass` keyword, used to create an explicitly
+    empty statement. */
+}
 
 class Plus extends GeneralOperator {
 
@@ -736,19 +760,22 @@ class Plus extends GeneralOperator {
 
 class Raise extends InfixOperator {
 
+    /* Pratt parsers deduct `1` from the left binding power (when passing it along to
+    recursive invocations) to implement operators with right-associativity. In our case,
+    this rule only applies to the exponentiation operator, implemented here. */
+
     LBP = 13;
 
     infix(parser, left) {
-
-        /* Pratt parsers deduct `1` from the left binding power (when passing it along
-        to recursive invocations) to implement operators with right-associativity. In
-        our case, this rule only applies to the exponentiation operator. */
 
         return this.push(left, parser.gatherExpression(this.LBP - 1));
     }
 }
 
 class Reserved extends Word {
+
+    /* This class implements reserved words, which always make it as far as the parser,
+    as they are valid property names (so only invalid in any other context). */
 
     prefix(parser) { throw new SyntaxError("reserved word") }
 
@@ -759,7 +786,7 @@ class Return extends Keyword {
 
     prefix(parser) {
 
-        /* Gather an expession, if the `return` is not followed by a terminator. */
+        /* Gather an expession, if the `return` keyword is followed by one. */
 
         if (parser.pending(this)) this.push(parser.gatherExpression());
 
@@ -768,8 +795,8 @@ class Return extends Keyword {
 
     validate(parser) {
 
-        /* Climb the block stack till something functional is found, then return `true` if
-        it is anything other than a class block, and `false` if it is one. */
+        /* Climb the block stack till something functional is found, then return `true`
+        if it is anything other than a class block, and `false` if it is one. */
 
         return parser.walk($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }

@@ -234,7 +234,7 @@ export default function * (source, literate=false) {
 
         listStateStack.pop();   // firstly, restore the previous LIST state
         advance();              // only now that the state is restored, drop the closer
-                                // any insignificant newlines were dropped by `advance`
+                                // any insignificant newlines get dropped by `advance`
         return results;
     }
 
