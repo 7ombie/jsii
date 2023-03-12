@@ -210,15 +210,6 @@ export class Delimiter extends Terminal {
 
     static * lex(lexer, location) {
 
-        /* Yield a single delimiter token, unless it is a close brace, which must be pre-
-        fixed by an implicit terminator token. This allows methods that check for the end
-        of their respective grammars using `parser.on(Terminator)` to still function when
-        the statement was actually terminated by a curly brace ending a block.
-
-        Note: An extra terminator before a close brace will never invalidate (or validate)
-        anything (object expressions and blocks can always contain extra lines at the end,
-        and terminators are completely ignored inside object expressions anyway). */
-
         const value = lexer.read();
 
         switch (value) {
@@ -233,15 +224,21 @@ export class Delimiter extends Terminal {
             case closeBracket: yield new CloseBracket(location, value); break;
 
             case openBrace: yield new OpenBrace(location, value); break;
-            case closeBrace:
-
-                yield new Terminator(location, "<CB>");
-                yield new CloseBrace(location, value); break;
+            case closeBrace: yield new CloseBrace(location, value); break;
         }
     }
 }
 
-class SuffixDelimiter extends Delimiter {
+export class Closer extends Delimiter {
+
+    /* This is an abstract base class for closing parens, brackets and braces. It is used
+    by the parser to check for closing tokens. */
+}
+
+class Caller extends Delimiter {
+
+    /* This is an abstract base class for opening parens and brackets (delimiters that
+    also define a prefix grammar for calls and bracket notation). */
 
     LBP = 17;
     expression = true;
@@ -315,7 +312,7 @@ class BranchStatement extends Keyword {
 
     prefix(parser) {
 
-        if (!parser.on(Terminator)) this.push(parser.gatherVariable());
+        if (parser.pending(this)) this.push(parser.gatherVariable());
 
         return this;
     }
@@ -418,7 +415,13 @@ export class Operator extends Token {
         }
     }
 
-    get named() { return alphas.includes(this.value[0]) } // is operator valid as a property
+    get named() {
+
+        /* This computed property is used by the parser to estbalish whether a given
+        operator doubles as a valid property or not. */
+
+        return alphas.includes(this.value[0]);
+    }
 }
 
 class InfixOperator extends Operator {
@@ -426,7 +429,10 @@ class InfixOperator extends Operator {
     /* This base class provids functionality for operators that are only valid as infix
     operators. */
 
-    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
+    infix(parser, left) {
+
+        return this.push(left, parser.gatherExpression(this.LBP));
+    }
 }
 
 class DotOperator extends Operator {
@@ -436,7 +442,10 @@ class DotOperator extends Operator {
 
     LBP = 17;
 
-    infix(parser, left) { return this.push(left, parser.gatherProperty()) }
+    infix(parser, left) {
+
+        return this.push(left, parser.gatherProperty());
+    }
 }
 
 class PrefixDotOperator extends DotOperator {
@@ -444,16 +453,25 @@ class PrefixDotOperator extends DotOperator {
     /* This base class extends the dot-operator class with functionality specific to the bang
     and ask operators, which are also bitwise prefix operators. */
 
-    prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression(this.RBP));
+    }
 }
 
 class GeneralOperator extends Operator {
 
     /* This is the base class for operators that have prefix and infix forms. */
 
-    prefix(parser) { return this.push(parser.gatherExpression(this.RBP)) }
+    prefix(parser) {
 
-    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP)) }
+        return this.push(parser.gatherExpression(this.RBP));
+    }
+
+    infix(parser, left) {
+
+        return this.push(left, parser.gatherExpression(this.LBP));
+    }
 }
 
 /// These are the concrete token classes that actually appear in token streams...
@@ -491,7 +509,10 @@ class Await extends Keyword {
 
     static blocks = [ASYNCGENERATORBLOCK, ASYNCFUNCTIONBLOCK];
 
-    prefix(parser) { return this.push(parser.gatherExpression()) }
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression());
+    }
 
     validate(parser) {
 
@@ -518,19 +539,19 @@ class Break extends BranchStatement {
     /* Implements the `break` statement, just like JavaScript. */
 }
 
-export class CloseBrace extends Delimiter {
+export class CloseBrace extends Closer {
 
     /* Implements the `}` delimiter, used for closing blocks, object expressions and
     destructured assignees. */
 }
 
-class CloseBracket extends Delimiter {
+class CloseBracket extends Closer {
 
     /* Implements the `]` delimiter, used for closing array expressions and destructured
     assignees. */
 }
 
-class CloseParen extends Delimiter {
+class CloseParen extends Closer {
 
     /* Implements the `)` delimiter, used for closing group expressions, arrow params and
     function invocations. */
@@ -632,13 +653,16 @@ class Else extends Keyword {
     prefix(parser) {
 
         if (parser.on(If)) return this.push(parser.gatherStatement());
-        else return this.push(null, parser.gatherBlock(SIMPLEBLOCK));
+        else return this.push(parser.gatherBlock(SIMPLEBLOCK));
     }
 }
 
 class LambdaStatement extends FunctionalBlock {
 
-    prefix(parser) { return this.push(parser.gatherBlock(FUNCTIONBLOCK)) }
+    prefix(parser) {
+
+        return this.push(parser.gatherBlock(FUNCTIONBLOCK));
+    }
 }
 
 class In extends InfixOperator {
@@ -690,9 +714,9 @@ class Nullish extends InfixOperator {
 
 export class OpenBrace extends Delimiter {}
 
-class OpenBracket extends SuffixDelimiter {}
+class OpenBracket extends Caller {}
 
-class OpenParen extends SuffixDelimiter {
+class OpenParen extends Caller {
 
     prefix(parser) {
 
@@ -716,9 +740,9 @@ class Raise extends InfixOperator {
 
     infix(parser, left) {
 
-        /* Pratt parsers deduct `1` from the left binding power (when passing it along to
-        recursive invocations) to implement operators with right-associativity. In our case,
-        this rule only applies to the exponentiation operator. */
+        /* Pratt parsers deduct `1` from the left binding power (when passing it along
+        to recursive invocations) to implement operators with right-associativity. In
+        our case, this rule only applies to the exponentiation operator. */
 
         return this.push(left, parser.gatherExpression(this.LBP - 1));
     }
@@ -737,7 +761,7 @@ class Return extends Keyword {
 
         /* Gather an expession, if the `return` is not followed by a terminator. */
 
-        if (!parser.on(Terminator)) this.push(parser.gatherExpression());
+        if (parser.pending(this)) this.push(parser.gatherExpression());
 
         return this;
     }
@@ -791,17 +815,9 @@ class Yield extends Keyword {
 
     prefix(parser) {
 
-        /* Gather an expession if the `yield` keyword is not followed by a terminator, a
-        comma or a closing paren, bracket or brace (terminating the current statement or
-        expression).
+        /* Gather an expession, if the `yield` keyword is followed by one. */
 
-        Note: Yield-expressions are the only case of a valid expression that ends with an
-        optional operand. Allowing for this is kind of clunky, but we only need to handle
-        it once (and this is not something we can (remotely) justify redesigning). */
-
-        const done = parser.on(Terminator, Comma, CloseParen, CloseBracket, CloseBrace);
-
-        if (!done) this.push(parser.gatherExpression());
+        if (parser.pending(this)) this.push(parser.gatherExpression());
 
         return this;
     }

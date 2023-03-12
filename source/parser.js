@@ -1,5 +1,6 @@
 import {
     CloseBrace,
+    Closer,
     Comma,
     EOF,
     Keyword,
@@ -71,21 +72,25 @@ export default function * (source, literate=false) {
         if (nested) throw new SyntaxError("end of file inside block");
     }
 
+    function ignoreInsignificantNewlines() { // internal
+
+        /* Advance the parser state until the current `token` is significant, if it is not
+        significant already. */
+
+        if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
+    }
+
     function advance(previous=false) { // api function
 
         /* Advance the token stream by one token, updating the nonlocal `token`, then
         return a reference to it, unless the `previous` argument is truthy. In that
-        case, return the token that was current when the invocation was made.
-
-        This function also implements the insignificance of newlines when LIST is not
-        applicable (inside compound expressions) by advancing the token stream until
-        the `token` is not a newline, when the top of the list stack is falsey. */
+        case, return the token that was current when the invocation was made. */
 
         const old = token;
 
         token = tokens.next().value;
 
-        signify();
+        ignoreInsignificantNewlines();
 
         return previous ? old : token;
     }
@@ -178,7 +183,7 @@ export default function * (source, literate=false) {
 
         let result = braced ? [...LIST()] : gatherFormalStatement();
 
-        if (functional) { listStateStack.pop(); signify() }
+        if (functional) { listStateStack.pop(); ignoreInsignificantNewlines() }
 
         blockTypeStack.pop();
 
@@ -206,9 +211,10 @@ export default function * (source, literate=false) {
 
         if (validate === undefined) validate = expression => expression;
 
-        listStateStack.push(false); signify();      // account for insignificant newlines
+        listStateStack.push(false);
+        ignoreInsignificantNewlines();
 
-        const results = on(Comma) ? [null] : [];    // account for leading empty expressions
+        const results = on(Comma) ? [null] : []; // account for leading empty expressions
 
         while (!on(closer)) {
 
@@ -228,7 +234,7 @@ export default function * (source, literate=false) {
 
         listStateStack.pop();   // firstly, restore the previous LIST state
         advance();              // only now that the state is restored, drop the closer
-
+                                // any insignificant newlines were dropped by `advance`
         return results;
     }
 
@@ -272,25 +278,27 @@ export default function * (source, literate=false) {
         return fallback;
     }
 
-    function signify() { // api function
+    function pending(grammar) { // api function
 
-        /* Advance the parser state until the current `token` is significant (if it is not
-        already). This only applies to linefeed characters, and only applies at all when
-        newlines are insignificant (the LIST state is falsey). */
+        /* This function is used to establish whether a statement or expression that
+        ends with an optional construct (`break`, `continue`, `return`, `yield`), has
+        more to parse (returns `true`) or not (returns `false`). */
 
-        if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
+        if (grammar.expression) return ! on(Terminator, Comma, Closer);
+        else return ! on(Terminator, CloseBrace);
     }
 
     const api = {
-        advance, on,
-        gatherVariable,
-        gatherProperty,
-        gatherExpression,
-        gatherCompoundExpression,
-        gatherStatement,
-        gatherFormalStatement,
+        advance,
         gatherBlock,
-        signify,
+        gatherCompoundExpression,
+        gatherExpression,
+        gatherFormalStatement,
+        gatherProperty,
+        gatherStatement,
+        gatherVariable,
+        pending,
+        on,
         walk,
     };
 
