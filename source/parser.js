@@ -135,7 +135,8 @@ export default function * (source, literate=false) {
     function gatherStatement() { // api function
 
         /* This function wraps the Pratt function to ensure that the result (which could be
-        a formal statement or expression) is valid in the current context (block-wise). */
+        a formal statement or an expression) is valid in the current context (block-wise),
+        complaining otherwise. */
 
         const candidate = gather();
 
@@ -145,12 +146,12 @@ export default function * (source, literate=false) {
 
     function gatherFormalStatement() { // api function
 
-        /* This function wraps the Pratt function to ensure that the result is an expression
-        (not a formal statement), complaining otherwise. */
+        /* This function wraps the Pratt function to ensure that the result is  a formal
+        statement, complaining otherwise. */
 
-        const candidate = gatherStatement();
+        const cadidate = gatherStatement();
 
-        if (candidate instanceof Keyword) return candidate;
+        if (cadidate instanceof Keyword) return cadidate;
         else throw new SyntaxError("required a formal statement");
     }
 
