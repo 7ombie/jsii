@@ -163,7 +163,7 @@ export class NumberLiteral extends Terminal {
         const legal = base === "decimal" && first !== dot;
         const present = lexer.at(dot) && lexer.peek(+2, digits.decimal);
 
-        if (legal && there) {
+        if (legal && present) {
 
             this.value += lexer.advance();
             lexer.gatherWhile(digits[base], this);
