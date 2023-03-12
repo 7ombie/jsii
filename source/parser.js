@@ -5,6 +5,7 @@ import {
     Keyword,
     OpenBrace,
     Operator,
+    LineFeed,
     Terminator,
     Word,
     Variable,
@@ -46,9 +47,9 @@ export default function * (source, literate=false) {
 
     function * LIST(nested=true) { // internal
 
-        /* This is the (often) recursive, block-level parsing function that wraps the Pratt
-        parser to implement a statement grammar that replaces ASI with LIST (Linewise Implicit
-        Statement Termination). */
+        /* This is the (often) recursive, block-level parsing function that wraps the
+        Pratt parser to implement a statement grammar that replaces ASI with LIST
+        (Linewise Implicit Statement Termination). */
 
         while (advance()) {
 
@@ -72,14 +73,19 @@ export default function * (source, literate=false) {
 
     function advance(previous=false) { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token` and `next`
-        variables, then return a reference to the newly current token, unless the `previous`
-        argument is truthy. In which case, the token that was current before the invocation
-        is returned instead. */
+        /* Advance the token stream by one token, updating the nonlocal `token`, then
+        return a reference to it, unless the `previous` argument is truthy. In that
+        case, return the token that was current when the invocation was made.
+
+        This function also implements the insignificance of newlines when LIST is not
+        applicable (inside compound expressions) by advancing the token stream until
+        the `token` is not a newline, when the top of the list stack is falsey. */
 
         const old = token;
 
-        [token, next] = [next, tokens.next().value];
+        token = tokens.next().value;
+
+        signify();
 
         return previous ? old : token;
     }
@@ -90,16 +96,6 @@ export default function * (source, literate=false) {
         an instance of a given class (or any subclass), else `false`. */
 
         for (const type of types) if (token instanceof type) return true;
-
-        return false;
-    }
-
-    function at(...types) { // api function
-
-        /* Take any number of `Token` subclasses, and return `true` if the `next` token is an
-        instance of a given class (or any subclass), else `false`. */
-
-        for (const type of types) if (next instanceof type) return true;
 
         return false;
     }
@@ -175,15 +171,15 @@ export default function * (source, literate=false) {
 
         if (functional && !braced) throw new SyntaxError("bodies require braces");
 
-        blockStack.push(type);
+        blockTypeStack.push(type);
 
-        if (functional) listStack.push(true);
+        if (functional) listStateStack.push(true);
 
         let result = braced ? [...LIST()] : gatherFormalStatement();
 
-        if (functional) listStack.pop();
+        if (functional) { listStateStack.pop(); signify() }
 
-        blockStack.pop();
+        blockTypeStack.pop();
 
         return result;
     }
@@ -197,48 +193,58 @@ export default function * (source, literate=false) {
         to a function that validates any valid expression.
 
         The validator function is passed a reference to the expression it needs to check, as
-        well as a reference to the results array. It should raise an exception or return a
-        valid expression.
+        well as a reference to the results array. It is expected to either return some valid
+        expression (in practice, its first argument) or raise an exception.
 
         The results array may contain `null` expressions, as adjacent commas can be used to
-        imply empty expressions (though these expression are implicitly valid). */
+        imply empty expressions (note that these expression are automatically valid).
+
+        This function is used whenever a parser method needs to parse one or more expresions
+        in parens, brackets or braces, and will implicitly update the LIST state on the way
+        in and out. */
 
         if (validate === undefined) validate = expression => expression;
 
-        const results = [];
+        listStateStack.push(false); signify();      // account for insignificant newlines
 
-        listStack.push(false);
+        const results = on(Comma) ? [null] : [];    // account for leading empty expressions
 
         while (!on(closer)) {
 
-            if (on(Comma)) { results.push(null); advance(); continue }
+            if (on(Comma)) {
 
-            results.push(validate(gatherExpression(), results));
+                advance();
 
-            if (on(closer)) { advance(); break }
+                if (on(Comma, closer)) results.push(null);
 
-            if (on(Comma)) { advance(); continue }
+            } else {
 
-            throw new SyntaxError("sequence delimiter not found");
+                results.push(validate(gatherExpression(), results));
+
+                if (!on(Comma, closer)) throw new SyntaxError("no sequence delimiter");
+            }
         }
 
-        listStack.pop();
+        listStateStack.pop();   // firstly, restore the previous LIST state
+        advance();              // only now that the state is restored, drop the closer
 
         return results;
     }
 
-    function walk(stopcheck, onmatch, fallback=false) { // api function
+    function walk(doStop, isValid, fallback=false) { // api function
 
         /* This function allows statements (like `return` and `break`) that can only
         appear in specific contexts to establish whether they are in a valid context.
 
-        The process walks the nonlocal `blockStack` of integer block types backwards
-        (from innermost to outermost), and calls the `stopcheck` callback on each
-        type to establish whether to stop yet.
+        The process walks the nonlocal `blockTypeStack` backwards (from innermost to
+        outermost), and calls the `doStop` callback on each type to establish when
+        to stop (it should return `true` to stop, and `false` otherwise).
 
-        If the loop stops, the `onmatch` callback is passed the type that was stopped
-        on, and the result is returned. The `fallback` bool is returned if the stack
-        is exhausted without a match.
+        If the loop stops, the `isValid` callback is invoked on the type that was
+        stopped on, and the result of that invocation (which is expected to be a
+        bool) is returned.
+
+        The `fallback` is returned when the stack is exhausted without a match.
 
         The block types are enumerated as follows:
 
@@ -252,18 +258,30 @@ export default function * (source, literate=false) {
 
         It is always possible to establish the validity of a statement by walking to
         the last related block, then checking whether its enumeration is within some
-        range, and falling back to a bool if the top-level is reached. */
+        range, falling back to a bool if the top-level is reached.
 
-        for (let index = blockStack.length - 1; index >= 0; index--) {
+        Note: Reaching the top would always result in `false`, except top-level-await
+        is valid (in modules), so the fallback must be `true` in that case. */
 
-            if (stopcheck(blockStack[index])) return onmatch(blockStack[index]);
-        }
+        const stack = blockTypeStack;
+        const top = stack.length - 1;
+
+        for (let i = top; i >= 0; i--) if (doStop(stack[i])) return isValid(stack[i]);
 
         return fallback;
     }
 
+    function signify() { // api function
+
+        /* Advance the parser state until the current `token` is significant (if it is not
+        already). This only applies to linefeed characters, and only applies at all when
+        newlines are insignificant (the LIST state is falsey). */
+
+        if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
+    }
+
     const api = {
-        advance, on, at,
+        advance, on,
         gatherVariable,
         gatherProperty,
         gatherExpression,
@@ -271,16 +289,15 @@ export default function * (source, literate=false) {
         gatherStatement,
         gatherFormalStatement,
         gatherBlock,
+        signify,
         walk,
     };
 
-    const blockStack = [];
-    const listStack = [true];
+    const blockTypeStack = [1];
+    const listStateStack = [true];
     const tokens = lex(source, literate);
 
-    let token, next;
-
-    advance();
+    let token;
 
     yield * LIST(false);
 }

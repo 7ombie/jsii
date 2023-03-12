@@ -55,6 +55,7 @@ export class Token {
 
     LBP = 0;
     RBP = 0;
+    clauses = [];
     operands = [];
     expression = false;
 
@@ -77,8 +78,6 @@ export class Token {
     // root class default implementations...
 
     validate(parser) { return true }
-
-    write(writer) { writer.push(this.value) }
 
     // generic helpers...
 
@@ -325,15 +324,6 @@ class BranchStatement extends Keyword {
 
         return parser.walk($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
-
-    write(writer) {
-
-        const [ label ] = this.operands;
-
-        writer.push(this.value);
-
-        if (label) writer.push(space, label.value);
-    }
 }
 
 class PredicatedBlock extends Keyword {
@@ -425,26 +415,6 @@ export class Operator extends Token {
     }
 
     get named() { return alphas.includes(this.value[0]) } // is operator valid as a property
-
-    write(writer) {
-
-        /* This provides a generic writer method for prefix and infix operators, (prefix
-        operators have null `left` attributes) */
-
-        const [ first, second ] = this.operands;
-
-        if (second) {
-
-            writer.push(this.value, space);
-            first.write(writer);
-
-        } else {
-
-            first.write(writer);
-            writer.push(space, this.value, space);
-            second.write(writer);
-        }
-    }
 }
 
 class InfixOperator extends Operator {
@@ -463,26 +433,6 @@ class DotOperator extends Operator {
     LBP = 17;
 
     infix(parser, left) { return this.push(left, parser.gatherProperty()) }
-
-    write(writer) {
-
-        /* This provides a writer method for dot operators (which do not normally have any
-        whitespace before or after them), and need to wrap parens around the left operand
-        if it is a number literal. */
-
-        const [ left, right ] = this.operands;
-
-        if (left instanceof NumberLiteral) {
-
-            writer.push(openParen);
-            left.write(writer);
-            writer.push(closeParen);
-
-        } else left.write(writer);
-
-        writer.push(this.value);
-        right.write(writer);
-    }
 }
 
 class PrefixDotOperator extends DotOperator {
@@ -548,14 +498,6 @@ class Await extends Keyword {
 
         return parser.walk($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
     }
-
-    write(writer) {
-
-        const [ operand ] = this.operands;
-
-        writer.push(this.value, space);
-        operand.write(writer);
-    }
 }
 
 class Bang extends PrefixDotOperator {
@@ -609,13 +551,6 @@ class Constant extends Word {
     and `global`). */
 
     expression = true;
-
-    write(writer) {
-
-        if (this.value === "void") writer.push("undefined");
-        else if (this.value === "random") writer.push("Math.random()");
-        else writer.push(this.value);
-    }
 }
 
 class Continue extends BranchStatement {
@@ -643,21 +578,6 @@ class Do extends Keyword {
         } else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
-    }
-
-    write(writer) {
-
-        const [ operand ] = this.operands;
-
-        writer.push(this.value, space);
-
-        if (this.expression) operand.write(writer);
-        else {
-
-            writer.openBlock();
-            writer.indentStatements(operand);
-            writer.closeBlock();
-        }
     }
 }
 
@@ -691,97 +611,28 @@ class Greater extends InfixOperator {
 
 class If extends Keyword {
 
-    /* This concrete token class is used by if-blocks and extended by else-blocks, which both
-    have a `clause` attribute that (recursively) refers to the following else clause, or `null`
-    when no following else-clause is present. */
+    /* This concrete token class implements `if` statements. */
+
+    clauses = [Else];
 
     prefix(parser) {
 
         this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
-        this.push(this.gatherOptionalElseClause(parser));
 
         return this;
     }
-
-    write(writer) {
-
-        const [ predicate, statements, clause ] = this.operands;
-
-        writer.openPredicatedBlock("if", predicate);
-        writer.indentStatements(statements);
-        writer.closeBlock();
-
-        if (clause) clause.write(writer);
-    }
-
-    gatherOptionalElseClause(parser) {
-
-        /* This helper (which is also used by `Else`) takes a reference to the parser API
-        and attempts to gather an else-clause (accounting for newlines being ignored when
-        they appear between a header and its clause). The helper returns the else-clause,
-        when successful, and `null` otherwise. */
-
-        if (parser.on(Else)) return parser.gatherBlock(SIMPLEBLOCK);
-
-        if (parser.on(LineFeed) && parser.at(Else)) {
-
-            parser.advance();
-
-            return parser.gatherBlock(SIMPLEBLOCK);
-        }
-
-        return null;
-    }
 }
 
-class Else extends If {
+class Else extends Keyword {
 
-    /* This concrete token class extends the `If` class to handle `else` and `else if`
-    clauses, recuring in the later case (using `super.prefix`). In the former case, the
-    `predicate` and `clause` attributes are set to `null` before gathering a block.
+    /* This concrete token class implements `else` and `else if` clauses. */
 
-    Gramatically speaking, the if-statement looks like this:
-
-        if <predicate> <block> [\else <block>]
-
-    The brackets indicate that the else-clause is optional, and the backslash indicates
-    that the else-clause is a clause, so it can (optionally) start a new line.
-
-    The ability to create more complex branches (with any number of if-else clauses) is
-    implicit, based on the ability to use a formal statement for a control-flow block,
-    to use a new line between a header and its clause, and recursion.
-
-    At the implementation-level, we handle if-else cases a bit more explicitly. */
+    clauses = [Else];
 
     prefix(parser) {
 
-        if (parser.on(If)) {
-
-            parser.advance();
-
-            return super.prefix(parser);
-
-        } else return this.push(null, parser.gatherBlock(SIMPLEBLOCK), null);
-    }
-
-    write(writer) {
-
-        const [ predicate, statements, clause ] = this.operands;
-
-        if (predicate) {
-
-            writer.openPredicatedBlock("else if", predicate);
-            writer.indentStatements(statements);
-            writer.closeBlock();
-
-            if (clause) clause.write(writer);
-
-        } else {
-
-            writer.openUnconditionalBlock("else");
-            writer.indentStatements(statements);
-            writer.closeBlock();
-        }
+        if (parser.on(If)) return this.push(parser.gatherStatement());
+        else return this.push(null, parser.gatherBlock(SIMPLEBLOCK));
     }
 }
 
@@ -848,13 +699,6 @@ class OpenParen extends SuffixDelimiter {
         this.operands = parser.gatherCompoundExpression(CloseParen);
 
         return this;
-    }
-
-    write(writer) {
-
-        const operands = this.operands.map(operand => operand.value).join(", ");
-
-        writer.push(openParen, operands, closeParen);
     }
 }
 

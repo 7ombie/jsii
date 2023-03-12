@@ -1,17 +1,19 @@
 import lex from "./lexer.js"
 import parse from "./parser.js"
-import write from "./writer.js"
 
 let source = `
-(1 * 7, foo!bar, yield eggs)
-lambda { return 1 }
-end
+(1, 2, 3 * 4, yield
+    x
+    *
+    8
+    )
+foo!bar
+(1, 2, foo!bar)
+(,1,2 ,3,)
+(,,,1,,,2,,,3,,,)
 `;
 
 console.log("source...\n", source);
-
+console.log("output...");
 for (const token of lex(source)) console.log("token:", token);
 for (const statement of parse(source, false)) console.log("statement:", statement);
-
-console.log("output...");
-write(source);
