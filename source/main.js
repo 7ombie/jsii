@@ -2,6 +2,9 @@ import lex from "./lexer.js"
 import parse from "./parser.js"
 
 let source = `
+if x { return 0 }
+else if y return 1
+
 (1, 2, 3 * 4, yield
     x
     *

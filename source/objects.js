@@ -55,7 +55,6 @@ export class Token {
 
     LBP = 0;
     RBP = 0;
-    clauses = [];
     operands = [];
     expression = false;
 
@@ -125,44 +124,49 @@ export class NumberLiteral extends Terminal {
 
     constructor(lexer, location) {
 
-        let type;
-
-        // initialize the instance with the current character as its initial value...
-
         super(location, lexer.read());
 
-        // establish the type (the base), and check for illegal leading zeroes...
+        // establish the `base`, and account for a prefix when present...
 
-        if (lexer.on("0")) {
+        let base;
 
-            if (lexer.at(bases)) {
+        if (lexer.on("0") && lexer.at(bases)) {
 
-                this.value += lexer.advance();
-                type = lexer.on("xX") ? "hexadecimal" : "binary";
+            this.value += lexer.advance();
+            base = lexer.on("xX") ? "hexadecimal" : "binary";
 
-            } else throw new SyntaxError("cannot start decimal with leading zeroes");
+        } else base = "decimal";
 
-        } else type = "decimal";
+        // gather as many digits as possible from the appropriate set, then reference
+        // the value (so far) and its first character (ready for validation)...
 
-        // gather as many digits as possible from the appropriate set...
+        lexer.gatherWhile(digits[base], this);
 
-        lexer.gatherWhile(digits[type], this);
+        const [value, first] = [this.value, this.value[0]];
 
-        // establish whether the base (when present) is `empty` (lacks significant digits),
-        // and whether a point is `legal` (given the value so far) and `there` (present in
-        // the source), which requires that a digit follow the dot (as the dot operator is
-        // directly applicable to number literals (without parens))...
+        // validate the value so far, by requiring that it does not start with `zeroes`,
+        // unless it starts with a base prefix, or it is just a single zero, as well as
+        // checking that it is not `empty` (it is not just a a base prefix without any
+        // significant digits)...
 
-        const empty = type !== "decimal" && this.value.length === 2;
-        const legal = type === "decimal" && this.value[0] !== dot;
-        const there = lexer.at(dot) && lexer.peek(+2, digits.decimal);
+        const zeroes = base === "decimal" && first === "0" && value !== "0";
+        const empty = base !== "decimal" && value.length === 2;
 
-        if (empty) throw new SyntaxError(`${type} prefix without digits`);
+        if (zeroes) throw new SyntaxError("cannot start decimal with leading zeroes");
+        else if (empty) throw new SyntaxError(`${base} prefix without digits`);
+
+        // now that the value has been validated, if a decimal point is currently `legal`,
+        // given the value so far, and `present` in the source, which requires that at
+        // least one digit immediately follows the dot, gather the dot and any digits
+        // that follow it...
+
+        const legal = base === "decimal" && first !== dot;
+        const present = lexer.at(dot) && lexer.peek(+2, digits.decimal);
 
         if (legal && there) {
 
             this.value += lexer.advance();
-            lexer.gatherWhile(digits[type], this);
+            lexer.gatherWhile(digits[base], this);
         }
     }
 }
@@ -613,8 +617,6 @@ class If extends Keyword {
 
     /* This concrete token class implements `if` statements. */
 
-    clauses = [Else];
-
     prefix(parser) {
 
         this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
@@ -626,8 +628,6 @@ class If extends Keyword {
 class Else extends Keyword {
 
     /* This concrete token class implements `else` and `else if` clauses. */
-
-    clauses = [Else];
 
     prefix(parser) {
 
