@@ -329,9 +329,8 @@ class BranchStatement extends Keyword {
 
 class PredicatedBlock extends Keyword {
 
-    /* This is the abstract base class for the predicated blocks, `while`, `unless` and
-    `until`. It is not used by `if` or `else if`, as they are special-cases with their
-    own logic. */
+    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
+    `unless` and `until`). */
 }
 
 class FunctionalBlock extends Keyword {
@@ -646,19 +645,17 @@ class Greater extends InfixOperator {
     LBP = 9;
 }
 
-class If extends Keyword {
+class If extends PredicatedBlock {
 
     /* This concrete token class implements `if` statements. */
 
     prefix(parser) {
 
-        this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
-
-        return this;
+        return this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
     }
 }
 
-class Else extends Keyword {
+class Else extends PredicatedBlock {
 
     /* This concrete token class implements `else` and `else if` clauses. */
 
