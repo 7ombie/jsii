@@ -17,6 +17,7 @@ import {
 } from "./strings.js"
 
 import {
+    ParserError,
     Delimiter,
     NumberLiteral,
     Operator,
@@ -74,7 +75,7 @@ export default function * (source, literate=false) {
         const code = character.charCodeAt();
 
         if (code > 31 && code < 127 || code === 10) return character;
-        else throw new SyntaxError(`illegal character (${code})`);
+        else throw new ParserError(`illegal character (${code})`, locate());
     }
 
     function gatherWhile(characters, token=undefined) { // api function
@@ -184,7 +185,7 @@ export default function * (source, literate=false) {
 
                 yield * Delimiter.lex(api, location);
 
-            } else throw new SyntaxError(`unexpected character (${character})`);
+            } else throw new ParserError(`unexpected character (${character})`, location);
         }
 
         if (!interpolating) yield * Terminator.lex(api, locate());

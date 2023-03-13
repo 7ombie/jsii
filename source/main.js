@@ -1,12 +1,23 @@
 import lex from "./lexer.js"
 import parse from "./parser.js"
 
+
+
+
+
+
+
+
 let source = `
+break
+continue
+continue foo
+return 1
 do {1; 2; 3}
-a = {
+foo = {
     a: 1,
     foo: 2 + 3,
-    [spam]: eggs,
+    [spam]: yield from 1,
     bar
 }
 `;

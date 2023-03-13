@@ -4,7 +4,6 @@ import {
     closeBrace,
     closeBracket,
     closeParen,
-    colon,
     comma,
     constants,
     digits,
@@ -20,7 +19,6 @@ import {
     quote,
     reserved,
     semicolon,
-    space,
     symbolics,
     wordCharacters,
 } from "./strings.js"
@@ -32,6 +30,27 @@ const GENERATORBLOCK = 2;
 const ASYNCGENERATORBLOCK = 3;
 const ASYNCFUNCTIONBLOCK = 4;
 const CLASSBLOCK = 5;
+
+export class ParserError extends SyntaxError {
+
+    /* This concrete class is used for all syntax errors across the parser stages. */
+
+    constructor(message, location) {
+
+        /* Take a message string and a location `Number`, unpack the zero-indexed line and
+        column numbers, then increment them, before using them to create a complete error
+        message, deleting the contents of the `stack` and customizing the error name. */
+
+        const line = Math.floor(location / 256) + 1;
+        const column = location % 256 + 1;
+        const locator = `[${line}:${column}]`;
+
+        super();
+        this.stack = [];
+        this.name = "JSIIError";
+        this.message = `${message} ${locator}`;
+    }
+}
 
 export class Token {
 
@@ -70,9 +89,15 @@ export class Token {
 
     // root class default non-implementations...
 
-    prefix(parser) { throw new SyntaxError("invalid prefix") }
+    prefix(parser) {
 
-    infix(parser) { throw new SyntaxError("invalid infix") }
+        throw new ParserError("invalid prefix", this.location);
+    }
+
+    infix(parser) {
+
+        throw new ParserError("invalid infix", this.location);
+    }
 
     // root class default implementations...
 
@@ -150,8 +175,8 @@ export class NumberLiteral extends Terminal {
         const zeroes = base === "decimal" && first === "0" && value !== "0";
         const empty = base !== "decimal" && value.length === 2;
 
-        if (zeroes) throw new SyntaxError("cannot start decimal with leading zeroes");
-        else if (empty) throw new SyntaxError(`${base} prefix without digits`);
+        if (zeroes) throw new ParserError("leading zeroes are invalid", location);
+        else if (empty) throw new ParserError(`${base} prefix without digits`, location);
 
         // now that the value has been validated, if a decimal point is currently `legal`,
         // given the value so far, and `present` in the source, which requires that at
@@ -309,12 +334,15 @@ export class Keyword extends Word {
 
 class BranchStatement extends Keyword {
 
-    /* This is the abstract base class for statements that are used to exit loops (`break`
-    and `continue`), each accepting an optional label. */
+    /* This is the abstract base class for statements that are used to branch from loops
+    (`break` and `continue`), which accept an optional (`Variable`) label. */
 
     prefix(parser) {
 
-        if (parser.pending(this)) this.push(parser.gatherVariable());
+        /* If the parser is on a `Variable` instance, gather it. Otherwise continue with
+        no operands. */
+
+        if (parser.on(Variable)) this.push(parser.gatherVariable());
 
         return this;
     }
@@ -362,7 +390,7 @@ export class Operator extends Token {
     RBP = 0;
     expression = true;
 
-    static slice(value, offset=1) {
+    static slice(value, offset, location) {
 
         /* Slice an unbroken sequence of symbolic operator characters into an array of
         individual operators, greedily, from left to right. */
@@ -371,12 +399,12 @@ export class Operator extends Token {
 
         if (operators.includes(value)) return [value];
 
-        if (offset > value.length) throw new SyntaxError(`invalid operator (${value})`);
+        if (offset > value.length) throw new ParserError(`invalid operator (${value})`, location);
 
         const [start, end] = [value.slice(0, -offset), value.slice(-offset)];
 
-        if (operators.includes(start)) return [start, ...Operator.slice(end)];
-        else return Operator.slice(value, offset + 1);
+        if (operators.includes(start)) return [start, ...Operator.slice(end, 1, location)];
+        else return Operator.slice(value, offset + 1, location);
     }
 
     static subclass(location, value) {
@@ -417,7 +445,7 @@ export class Operator extends Token {
 
         while (lexer.at(symbolics)) values += lexer.advance();
 
-        for (const value of Operator.slice(values)) {
+        for (const value of Operator.slice(values, 1, location)) {
 
             yield Operator.subclass(location, value);
 
@@ -463,6 +491,8 @@ class PrefixDotOperator extends DotOperator {
     /* This base class extends the dot-operator class with functionality specific to the bang
     and ask operators, which are also bitwise prefix operators. */
 
+    RBP = 14;
+
     prefix(parser) {
 
         return this.push(parser.gatherExpression(this.RBP));
@@ -490,9 +520,6 @@ class Ask extends PrefixDotOperator {
 
     /* Implements the `?` operator, which compiles to a `Math.clz32` invocation in a prefix
     context, and `?.` in an infix context. */
-
-    LBP = 17;
-    RBP = 14;
 }
 
 class Assign extends InfixOperator {
@@ -512,7 +539,7 @@ class Async extends Keyword {
     prefix(parser) {
 
         if (parser.on(FunctionalBlock)) return this.push(parser.gatherStatement());
-        else throw new SyntaxError("async qualifier without valid subject");
+        else throw new ParserError("async qualifier without function", this.location);
     }
 }
 
@@ -546,9 +573,6 @@ class Bang extends PrefixDotOperator {
 
     /* Implements the `!` operator, which compiles to the bitwise `~` operator in a prefix
     context, and `.#` in an infix context. */
-
-    LBP = 17;
-    RBP = 14;
 }
 
 class Break extends BranchStatement {
@@ -713,7 +737,18 @@ class Lesser extends InfixOperator {
 
 class Let extends Keyword {}
 
-export class LineFeed extends Terminator {}
+export class LineFeed extends Terminator {
+
+    prefix(parser) {
+
+        throw new ParserError("unexpected newline", this.location);
+    }
+
+    infix(parser) {
+
+        throw new ParserError("unexpected newline", this.location);
+    }
+}
 
 class Minus extends GeneralOperator {
 
@@ -806,20 +841,24 @@ class Reserved extends Word {
     /* This class implements reserved words, which always make it as far as the parser,
     as they are valid property names (so only invalid in any other context). */
 
-    prefix(parser) { throw new SyntaxError("reserved word") }
+    prefix(parser) {
 
-    infix(parser) { throw new SyntaxError("reserved word") }
+        throw new ParserError(`reserved word (${this.value})`, this.location);
+    }
+
+    infix(parser) {
+
+        throw new ParserError(`reserved word (${this.value})`, this.location);
+    }
 }
 
 class Return extends Keyword {
 
     prefix(parser) {
 
-        /* Gather an expession, if the `return` keyword is followed by one. */
+        /* Gather an expression (which is required in our dialect of JavaScript). */
 
-        if (parser.pending(this)) this.push(parser.gatherExpression());
-
-        return this;
+        return this.push(parser.gatherExpression());
     }
 
     validate(parser) {
@@ -873,11 +912,12 @@ class Yield extends Keyword {
 
     prefix(parser) {
 
-        /* Gather an expession, if the `yield` keyword is followed by one. */
+        /* Gather an expression (which is required in our dialect of JavaScript), unless the
+        parser is on `from`. In which case, gather the keyword, *then* gather the (required)
+        expression, collecting both as operands. */
 
-        if (parser.pending(this)) this.push(parser.gatherExpression());
-
-        return this;
+        if (parser.on(From)) return this.push(parser.advance(true), parser.gatherExpression());
+        else return this.push(parser.gatherExpression());
     }
 
     validate(parser) {

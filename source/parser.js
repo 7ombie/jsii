@@ -1,6 +1,6 @@
 import {
+    ParserError,
     CloseBrace,
-    Closer,
     Comma,
     EOF,
     Header,
@@ -30,9 +30,11 @@ export default function * (source, literate=false) {
     function gather(RBP=0) { // internal
 
         /* This function implements Pratt's Algorithm. It is textbook, except for an extra
-        check that ensures that we do not pass a formal statement to an infix operator, if
-        the user adds an operator to the end of an otherwise valid statement, implementing
-        a statement-grammar with LIST (see below). */
+        check that ensures that we do not pass a header statement to an infix operator (if
+        the operator appears immediately following the block of a compound statement), and
+        a call to the `validate` method of the result, passing the The
+
+        effect is a statement-grammar (according to LIST). */
 
         let current, result;
 
@@ -40,7 +42,7 @@ export default function * (source, literate=false) {
         token = advance();
         result = current.prefix(api);
 
-        if (!result.expression) return result;
+        if (result instanceof Header) return result;
 
         while (RBP < token.LBP) {
 
@@ -49,7 +51,8 @@ export default function * (source, literate=false) {
             result = current.infix(api, result);
         }
 
-        return result;
+        if (result.validate(api)) return result;
+        else throw new ParserError(`invalid context for ${result.value}`, result.location);
     }
 
     function * LIST(nested=true) { // internal
@@ -80,10 +83,10 @@ export default function * (source, literate=false) {
 
                 skip = true; // statements can immediately follow a braced block
 
-            } else throw new SyntaxError("required terminator was not found");
+            } else throw new ParserError("required a terminator", token.location);
         }
 
-        if (nested) throw new SyntaxError("end of file inside block");
+        if (nested) throw new ParserError("nested end of file", token.location);
     }
 
     function ignoreInsignificantNewlines() { // internal
@@ -125,7 +128,7 @@ export default function * (source, literate=false) {
         advancing), complaining otherwise. */
 
         if (on(Word) || on(Operator) && token.named) return advance(true);
-        else throw new SyntaxError("required a property (dint get one)");
+        else throw new ParserError("required a property", token.location);
     }
 
     function gatherVariable() { // api function
@@ -135,7 +138,7 @@ export default function * (source, literate=false) {
         not a variable. */
 
         if (on(Variable)) return advance(true);
-        else throw new SyntaxError("required a variable??");
+        else throw new ParserError("required a variable", advance().location);
     }
 
     function gatherExpression() { // api function
@@ -146,19 +149,15 @@ export default function * (source, literate=false) {
         const candidate = gather();
 
         if (candidate.expression) return candidate;
-        else throw new SyntaxError("required an expression");
+        else throw new ParserError("required an expression", candidate.location);
     }
 
     function gatherStatement() { // api function
 
-        /* This function wraps the Pratt function to ensure that the result (which could be
-        a formal statement or an expression) is valid in the current context (block-wise),
-        complaining otherwise. */
+        /* This function wraps the Pratt function to permit the API to gather a statement of
+        any kind, formal or informal. */
 
-        const candidate = gather();
-
-        if (candidate.validate(api)) return candidate;
-        else throw new SyntaxError("invalid statement type, given current context");
+        return gather();
     }
 
     function gatherFormalStatement() { // api function
@@ -166,10 +165,10 @@ export default function * (source, literate=false) {
         /* This function wraps the Pratt function to ensure that the result is  a formal
         statement, complaining otherwise. */
 
-        const cadidate = gatherStatement();
+        const candidate = gatherStatement();
 
-        if (cadidate instanceof Keyword) return cadidate;
-        else throw new SyntaxError("required a formal statement");
+        if (candidate instanceof Keyword) return candidate;
+        else throw new ParserError("required a formal statement", candidate.location);
     }
 
     function gatherBlock(type) { // api function
@@ -187,7 +186,7 @@ export default function * (source, literate=false) {
 
         const [functional, braced] = [type > 0, on(OpenBrace)];
 
-        if (functional && !braced) throw new SyntaxError("bodies require braces");
+        if (functional && !braced) throw new ParserError("required a body", token.location);
 
         blockTypeStack.push(type);
 
@@ -205,10 +204,11 @@ export default function * (source, literate=false) {
     function gatherCompoundExpression(closer, validate=expression=>expression) {
 
         /* This function takes a `Token` subclass which indicates which closing character to
-        use to gather a compound statement (a sequence of comma-separated expressions, wrapped
-        in parens, brackets or braces), as well as taking an optional function that validates
-        each expression, as they are gathered into a results array and returned, defaulting
-        to a function that validates any valid expression.
+        use to gather a compound statement (a sequence of zero or more comma-separated expr-
+        essions, wrapped in parens, brackets or braces). It also takes an optional function
+        that validates each expression, as they are gathered into a results array, which is
+        eventually returned. The validation function defaults to a function that validates
+        anything it is passed (which will always be a valid expression).
 
         The validator function is passed a reference to the expression it needs to check, as
         well as a reference to the results array. It is expected to either return some valid
@@ -217,40 +217,45 @@ export default function * (source, literate=false) {
         The results array may contain `null` expressions, as adjacent commas can be used to
         imply empty expressions (note that these expression are automatically valid).
 
-        This function is used whenever a parser method needs to parse one or more expresions
-        in parens, brackets or braces, and will implicitly update the LIST state on the way
-        in and out. */
+        This API function is used whenever a parser method needs to parse an expresion that
+        is wrapped in parens, brackets or braces, and the function will implicitly update
+        the LIST state on the way in and out.
 
-        if (validate === undefined) validate = expression => expression;
+        Note: The (minimum-precedence) pair-operator (`:`) is used to map one expression to
+        another, and allows object expressions to be parsed like other compound expressions.
 
-        listStateStack.push(false);
-        ignoreInsignificantNewlines();
+        Note: This function is also used for bracketed notation, computed properties etc,
+        and the caller checks the result has the required length (`1`) after the fact.
+
+        The parser is able to handle the LIST states implicitly. Parser methods can use the
+        API to parse blocks and compound expressions, and insignificant newlines will just
+        disappear from the stream automatically. */
+
+        listStateStack.push(false);         /// firstly, disable significant newlines, then
+        ignoreInsignificantNewlines();      /// ensure that the first `token` is significant
 
         const results = on(Comma) ? [null] : []; // account for leading empty expressions
 
         while (!on(closer)) {
 
-            if (on(Comma)) {
+            if (on(Comma)) { // account for empty expressions...
 
                 advance();
 
                 if (on(Comma, closer)) results.push(null);
 
-            } else {
+            } else { // push an actual expression, then require it is terminated properly...
 
                 results.push(validate(gatherExpression(), results));
 
-                if (!on(Comma, closer)) {
-
-                    console.log(token)
-                    throw new SyntaxError("no sequence delimiter");
-                }
+                if (on(Comma, closer)) continue;
+                else throw new ParserError("required delimiter", token.location);
             }
         }
 
-        listStateStack.pop();   // firstly, restore the previous LIST state
-        advance();              // only now that the state is restored, drop the closer
-                                // any insignificant newlines get dropped by `advance`
+        listStateStack.pop();   /// firstly, restore the previous LIST state - then, once the
+        advance();              /// state is restored, drop the `closer` instance, leaving it
+                                /// to `advance` to drop any insignificant newlines
         return results;
     }
 
@@ -294,16 +299,6 @@ export default function * (source, literate=false) {
         return fallback;
     }
 
-    function pending(grammar) { // api function
-
-        /* This function is used to establish whether a statement or expression that
-        ends with an optional construct (`break`, `continue`, `return`, `yield`), has
-        more to parse (returns `true`) or not (returns `false`). */
-
-        if (grammar.expression) return ! on(Terminator, Comma, Closer);
-        else return ! on(Terminator, CloseBrace);
-    }
-
     const api = {
         advance,
         gatherBlock,
@@ -313,12 +308,11 @@ export default function * (source, literate=false) {
         gatherProperty,
         gatherStatement,
         gatherVariable,
-        pending,
         on,
         walk,
     };
 
-    const blockTypeStack = [1];
+    const blockTypeStack = [3, -1];
     const listStateStack = [true];
     const tokens = lex(source, literate);
 
