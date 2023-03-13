@@ -37,6 +37,8 @@ export default function * (source, literate=false) {
         token = advance();
         result = current.prefix(api);
 
+        // if (!result.expression) return result;
+
         while (RBP < token.LBP) {
 
             current = token;
@@ -71,12 +73,11 @@ export default function * (source, literate=false) {
 
             if (on(CloseBrace) && nested) return advance();
 
-            // if there is no terminator, ensure that the previous statement uses a braced
-            // block (not just a braced expression), and set the loop up to not `advance`,
-            // as there is no terminator, complaining otherwise...
+            if (statement instanceof Header && previous instanceof CloseBrace) {
 
-            if (statement instanceof Header && previous instanceof CloseBrace) skip = true;
-            else throw new SyntaxError("required terminator was not found");
+                skip = true; // statements can immediately follow a braced block
+
+            } else throw new SyntaxError("required terminator was not found");
         }
 
         if (nested) throw new SyntaxError("end of file inside block");
@@ -90,17 +91,17 @@ export default function * (source, literate=false) {
         if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
     }
 
-    function advance(old=false) { // api function
+    function advance(returnPrevious=false) { // api function
 
         /* Advance the token stream by one token, updating the nonlocal `token`, then
-        return a reference to it, unless the `old` argument is truthy. In which case,
-        return the token that was current when the invocation was made. */
+        return a reference to it, unless the `returnPrevious` argument is truthy. In
+        that case, return the token that was current when the invocation was made. */
 
         [previous, token] = [token, tokens.next().value];
 
         ignoreInsignificantNewlines();
 
-        return old ? previous : token;
+        return returnPrevious ? previous : token;
     }
 
     function on(...types) { // api function
@@ -236,7 +237,11 @@ export default function * (source, literate=false) {
 
                 results.push(validate(gatherExpression(), results));
 
-                if (!on(Comma, closer)) throw new SyntaxError("no sequence delimiter");
+                if (!on(Comma, closer)) {
+
+                    console.log(token)
+                    throw new SyntaxError("no sequence delimiter");
+                }
             }
         }
 

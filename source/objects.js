@@ -95,8 +95,6 @@ export class Token {
 class Terminal extends Token {
 
     /* This is the internal, abstract base class used by all terminal tokens. */
-
-    prefix(_) { return this }
 }
 
 export class Terminator extends Terminal {
@@ -169,6 +167,8 @@ export class NumberLiteral extends Terminal {
             lexer.gatherWhile(digits[base], this);
         }
     }
+
+    prefix(_) { return this }
 }
 
 export class StringLiteral extends Terminal {
@@ -201,6 +201,8 @@ export class StringLiteral extends Terminal {
 
         lexer.advance();
     }
+
+    prefix(_) { return this }
 }
 
 export class Delimiter extends Terminal {
@@ -214,7 +216,6 @@ export class Delimiter extends Terminal {
 
         switch (value) {
 
-            case colon: yield new Colon(location, value); break;
             case comma: yield new Comma(location, value); break;
 
             case openParen: yield new OpenParen(location, value); break;
@@ -237,8 +238,9 @@ export class Closer extends Delimiter {
 
 class Caller extends Delimiter {
 
-    /* This is an abstract base class for opening parens and brackets (delimiters that
-    also define a prefix grammar for calls and bracket notation). */
+    /* This is an abstract base class for delimiters that also define a infix grammar (as
+    well as starting compound expressions with their prefix grammars). In practice, this
+    implies opening parens and brackets. */
 
     LBP = 17;
     expression = true;
@@ -383,6 +385,8 @@ export class Operator extends Token {
         operator instance. */
 
         switch (value) {
+            case ":": return new Colon(location, value);
+            case "=": return new Assign(location, value);
             case "+": return new Plus(location, value);
             case "-": return new Minus(location, value);
             case "*": return new Star(location, value);
@@ -491,6 +495,13 @@ class Ask extends PrefixDotOperator {
     RBP = 14;
 }
 
+class Assign extends InfixOperator {
+
+    /* Implements the `=` assignment operator, just like JavaScript. */
+
+    LBP = 2;
+}
+
 class Async extends Keyword {
 
     /* Implements the `async` qualifier, used to prefix the `lambda`, `function` and
@@ -563,10 +574,12 @@ class CloseParen extends Closer {
     function invocations. */
 }
 
-class Colon extends Delimiter {
+class Colon extends InfixOperator {
 
-    /* Implements the `:` delimiter, used for delimiting key values from their assigned values
-    in object expressions. */
+    /* Implements the `:` pseudo-operator, used for delimiting key-value pairs in object
+    expressions. */
+
+    LBP = 1;
 }
 
 export class Comma extends Delimiter {
@@ -582,6 +595,8 @@ class Constant extends Word {
     and `global`). */
 
     expression = true;
+
+    prefix(_) { return this }
 }
 
 class Continue extends BranchStatement {
@@ -728,7 +743,17 @@ class Nullish extends InfixOperator {
     RBP = 14;
 }
 
-export class OpenBrace extends Delimiter {}
+export class OpenBrace extends Delimiter {
+
+    expression = true;
+
+    prefix(parser) {
+
+        /* Gather an object expression (updating the operands array in place). */
+
+        return this.push(...parser.gatherCompoundExpression(CloseBrace));
+    }
+}
 
 class OpenBracket extends Caller {
 
@@ -833,6 +858,8 @@ class Var extends Keyword {}
 export class Variable extends Word {
 
     expression = true;
+
+    prefix(_) { return this }
 }
 
 class While extends PredicatedBlock {}

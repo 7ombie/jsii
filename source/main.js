@@ -2,23 +2,13 @@ import lex from "./lexer.js"
 import parse from "./parser.js"
 
 let source = `
-if x {
-    return 0
-} else if y {
-    return 1
-} else {
-    return 2
-} return 6
-
-(1, 2, 3 * 4, yield
-    x
-    *
-    8
-    )
-foo!bar
-(1, 2, foo!bar)
-(,1,2 ,3,)
-(,,,1,,,2,,,3,,,)
+do {1; 2; 3}
+a = {
+    a: 1,
+    foo: 2 + 3,
+    [spam]: eggs,
+    bar
+}
 `;
 
 console.log("source...\n", source);

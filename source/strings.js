@@ -16,7 +16,7 @@ export const [openBrace, closeBrace] = ["{", "}"];
 export const whitespace = space + newline;
 export const deadspace = semicolon + whitespace;
 export const terminators = semicolon + newline;
-export const delimiters = ",:{[()]}";
+export const delimiters = ",{[()]}";
 
 export const bases = "xbXB";
 export const binaries = "01";
@@ -25,7 +25,7 @@ export const hexadecimals = decimals + "ABCDEF";
 
 export const symbolics = (
     dot + questionmark + bang + modulo + ampersand + asterisk + bar +
-    equals + plus + minus + slash + backslash + lesser + greater
+    equals + plus + minus + slash + backslash + lesser + greater + colon
 );
 
 export const lowers = "abcdefghijklmnopqrstuvwxyz";
@@ -47,6 +47,8 @@ export const digits = {
 // export an array containing the spelling for each unique operator...
 
 export const operators = [
+    ":",
+    "=",
     "+",
     "-",
     "*",
