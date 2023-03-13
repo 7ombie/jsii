@@ -3,6 +3,7 @@ import {
     Closer,
     Comma,
     EOF,
+    Header,
     Keyword,
     OpenBrace,
     Operator,
@@ -52,7 +53,11 @@ export default function * (source, literate=false) {
         Pratt parser to implement a statement grammar that replaces ASI with LIST
         (Linewise Implicit Statement Termination). */
 
-        while (advance()) {
+        let statement, skip = false;
+
+        while (skip || advance()) {
+
+            skip = false;
 
             if (on(EOF)) break;
 
@@ -60,13 +65,18 @@ export default function * (source, literate=false) {
 
             if (on(Terminator)) continue;
 
-            yield gatherStatement();
+            yield statement = gatherStatement();
 
             if (on(Terminator)) continue;
 
             if (on(CloseBrace) && nested) return advance();
 
-            throw new SyntaxError("required terminator was not found");
+            // if there is no terminator, ensure that the previous statement uses a braced
+            // block (not just a braced expression), and set the loop up to not `advance`,
+            // as there is no terminator, complaining otherwise...
+
+            if (statement instanceof Header && previous instanceof CloseBrace) skip = true;
+            else throw new SyntaxError("required terminator was not found");
         }
 
         if (nested) throw new SyntaxError("end of file inside block");
@@ -80,19 +90,17 @@ export default function * (source, literate=false) {
         if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
     }
 
-    function advance(previous=false) { // api function
+    function advance(old=false) { // api function
 
         /* Advance the token stream by one token, updating the nonlocal `token`, then
-        return a reference to it, unless the `previous` argument is truthy. In that
-        case, return the token that was current when the invocation was made. */
+        return a reference to it, unless the `old` argument is truthy. In which case,
+        return the token that was current when the invocation was made. */
 
-        const old = token;
-
-        token = tokens.next().value;
+        [previous, token] = [token, tokens.next().value];
 
         ignoreInsignificantNewlines();
 
-        return previous ? old : token;
+        return old ? previous : token;
     }
 
     function on(...types) { // api function
@@ -306,7 +314,7 @@ export default function * (source, literate=false) {
     const listStateStack = [true];
     const tokens = lex(source, literate);
 
-    let token;
+    let token, previous;
 
     yield * LIST(false);
 }

@@ -327,13 +327,20 @@ class BranchStatement extends Keyword {
     }
 }
 
-class PredicatedBlock extends Keyword {
+export class Header extends Keyword {
+
+    /* This is the abstract base class for statements that have a block. It is used by the
+    parser to implement LIST, which permits a statement to follow another statement on the
+    same line (without a semicolon), if the preceding statement ends with a block. */
+}
+
+class PredicatedBlock extends Header {
 
     /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
     `unless` and `until`). */
 }
 
-class FunctionalBlock extends Keyword {
+class FunctionalBlock extends Header {
 
     /* This is the abstract base class for functional blocks, including the `lambda`,
     `function` and `generator` blocks, but not including the arrow grammars. This applies
@@ -587,7 +594,7 @@ class Debug extends Keyword {
     /* Implements the `debug` statement, which compiles to `debugger`. */
 }
 
-class Do extends Keyword {
+class Do extends Header {
 
     /* Implements the `do` keyword, which can prefix a block to create a block statement,
     or prefix `async`, `lambda`, `function` or `generator` to create an IIFE. */
@@ -632,7 +639,7 @@ class Floor extends InfixOperator {
     LBP = 12;
 }
 
-class For extends Keyword {}
+class For extends Header {}
 
 class From extends Keyword {}
 
