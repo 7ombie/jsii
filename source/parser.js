@@ -29,7 +29,10 @@ export default function * (source, literate=false) {
 
     function gather(RBP=0) { // internal
 
-        /* This function implements Pratt's Algorithm. It is textbook. */
+        /* This function implements Pratt's Algorithm. It is textbook, except for an extra
+        check that ensures that we do not pass a formal statement to an infix operator, if
+        the user adds an operator to the end of an otherwise valid statement, implementing
+        a statement-grammar with LIST (see below). */
 
         let current, result;
 
@@ -37,7 +40,7 @@ export default function * (source, literate=false) {
         token = advance();
         result = current.prefix(api);
 
-        // if (!result.expression) return result;
+        if (!result.expression) return result;
 
         while (RBP < token.LBP) {
 
