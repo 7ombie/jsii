@@ -101,7 +101,7 @@ export class Token {
 
     // root class default implementations...
 
-    validate(parser) { return true }
+    validate(check) { return true }
 
     // generic helpers...
 
@@ -347,13 +347,13 @@ class BranchStatement extends Keyword {
         return this;
     }
 
-    validate(parser) {
+    validate(check) {
 
         /* Walk the block stack, ignoring simple blocks, to check if the first non-simple
         block is a loop block. If so, this statement is valid (return `true`), and not
         otherwise (return `false`). */
 
-        return parser.walk($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 
@@ -538,7 +538,7 @@ class Async extends Keyword {
 
     prefix(parser) {
 
-        if (parser.on(FunctionalBlock)) return this.push(parser.gatherStatement());
+        if (parser.on(FunctionalBlock)) return this.push(parser.gather());
         else throw new ParserError("async qualifier without function", this.location);
     }
 }
@@ -558,14 +558,14 @@ class Await extends Keyword {
         return this.push(parser.gatherExpression());
     }
 
-    validate(parser) {
+    validate(check) {
 
         /* Climb the block stack till something functional is found, then return `true` if
         it is an asynchronous function block, and `false` otherwise. If nothing functional
         is found, the validation *succeeds* (note the third argument), as top-level-await
         is valid (unlike all other other such cases). */
 
-        return parser.walk($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
+        return check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
     }
 }
 
@@ -643,7 +643,7 @@ class Do extends Header {
         if (parser.on(Async) || parser.on(FunctionalBlock)) {
 
             this.expression = true;
-            this.push(parser.gatherStatement());
+            this.push(parser.gather());
 
         } else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
@@ -707,7 +707,7 @@ class Else extends PredicatedBlock {
 
     prefix(parser) {
 
-        if (parser.on(If)) return this.push(parser.gatherStatement());
+        if (parser.on(If)) return this.push(parser.gather());
         else return this.push(parser.gatherBlock(SIMPLEBLOCK));
     }
 }
@@ -861,12 +861,12 @@ class Return extends Keyword {
         return this.push(parser.gatherExpression());
     }
 
-    validate(parser) {
+    validate(check) {
 
         /* Climb the block stack till something functional is found, then return `true`
         if it is anything other than a class block, and `false` if it is one. */
 
-        return parser.walk($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+        return check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 }
 
@@ -920,11 +920,11 @@ class Yield extends Keyword {
         else return this.push(parser.gatherExpression());
     }
 
-    validate(parser) {
+    validate(check) {
 
         /* Climb the block stack till something functional is found, then return `true` if
-        it is a block for a generator function, and `false` otherwise. */
+        it is a block for a generator function, else `false`. */
 
-        return parser.walk($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
+        return check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }

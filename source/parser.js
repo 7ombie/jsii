@@ -27,34 +27,6 @@ export default function * (source, literate=false) {
 
     The `source` string and `literate` flag are passed along to the lexer stage. */
 
-    function gather(RBP=0) { // internal
-
-        /* This function implements Pratt's Algorithm. It is textbook, except for an extra
-        check that ensures that we do not pass a header statement to an infix operator (if
-        the operator appears immediately following the block of a compound statement), and
-        a call to the `validate` method of the result, passing the The
-
-        effect is a statement-grammar (according to LIST). */
-
-        let current, result;
-
-        current = token;
-        token = advance();
-        result = current.prefix(api);
-
-        if (result instanceof Header) return result;
-
-        while (RBP < token.LBP) {
-
-            current = token;
-            token = advance();
-            result = current.infix(api, result);
-        }
-
-        if (result.validate(api)) return result;
-        else throw new ParserError(`invalid context for ${result.value}`, result.location);
-    }
-
     function * LIST(nested=true) { // internal
 
         /* This is the (often) recursive, block-level parsing function that wraps the
@@ -73,7 +45,7 @@ export default function * (source, literate=false) {
 
             if (on(Terminator)) continue;
 
-            yield statement = gatherStatement();
+            yield statement = gather();
 
             if (on(Terminator)) continue;
 
@@ -95,6 +67,34 @@ export default function * (source, literate=false) {
         significant already. */
 
         if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
+    }
+
+    function gather(RBP=0) { // api function
+
+        /* This function implements Pratt's Algorithm. It is textbook, except for some extra
+        validation that ensures that header statements are immediately returned (not passed
+        to anything that follows them), and that statements (like `break` and `return`) and
+        expressions (like `yield` and `yield from`) appear in a valid context, complaining
+        otherwise. */
+
+        let current, result;
+
+        current = token;
+        token = advance();
+        result = current.prefix(api);
+
+        if (result instanceof Header) return result;
+
+        while (RBP < token.LBP) {
+
+            current = token;
+            token = advance();
+            result = current.infix(api, result);
+        }
+
+        if (result.validate(check)) return result;
+
+        throw new ParserError(`invalid context for ${result.value}`, result.location);
     }
 
     function advance(returnPrevious=false) { // api function
@@ -152,37 +152,29 @@ export default function * (source, literate=false) {
         else throw new ParserError("required an expression", candidate.location);
     }
 
-    function gatherStatement() { // api function
-
-        /* This function wraps the Pratt function to permit the API to gather a statement of
-        any kind, formal or informal. */
-
-        return gather();
-    }
-
-    function gatherFormalStatement() { // api function
-
-        /* This function wraps the Pratt function to ensure that the result is  a formal
-        statement, complaining otherwise. */
-
-        const candidate = gatherStatement();
-
-        if (candidate instanceof Keyword) return candidate;
-        else throw new ParserError("required a formal statement", candidate.location);
-    }
-
     function gatherBlock(type) { // api function
 
-        /* This function takes a block type (an integer, see `walk`), and pushes it to the
+        /* This function takes a block type (an integer, see `check`), and pushes it to the
         block stack, before gathering a formal statement or an array of statements (of any
-        number and kind). Once the block has been parsed, the block type is popped off the
-        stack, and the parsed block is returned.
+        number and kind). Once the block has been parsed, the block type is popped from
+        the stack, and the parsed block is returned.
 
         If the block type is functional (including a class), the LIST state `true` is also
         pushed on to the list stack, and popped when the function body has been parsed.
 
         Furthermore, if the block type is functional, this function requires that the body
         is wrapped in braces (it cannot be a naked formal statement). */
+
+        function gatherFormalStatement() {
+
+            /* This function wraps the Pratt function to ensure that the result is a formal
+            statement, complaining otherwise. */
+
+            const candidate = gather();
+
+            if (candidate instanceof Keyword) return candidate;
+            else throw new ParserError("required a formal statement", candidate.location);
+        }
 
         const [functional, braced] = [type > 0, on(OpenBrace)];
 
@@ -259,7 +251,7 @@ export default function * (source, literate=false) {
         return results;
     }
 
-    function walk(doStop, isValid, fallback=false) { // api function
+    function check(doStop, isValid, fallback=false) { // api function
 
         /* This function allows statements (like `return` and `break`) that can only
         appear in specific contexts to establish whether they are in a valid context.
@@ -300,16 +292,14 @@ export default function * (source, literate=false) {
     }
 
     const api = {
-        advance,
-        gatherBlock,
-        gatherCompoundExpression,
-        gatherExpression,
-        gatherFormalStatement,
-        gatherProperty,
-        gatherStatement,
-        gatherVariable,
         on,
-        walk,
+        advance,
+        gather,
+        gatherVariable,
+        gatherProperty,
+        gatherExpression,
+        gatherCompoundExpression,
+        gatherBlock,
     };
 
     const blockTypeStack = [3, -1];
