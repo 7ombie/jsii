@@ -96,6 +96,7 @@ export const keywords = [
     "debug",
     "do",
     "else",
+    "exit",
     "for",
     "from",
     "function",
@@ -108,6 +109,7 @@ export const keywords = [
     "unless",
     "until",
     "var",
+    "wait",
     "while",
     "yield",
 ];

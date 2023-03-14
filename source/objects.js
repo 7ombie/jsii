@@ -299,7 +299,9 @@ export class Keyword extends Word {
 
         switch (value) {
 
+            case "exit": return new Exit(location, value);
             case "return": return new Return(location, value);
+            case "wait": return new Wait(location, value);
             case "yield": return new Yield(location, value);
             case "from": return new From(location, value);
 
@@ -354,6 +356,33 @@ class BranchStatement extends Keyword {
         otherwise (return `false`). */
 
         return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    }
+}
+
+class ReturningStatement extends Keyword {
+
+    validate(check) {
+
+        /* Climb the block stack till something functional is found, then return `true`
+        if it is anything other than a class block, and `false` if it is one. */
+
+        return check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+    }
+}
+
+class YieldingStatement extends Keyword {
+
+    LBP = 2
+    expression = true;
+
+    static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
+
+    validate(check) {
+
+        /* Climb the block stack till something functional is found, then return `true` if
+        it is a block for a generator function, else `false`. */
+
+        return check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }
 
@@ -545,9 +574,7 @@ class Async extends Keyword {
 
 class Await extends Keyword {
 
-    /* Implements the `await` prefix operator, used to await promises.
-
-    Note: For-await-in loops are handled by `For`. */
+    /* Implements the `await` prefix operator, used to await promises. */
 
     expression = true;
 
@@ -712,6 +739,14 @@ class Else extends PredicatedBlock {
     }
 }
 
+class Exit extends ReturningStatement {
+
+    /* This concrete class implements the `exit` statement, which is used for returning from
+    a function without a value (instead of writing `return void`). */
+
+    prefix(parser) { return this }
+}
+
 class LambdaStatement extends FunctionalBlock {
 
     prefix(parser) {
@@ -852,21 +887,13 @@ class Reserved extends Word {
     }
 }
 
-class Return extends Keyword {
+class Return extends ReturningStatement {
 
     prefix(parser) {
 
         /* Gather an expression (which is required in our dialect of JavaScript). */
 
         return this.push(parser.gatherExpression());
-    }
-
-    validate(check) {
-
-        /* Climb the block stack till something functional is found, then return `true`
-        if it is anything other than a class block, and `false` if it is one. */
-
-        return check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 }
 
@@ -901,14 +928,20 @@ export class Variable extends Word {
     prefix(_) { return this }
 }
 
+class Wait extends YieldingStatement {
+
+    /* This concrete class implements the `wait` statement, which is used for yielding from
+    a generator without a value (instead of writing `yield void`). */
+
+    prefix(parser) { return this }
+}
+
 class While extends PredicatedBlock {}
 
-class Yield extends Keyword {
+class Yield extends YieldingStatement {
 
     LBP = 2;
     expression = true;
-
-    static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
 
     prefix(parser) {
 
@@ -918,13 +951,5 @@ class Yield extends Keyword {
 
         if (parser.on(From)) return this.push(parser.advance(true), parser.gatherExpression());
         else return this.push(parser.gatherExpression());
-    }
-
-    validate(check) {
-
-        /* Climb the block stack till something functional is found, then return `true` if
-        it is a block for a generator function, else `false`. */
-
-        return check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }

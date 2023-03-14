@@ -9,6 +9,8 @@ import parse from "./parser.js"
 
 
 let source = `
+wait
+if this!done exit
 break
 continue
 continue foo
