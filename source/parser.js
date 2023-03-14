@@ -29,9 +29,9 @@ export default function * (source, literate=false) {
 
     function * LIST(nested=true) { // internal
 
-        /* This is the (often) recursive, block-level parsing function that wraps the
-        Pratt parser to implement a statement grammar that replaces ASI with LIST
-        (Linewise Implicit Statement Termination). */
+        /* This is the (often) recursive, block-level parsing function that wraps the Pratt
+        parser to implement a statement grammar that replaces ASI with LIST (Linewise Implicit
+        Statement Termination). */
 
         let statement, skip = false;
 
@@ -77,11 +77,21 @@ export default function * (source, literate=false) {
         1) Only valid expressions get passed to `infix` methods. Statements that cannot also
            be expressions are immediately returned.
         2) Statements (like `break` and `return`) and expressions (like `yield`) that must
-           only appear in specific contexts are (recursively) validated, and an exception
-           is raised if a statement cannot appear on the current block stack.
+           only appear in specific contexts are validated here, and an exception is raised
+           if a given construct cannot appear on the current block stack.
 
-        Note: The main reason for Point 1 is to avoid passing statements to infix operators,
-        which can lead to less explanatory error messages. */
+        Point 1 prevents a statement (that ends without an expression) from being incorrectly
+        passed to an operator that immediately follows the statement, which is a syntax error,
+        unless it forms a valid expression (the statement is also a valid expression).
+
+        Point 1 eliminates the issue that `function` has in JavaScript, where functions cannot
+        also be expressions when the statement begins with the function-keyword (without valid-
+        ating anything that should remain invalid). This also applies to similar keywords like
+        `do`, `async`, `await`, `lambda`, `function`, `generator`, `yield` and `wait`.
+
+        Note: The distinction between formal and informal statements only applies lexically
+        (to blocks without braces). In general, a statement is a statement and an expression
+        is an expression, without exception; they are just not mutually exclusive. */
 
         function validate(result) {
 

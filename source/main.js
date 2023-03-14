@@ -10,7 +10,7 @@ import parse from "./parser.js"
 
 let source = `
 if x > y { return foo } else { return bar }
-pass
+wait + 2
 if this!pass exit
 break
 continue
