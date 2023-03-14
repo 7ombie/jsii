@@ -72,29 +72,41 @@ export default function * (source, literate=false) {
     function gather(RBP=0) { // api function
 
         /* This function implements Pratt's Algorithm. It is textbook, except for some extra
-        validation that ensures that header statements are immediately returned (not passed
-        to anything that follows them), and that statements (like `break` and `return`) and
-        expressions (like `yield` and `yield from`) appear in a valid context, complaining
-        otherwise. */
+        validation that ensures two things:
+
+        1) Only valid expressions get passed to `infix` methods. Statements that cannot also
+           be expressions are immediately returned.
+        2) Statements (like `break` and `return`) and expressions (like `yield`) that must
+           only appear in specific contexts are (recursively) validated, and an exception
+           is raised if a statement cannot appear on the current block stack.
+
+        Note: The main reason for Point 1 is to avoid passing statements to infix operators,
+        which can lead to less explanatory error messages. */
+
+        function validate(result) {
+
+            /* Use the `validate` method of the token instance to check it, and complain if
+            it is not valid (given the blocks it is nested within). */
+
+            if (result.validate(check)) return result;
+
+            throw new ParserError(`unexpected ${result.value} statement`, result.location);
+        }
 
         let current, result;
 
         current = token;
         token = advance();
-        result = current.prefix(api);
+        result = validate(current.prefix(api));
 
-        if (result instanceof Header) return result;
-
-        while (RBP < token.LBP) {
+        if (result.expression) while (RBP < token.LBP) {
 
             current = token;
             token = advance();
-            result = current.infix(api, result);
+            result = validate(current.infix(api, result));
         }
 
-        if (result.validate(check)) return result;
-
-        throw new ParserError(`invalid context for ${result.value}`, result.location);
+        return result;
     }
 
     function advance(returnPrevious=false) { // api function

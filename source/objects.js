@@ -46,6 +46,7 @@ export class ParserError extends SyntaxError {
         const locator = `[${line}:${column}]`;
 
         super();
+
         this.stack = [];
         this.name = "JSIIError";
         this.message = `${message} ${locator}`;
@@ -89,19 +90,20 @@ export class Token {
 
     // root class default non-implementations...
 
-    prefix(parser) {
+    prefix(_) {
 
         throw new ParserError("invalid prefix", this.location);
     }
 
-    infix(parser) {
+    infix(_) {
 
         throw new ParserError("invalid infix", this.location);
     }
 
-    // root class default implementations...
+    validate(_) {
 
-    validate(check) { return true }
+        return false;
+    }
 
     // generic helpers...
 
@@ -194,6 +196,8 @@ export class NumberLiteral extends Terminal {
     }
 
     prefix(_) { return this }
+
+    validate(_) { return true }
 }
 
 export class StringLiteral extends Terminal {
@@ -228,6 +232,8 @@ export class StringLiteral extends Terminal {
     }
 
     prefix(_) { return this }
+
+    validate(_) { return true }
 }
 
 export class Delimiter extends Terminal {
@@ -269,6 +275,8 @@ class Caller extends Delimiter {
 
     LBP = 17;
     expression = true;
+
+    validate(_) { return true }
 }
 
 export class Word extends Terminal {
@@ -288,6 +296,8 @@ export class Word extends Terminal {
         else if (reserved.includes(value)) yield new Reserved(location, value);
         else yield new Variable(location, value);
     }
+
+    validate(_) { return true }
 }
 
 export class Keyword extends Word {
@@ -328,8 +338,8 @@ export class Keyword extends Word {
             case "for": return new For(location, value);
 
             case "lambda": return new LambdaStatement(location, value);
-            case "function": return new FunctionStatement(location, value);
-            case "generator": return new GeneratorStatement(location, value);
+            case "function": return new FullFunction(location, value);
+            case "generator": return new Generator(location, value);
         }
     }
 }
@@ -399,7 +409,7 @@ class PredicatedBlock extends Header {
     `unless` and `until`). */
 }
 
-class FunctionalBlock extends Header {
+class Functional extends Header {
 
     /* This is the abstract base class for functional blocks, including the `lambda`,
     `function` and `generator` blocks, but not including the arrow grammars. This applies
@@ -482,6 +492,8 @@ export class Operator extends Token {
         }
     }
 
+    validate(_) { return true }
+
     get named() {
 
         /* This computed property is used by the parser to estbalish whether a given
@@ -543,38 +555,36 @@ class GeneralOperator extends Operator {
     }
 }
 
-/// These are the concrete token classes that actually appear in token streams...
-
 class Ask extends PrefixDotOperator {
 
-    /* Implements the `?` operator, which compiles to a `Math.clz32` invocation in a prefix
-    context, and `?.` in an infix context. */
+    /* This concrete class implements the `?` operator, which compiles to a `Math.clz32`
+    invocation in a prefix context, and `?.` in an infix context. */
 }
 
 class Assign extends InfixOperator {
 
-    /* Implements the `=` assignment operator, just like JavaScript. */
+    /* This concrete class implements the `=` assignment operator, just like JavaScript. */
 
     LBP = 2;
 }
 
 class Async extends Keyword {
 
-    /* Implements the `async` qualifier, used to prefix the `lambda`, `function` and
-    `generator` keywords to define async versions. */
+    /* This concrete class implements the `async` qualifier, used to prefix the `lambda`,
+    `function` and `generator` keywords to define async versions. */
 
     expression = true;
 
     prefix(parser) {
 
-        if (parser.on(FunctionalBlock)) return this.push(parser.gather());
+        if (parser.on(Functional)) return this.push(parser.gather());
         else throw new ParserError("async qualifier without function", this.location);
     }
 }
 
 class Await extends Keyword {
 
-    /* Implements the `await` prefix operator, used to await promises. */
+    /* This concrete class implements the `await` prefix operator, used to await promises. */
 
     expression = true;
 
@@ -598,52 +608,52 @@ class Await extends Keyword {
 
 class Bang extends PrefixDotOperator {
 
-    /* Implements the `!` operator, which compiles to the bitwise `~` operator in a prefix
-    context, and `.#` in an infix context. */
+    /* This concrete class implements the `!` operator, which compiles to the bitwise `~`
+    operator in a prefix context, and `.#` in an infix context. */
 }
 
 class Break extends BranchStatement {
 
-    /* Implements the `break` statement, just like JavaScript. */
+    /* This concrete class implements the `break` statement, just like JavaScript. */
 }
 
 export class CloseBrace extends Closer {
 
-    /* Implements the `}` delimiter, used for closing blocks, object expressions and
-    destructured assignees. */
+    /* This concrete class implements the `}` delimiter, used for closing blocks, object
+    expressions and destructured assignees. */
 }
 
 class CloseBracket extends Closer {
 
-    /* Implements the `]` delimiter, used for closing array expressions and destructured
-    assignees. */
+    /* This concrete class implements the `]` delimiter, used for closing array expressions
+    and destructured assignees. */
 }
 
 class CloseParen extends Closer {
 
-    /* Implements the `)` delimiter, used for closing group expressions, arrow params and
-    function invocations. */
+    /* This concrete class implements the `)` delimiter, used for closing group expressions,
+    arrow params and function invocations. */
 }
 
 class Colon extends InfixOperator {
 
-    /* Implements the `:` pseudo-operator, used for delimiting key-value pairs in object
-    expressions. */
+    /* This concrete class implements the `:` pseudo-operator, used for delimiting key-value
+    pairs in object expressions. */
 
     LBP = 1;
 }
 
 export class Comma extends Delimiter {
 
-    /* Implements the `,` delimiter, used for delimiting expressions in groups, invocations and
-    compound literals, as well as params, declarations etc. */
+    /* This concrete class implements the `,` delimiter, used for delimiting expressions in
+    groups, invocations and compound literals, as well as params, declarations etc. */
 }
 
 class Constant extends Word {
 
-    /* Implements constant words, used for named numbers (`Infinity` and `NaN`), as well as
-    magic variables (`this`, `super`, `arguments`, `random`, `null`, `void`, `true`, `false`
-    and `global`). */
+    /* This concrete class implements constant words, used for named numbers (`Infinity` and
+    `NaN`), as well as magic variables (`this`, `super`, `arguments`, `random`, `null`, `void`,
+    `true`, `false` and `global`). */
 
     expression = true;
 
@@ -652,22 +662,25 @@ class Constant extends Word {
 
 class Continue extends BranchStatement {
 
-    /* Implements the `continue` statement, just like JavaScript. */
+    /* This concrete class implements the `continue` statement, just like JavaScript. */
 }
 
 class Debug extends Keyword {
 
-    /* Implements the `debug` statement, which compiles to `debugger`. */
+    /* This concrete class implements the `debug` statement, which compiles to `debugger`. */
+
+    prefix(_) { return this }
 }
 
 class Do extends Header {
 
-    /* Implements the `do` keyword, which can prefix a block to create a block statement,
-    or prefix `async`, `lambda`, `function` or `generator` to create an IIFE. */
+    /* This concrete class implements the `do` keyword, which prefixes blocks to create
+    block statements, or prefixes `async`, `lambda`, `function` or `generator` to create
+    an IIFE. */
 
     prefix(parser) {
 
-        if (parser.on(Async) || parser.on(FunctionalBlock)) {
+        if (parser.on(Async) || parser.on(Functional)) {
 
             this.expression = true;
             this.push(parser.gather());
@@ -709,9 +722,9 @@ class For extends Header {}
 
 class From extends Keyword {}
 
-class FunctionStatement extends FunctionalBlock {}
+class FullFunction extends Functional {}
 
-class GeneratorStatement extends FunctionalBlock {}
+class Generator extends Functional {}
 
 class Greater extends InfixOperator {
 
@@ -744,10 +757,10 @@ class Exit extends ReturningStatement {
     /* This concrete class implements the `exit` statement, which is used for returning from
     a function without a value (instead of writing `return void`). */
 
-    prefix(parser) { return this }
+    prefix(_) { return this }
 }
 
-class LambdaStatement extends FunctionalBlock {
+class LambdaStatement extends Functional {
 
     prefix(parser) {
 
@@ -823,6 +836,8 @@ export class OpenBrace extends Delimiter {
 
         return this.push(...parser.gatherCompoundExpression(CloseBrace));
     }
+
+    validate(_) { return true }
 }
 
 class OpenBracket extends Caller {
@@ -849,6 +864,8 @@ class Pass extends Keyword {
 
     /* This concrete class implements the `pass` keyword, used to create an explicitly
     empty statement. */
+
+    prefix(_) { return this }
 }
 
 class Plus extends GeneralOperator {
@@ -933,7 +950,7 @@ class Wait extends YieldingStatement {
     /* This concrete class implements the `wait` statement, which is used for yielding from
     a generator without a value (instead of writing `yield void`). */
 
-    prefix(parser) { return this }
+    prefix(_) { return this }
 }
 
 class While extends PredicatedBlock {}

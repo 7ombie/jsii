@@ -9,8 +9,9 @@ import parse from "./parser.js"
 
 
 let source = `
-wait
-if this!done exit
+if x > y { return foo } else { return bar }
+pass
+if this!pass exit
 break
 continue
 continue foo
