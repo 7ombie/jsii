@@ -215,21 +215,15 @@ export default function * (source, literate=false) {
         return result;
     }
 
-    function gatherCompoundExpression(closer, validate=expression=>expression) {
+    function gatherCompoundExpression(closer) {
 
         /* This function takes a `Token` subclass which indicates which closing character to
         use to gather a compound statement (a sequence of zero or more comma-separated expr-
-        essions, wrapped in parens, brackets or braces). It also takes an optional function
-        that validates each expression, as they are gathered into a results array, which is
-        eventually returned. The validation function defaults to a function that validates
-        anything it is passed (which will always be a valid expression).
-
-        The validator function is passed a reference to the expression it needs to check, as
-        well as a reference to the results array. It is expected to either return some valid
-        expression (in practice, its first argument) or raise an exception.
+        essions, wrapped in parens, brackets or braces) into a `results` array, which is
+        returned.
 
         The results array may contain `null` expressions, as adjacent commas can be used to
-        imply empty expressions (note that these expression are automatically valid).
+        imply empty assignees in destructuring assignments.
 
         This API function is used whenever a parser method needs to parse an expresion that
         is wrapped in parens, brackets or braces, and the function will implicitly update
@@ -239,37 +233,54 @@ export default function * (source, literate=false) {
         another, and allows object expressions to be parsed like other compound expressions.
 
         Note: This function is also used for bracketed notation, computed properties etc,
-        and the caller checks the result has the required length (`1`) after the fact.
-
-        The parser is able to handle the LIST states implicitly. Parser methods can use the
-        API to parse blocks and compound expressions, and insignificant newlines will just
-        disappear from the stream automatically. */
+        and the caller checks the result has the required length (`1`) after the fact. */
 
         listStateStack.push(false);         /// firstly, disable significant newlines, then
         ignoreInsignificantNewlines();      /// ensure that the first `token` is significant
 
-        const results = on(Comma) ? [null] : []; // account for leading empty expressions
+        const results = on(Comma) ? [null] : []; // account for a leading empty assignee
 
-        while (!on(closer)) {
+        while (!on(closer)) if (on(Comma)) {
 
-            if (on(Comma)) { // account for empty expressions...
+            advance();
 
-                advance();
+            if (on(Comma, closer)) results.push(null); // an empty assignee
 
-                if (on(Comma, closer)) results.push(null);
+        } else { // push an actual expression, then require it is terminated properly...
 
-            } else { // push an actual expression, then require it is terminated properly...
+            results.push(gatherExpression());
 
-                results.push(validate(gatherExpression(), results));
-
-                if (on(Comma, closer)) continue;
-                else throw new ParserError("required delimiter", token.location);
-            }
+            if (on(Comma, closer)) continue;
+            else throw new ParserError("required delimiter", token.location);
         }
 
         listStateStack.pop();   /// firstly, restore the previous LIST state - then, once the
         advance();              /// state is restored, drop the `closer` instance, leaving it
                                 /// to `advance` to drop any insignificant newlines
+        return results;
+    }
+
+    function gatherParameters() { // api function
+
+        /* This function gathers the parameters for a lambda, function or generator header
+        into a `results` array, which is returned.
+
+        Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
+        not be encountered until the parameters have already been parsed). */
+
+        const results = [];
+
+        if (on(OpenBrace)) return results;
+
+        while (true) {
+
+            results.push(gatherExpression());
+
+            if (on(Comma)) advance();
+            else if (on(OpenBrace)) break;
+            else throw new ParserError("required a comma or block", token.location);
+        }
+
         return results;
     }
 
@@ -321,7 +332,8 @@ export default function * (source, literate=false) {
         gatherProperty,
         gatherExpression,
         gatherCompoundExpression,
-        gatherBlock,
+        gatherParameters,
+        gatherBlock
     };
 
     const blockTypeStack = [3, -1];

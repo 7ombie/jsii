@@ -416,7 +416,48 @@ class Functional extends Header {
     to function statements/expressions, whether they are asynchronous, IIFEs, neither or
     both. */
 
+    LBP = 1;
     expression = true;
+
+    handlePrefix(parser, prefix, doType, asyncType, full) {
+
+        /* This helper method is used to handle qualifiers `do` or `async` (or both). */
+
+        let blockType;
+
+        if (prefix instanceof Do) blockType = doType;
+        else if (prefix instanceof Async) blockType = asyncType;
+        else throw new ParserError("invalid function qualifier", prefix.location);
+
+        this.push(prefix);
+
+        if (full) return this.gatherFullHeader(parser, blockType);
+        else return gatherLambdaHeader(parser, blockType);
+    }
+
+    gatherFullHeader(parser, blockType) {
+
+        /* This helper method is used by function and generator parsing methods to gather
+        their optional names, optional parameters and required bodies. */
+
+        this.push(parser.on(Variable) ? parser.gatherVariable() : null);
+
+        if (parser.on(Of)) {
+
+            parser.advance();
+
+            return this.gatherLambdaHeader(parser, blockType);
+
+        } else return this.push([], parser.gatherBlock(blockType));
+    }
+
+    gatherLambdaHeader(parser, blockType) {
+
+        /* This helper method is used by various functional parsing methods to gather their
+        optional parameters and required bodies. */
+
+        return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
+    }
 }
 
 export class Operator extends Token {
@@ -473,6 +514,7 @@ export class Operator extends Token {
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
             case "not": return new Not(location, value);
+            case "of": return new Of(location, value);
         }
     }
 
@@ -563,7 +605,7 @@ class Ask extends PrefixDotOperator {
 
 class Assign extends InfixOperator {
 
-    /* This concrete class implements the `=` assignment operator, just like JavaScript. */
+    /* This concrete class implements the `=` assignment operator. */
 
     LBP = 2;
 }
@@ -571,14 +613,21 @@ class Assign extends InfixOperator {
 class Async extends Keyword {
 
     /* This concrete class implements the `async` qualifier, used to prefix the `lambda`,
-    `function` and `generator` keywords to define async versions. */
+    `function` and `generator` keywords to define asynchronous versions. */
 
+    LBP = Infinity;
     expression = true;
 
     prefix(parser) {
 
-        if (parser.on(Functional)) return this.push(parser.gather());
-        else throw new ParserError("async qualifier without function", this.location);
+        if (parser.on(Functional)) return this;
+        else throw new ParserError("required a function", this.location);
+    }
+
+    infix(_, left) {
+
+        if (left instanceof Do) return this.push(left);
+        else throw new ParserError("required a function", this.location);
     }
 }
 
@@ -680,12 +729,8 @@ class Do extends Header {
 
     prefix(parser) {
 
-        if (parser.on(Async) || parser.on(Functional)) {
-
-            this.expression = true;
-            this.push(parser.gather());
-
-        } else this.push(parser.gatherBlock(SIMPLEBLOCK));
+        if (parser.on(Async) || parser.on(Functional)) this.expression = true;
+        else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
     }
@@ -697,10 +742,29 @@ class Dot extends DotOperator {
     access. The points in number literals do not use this class. */
 }
 
+class Else extends PredicatedBlock {
+
+    /* This concrete token class implements `else` and `else if` clauses. */
+
+    prefix(parser) {
+
+        if (parser.on(If)) return this.push(parser.gather());
+        else return this.push(parser.gatherBlock(SIMPLEBLOCK));
+    }
+}
+
 export class EOF extends Terminator {
 
     /* This concrete class implements the implicit End Of File token that is appended
     to every token stream, and used by the parser to check for the end of the file. */
+}
+
+class Exit extends ReturningStatement {
+
+    /* This concrete class implements the `exit` statement, which is used for returning from
+    a function without a value (instead of writing `return void`). */
+
+    prefix(_) { return this }
 }
 
 class FatArrow extends GeneralOperator {
@@ -722,9 +786,31 @@ class For extends Header {}
 
 class From extends Keyword {}
 
-class FullFunction extends Functional {}
+class FullFunction extends Functional {
 
-class Generator extends Functional {}
+    prefix(parser) {
+
+        return this.gatherFullHeader(parser, FUNCTIONBLOCK);
+    }
+
+    infix(parser, prefix) {
+
+        return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, true);
+    }
+}
+
+class Generator extends Functional {
+
+    prefix(parser) {
+
+        return this.gatherFullHeader(parser, GENERATORBLOCK);
+    }
+
+    infix(parser, prefix) {
+
+        return this.handlePrefix(parser, prefix, GENERATORBLOCK, ASYNCGENERATORBLOCK, true);
+    }
+}
 
 class Greater extends InfixOperator {
 
@@ -741,33 +827,6 @@ class If extends PredicatedBlock {
     }
 }
 
-class Else extends PredicatedBlock {
-
-    /* This concrete token class implements `else` and `else if` clauses. */
-
-    prefix(parser) {
-
-        if (parser.on(If)) return this.push(parser.gather());
-        else return this.push(parser.gatherBlock(SIMPLEBLOCK));
-    }
-}
-
-class Exit extends ReturningStatement {
-
-    /* This concrete class implements the `exit` statement, which is used for returning from
-    a function without a value (instead of writing `return void`). */
-
-    prefix(_) { return this }
-}
-
-class LambdaStatement extends Functional {
-
-    prefix(parser) {
-
-        return this.push(parser.gatherBlock(FUNCTIONBLOCK));
-    }
-}
-
 class In extends InfixOperator {
 
     LBP = 17;
@@ -776,6 +835,19 @@ class In extends InfixOperator {
 class Is extends InfixOperator {
 
     LBP = 8;
+}
+
+class LambdaStatement extends Functional {
+
+    prefix(parser) {
+
+        return this.gatherLambdaHeader(parser, FUNCTIONBLOCK);
+    }
+
+    infix(parser, prefix) {
+
+        return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, false);
+    }
 }
 
 class Lesser extends InfixOperator {
@@ -824,6 +896,11 @@ class Nullish extends InfixOperator {
 
     LBP = 3;
     RBP = 14;
+}
+
+class Of extends InfixOperator {
+
+    LBP = 1;
 }
 
 export class OpenBrace extends Delimiter {

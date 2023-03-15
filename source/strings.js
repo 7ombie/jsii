@@ -68,6 +68,7 @@ export const operators = [
     "in",
     "is",
     "not",
+    "of",
 ];
 
 // export an array containing all of the constant words...
@@ -177,7 +178,6 @@ export const reserved = [
     "new",
     "no",
     "non",
-    "of",
     "omni",
     "on",
     "once",

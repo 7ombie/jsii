@@ -9,19 +9,21 @@ import parse from "./parser.js"
 
 
 let source = `
-if x > y { return foo } else { return bar }
-wait + 2
-if this!pass exit
-break
-continue
-continue foo
-return 1
-do {1; 2; 3}
-foo = {
-    a: 1,
-    foo: 2 + 3,
-    [spam]: yield from 1,
-    bar
+do async generator sum of x, y {
+
+    if x > y { return foo } else { return bar }
+
+    if this!pass exit
+    return await 1
+
+    do {1; 2; 3}
+
+    foo = {
+        a: 1,
+        foo: 2 + 3,
+        [spam]: yield foo,
+        bar
+    }
 }
 `;
 
