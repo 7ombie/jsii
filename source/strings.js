@@ -95,6 +95,7 @@ export const keywords = [
     "break",
     "continue",
     "debug",
+    "delete",
     "do",
     "else",
     "exit",

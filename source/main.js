@@ -9,6 +9,7 @@ import parse from "./parser.js"
 
 
 let source = `
+delete foo of spam.eggs
 do async generator sum of x, y {
 
     if x > y { return foo } else { return bar }

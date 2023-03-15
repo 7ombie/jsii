@@ -126,7 +126,7 @@ class Terminal extends Token {
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement terminators, and is used directly
+    /* This is the base class for the various statement-terminators, and is used directly
     for the implicit terminators that preceed closing braces. It is also used by the lexer
     to tokenize terminators, and by the parser to classify them. */
 
@@ -140,7 +140,7 @@ export class Terminator extends Terminal {
 
 export class NumberLiteral extends Terminal {
 
-    /* This is the concrete class for all number literals. It is also used by the lexer for
+    /* This is the concrete class for all number-literals. It is also used by the lexer for
     number tokenization. */
 
     expression = true;
@@ -202,7 +202,7 @@ export class NumberLiteral extends Terminal {
 
 export class StringLiteral extends Terminal {
 
-    /* This is the concrete class for all string literals. It is also used by the lexer
+    /* This is the concrete class for all string-literals. It is also used by the lexer
     for (recursively) tokenizing strings and their interpolations. */
 
     expression = true;
@@ -282,7 +282,7 @@ class Caller extends Delimiter {
 export class Word extends Terminal {
 
     /* This is the abstract base class for every type of word and name. It is also used
-    by the lexer tokenization. */
+    by the lexer word-tokenization. */
 
     static * lex(lexer, location) {
 
@@ -309,37 +309,30 @@ export class Keyword extends Word {
 
         switch (value) {
 
-            case "exit": return new Exit(location, value);
-            case "return": return new Return(location, value);
-            case "wait": return new Wait(location, value);
-            case "yield": return new Yield(location, value);
-            case "from": return new From(location, value);
-
-            case "do": return new Do(location, value);
             case "async": return new Async(location, value);
             case "await": return new Await(location, value);
-
-            case "debug": return new Debug(location, value);
-            case "pass": return new Pass(location, value);
-
-            case "let": return new Let(location, value);
-            case "var": return new Var(location, value);
-
             case "break": return new Break(location, value);
             case "continue": return new Continue(location, value);
-
-            case "if": return new If(location, value);
+            case "debug": return new Debug(location, value);
+            case "delete": return new Delete(location, value);
+            case "do": return new Do(location, value);
             case "else": return new Else(location, value);
-
-            case "unless": return new Unless(location, value);
-            case "while": return new While(location, value);
-            case "until": return new Until(location, value);
-
+            case "exit": return new Exit(location, value);
             case "for": return new For(location, value);
-
-            case "lambda": return new LambdaStatement(location, value);
+            case "from": return new From(location, value);
             case "function": return new FullFunction(location, value);
             case "generator": return new Generator(location, value);
+            case "if": return new If(location, value);
+            case "lambda": return new LambdaStatement(location, value);
+            case "let": return new Let(location, value);
+            case "pass": return new Pass(location, value);
+            case "return": return new Return(location, value);
+            case "unless": return new Unless(location, value);
+            case "until": return new Until(location, value);
+            case "var": return new Var(location, value);
+            case "wait": return new Wait(location, value);
+            case "while": return new While(location, value);
+            case "yield": return new Yield(location, value);
         }
     }
 }
@@ -351,8 +344,8 @@ class BranchStatement extends Keyword {
 
     prefix(parser) {
 
-        /* If the parser is on a `Variable` instance, gather it. Otherwise continue with
-        no operands. */
+        /* If the parser is on a valid label, this method gathers it, continuing without
+        operands otherwise. */
 
         if (parser.on(Variable)) this.push(parser.gatherVariable());
 
@@ -366,6 +359,17 @@ class BranchStatement extends Keyword {
         otherwise (return `false`). */
 
         return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    }
+}
+
+class CommandStatement extends Keyword {
+
+    /* This is the abstract class for keywords that are followed by a required, arbitrary
+    expression (`await`, `delete` etc). */
+
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression());
     }
 }
 
@@ -620,29 +624,30 @@ class Async extends Keyword {
 
     prefix(parser) {
 
+        /* This method checks that the next token is valid, and if so, returns this token,
+        so it can be passed to the next construct as a `left` argument, else complaining. */
+
         if (parser.on(Functional)) return this;
         else throw new ParserError("required a function", this.location);
     }
 
     infix(_, left) {
 
+        /* This method allows `async` to be prefixed by `do`. */
+
         if (left instanceof Do) return this.push(left);
         else throw new ParserError("required a function", this.location);
     }
 }
 
-class Await extends Keyword {
+class Await extends CommandStatement {
 
-    /* This concrete class implements the `await` prefix operator, used to await promises. */
+    /* This concrete class implements the `await` operator, used to await promises. */
 
+    LBP = 14;
     expression = true;
 
     static blocks = [ASYNCGENERATORBLOCK, ASYNCFUNCTIONBLOCK];
-
-    prefix(parser) {
-
-        return this.push(parser.gatherExpression());
-    }
 
     validate(check) {
 
@@ -721,6 +726,14 @@ class Debug extends Keyword {
     prefix(_) { return this }
 }
 
+class Delete extends CommandStatement {
+
+    /* This concrete class implements the `delete` operator, exactly like JavaScript. */
+
+    LBP = 14;
+    expression = true;
+}
+
 class Do extends Header {
 
     /* This concrete class implements the `do` keyword, which prefixes blocks to create
@@ -728,6 +741,10 @@ class Do extends Header {
     an IIFE. */
 
     prefix(parser) {
+
+        /* If the next token is valid, just return this token, so it can be passed along
+        as a `left` argument. Functions (and `Async`) implement `infix` grammars to take
+        this kind of prefix as an argument. */
 
         if (parser.on(Async) || parser.on(Functional)) this.expression = true;
         else this.push(parser.gatherBlock(SIMPLEBLOCK));
@@ -788,12 +805,18 @@ class From extends Keyword {}
 
 class FullFunction extends Functional {
 
+    /* This is the concrete class for function statements, which are also expressions. */
+
     prefix(parser) {
+
+        /* This method parses functions without any prefix. */
 
         return this.gatherFullHeader(parser, FUNCTIONBLOCK);
     }
 
     infix(parser, prefix) {
+
+        /* This method allows functions to be prefixed by `do`, `async` or `do async`. */
 
         return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, true);
     }
@@ -801,12 +824,18 @@ class FullFunction extends Functional {
 
 class Generator extends Functional {
 
+    /* This is the concrete class for generator statements, which are also expressions. */
+
     prefix(parser) {
+
+        /* This method parses generators without any prefix. */
 
         return this.gatherFullHeader(parser, GENERATORBLOCK);
     }
 
     infix(parser, prefix) {
+
+        /* This method allows generators to be prefixed by `do`, `async` or `do async`. */
 
         return this.handlePrefix(parser, prefix, GENERATORBLOCK, ASYNCGENERATORBLOCK, true);
     }
@@ -814,12 +843,14 @@ class Generator extends Functional {
 
 class Greater extends InfixOperator {
 
+    /* This concrete class implements the greater-than operator (`>`). */
+
     LBP = 9;
 }
 
 class If extends PredicatedBlock {
 
-    /* This concrete token class implements `if` statements. */
+    /* This concrete class implements if-statements. */
 
     prefix(parser) {
 
@@ -829,22 +860,33 @@ class If extends PredicatedBlock {
 
 class In extends InfixOperator {
 
+    /* This concrete class implements the in-operator. It is also used by the not-in-operator
+    (handled by `Not`), and for-in-loops (handled by `For`). */
+
     LBP = 17;
 }
 
 class Is extends InfixOperator {
+
+    /* This concrete class implements the is-operator and is-not-operator. */
 
     LBP = 8;
 }
 
 class LambdaStatement extends Functional {
 
+    /* This is the concrete class for lambda statements, which are also expressions. */
+
     prefix(parser) {
+
+        /* This method parses lambdas without any prefix. */
 
         return this.gatherLambdaHeader(parser, FUNCTIONBLOCK);
     }
 
     infix(parser, prefix) {
+
+        /* This method allows lambdas to be prefixed by `do`, `async` or `do async`. */
 
         return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, false);
     }
@@ -900,7 +942,13 @@ class Nullish extends InfixOperator {
 
 class Of extends InfixOperator {
 
-    LBP = 1;
+    LBP = 18;
+
+    infix(parser, left) {
+
+        if (left instanceof Variable) return this.push(left, parser.gatherExpression());
+        else throw new ParserError("unexpected of-operator", this.location);
+    }
 }
 
 export class OpenBrace extends Delimiter {
