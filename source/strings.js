@@ -216,7 +216,6 @@ export const reserved = [
     "to",
     "try",
     "tuple",
-    "type",
     "undefined",
     "uni",
     "use",

@@ -549,6 +549,17 @@ export class Operator extends Token {
     }
 }
 
+class PrefixOperator extends Operator {
+
+    /* This base class provids functionality for operators that are only valid as prefix
+    operators. */
+
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression(this.RBP));
+    }
+}
+
 class InfixOperator extends Operator {
 
     /* This base class provids functionality for operators that are only valid as infix
@@ -617,9 +628,19 @@ class Assign extends InfixOperator {
 class Async extends Keyword {
 
     /* This concrete class implements the `async` qualifier, used to prefix the `lambda`,
-    `function` and `generator` keywords to define asynchronous versions. */
+    `function` and `generator` keywords to define asynchronous versions.
 
-    LBP = Infinity;
+    The left binding power must be (at least) equal to `lambda`, `function` and `generator`,
+    else the `Async` instance will not be passed to the `infix` method of the function that
+    follows it when the `Async` instance is prefixed by a `Do` instance.
+
+    Note; Both `Async` and `Do` are implemented so the qualifier is passed to the function
+    that follows it. The implementation of operators that use qualifiers just gather the
+    qualifier as an operand, but functions need to know if they have an `async` prefix
+    to know which block-type they have (which determines which statements the block
+    can contain). */
+
+    LBP = 1;
     expression = true;
 
     prefix(parser) {
@@ -628,15 +649,18 @@ class Async extends Keyword {
         so it can be passed to the next construct as a `left` argument, else complaining. */
 
         if (parser.on(Functional)) return this;
-        else throw new ParserError("required a function", this.location);
+        else throw new ParserError("unexpected async qualifier", this.location);
     }
 
-    infix(_, left) {
+    infix(parser, left) {
 
-        /* This method allows `async` to be prefixed by `do`. */
+        /* This method allows `async` to be prefixed by `do` (and only `do`), pushing the
+        `Do` instance to the `operands` array, before returning `this`, so it can be passed
+        to the `infix` method of the next token. If the prefix is not `do`, or if the next
+        token is not functional, an exception is raised. */
 
-        if (left instanceof Do) return this.push(left);
-        else throw new ParserError("required a function", this.location);
+        if (left instanceof Do && parser.on(Functional)) return this.push(left);
+        else throw new ParserError("unexpected async qualifier", this.location);
     }
 }
 
@@ -738,13 +762,16 @@ class Do extends Header {
 
     /* This concrete class implements the `do` keyword, which prefixes blocks to create
     block statements, or prefixes `async`, `lambda`, `function` or `generator` to create
-    an IIFE. */
+    an IIFE.
+
+    Note: See `Async` for more information on why this is implemented the way it is. */
 
     prefix(parser) {
 
-        /* If the next token is valid, just return this token, so it can be passed along
-        as a `left` argument. Functions (and `Async`) implement `infix` grammars to take
-        this kind of prefix as an argument. */
+        /* If the next token is `async` or something functional, make this instance valid
+        as an expression, then return this token, so it can be passed along as a `left`
+        argument to the `infix` method of the next token. Otherwise, gather a control
+        flow block (without becoming a valid expression). */
 
         if (parser.on(Async) || parser.on(Functional)) this.expression = true;
         else this.push(parser.gatherBlock(SIMPLEBLOCK));
@@ -863,14 +890,33 @@ class In extends InfixOperator {
     /* This concrete class implements the in-operator. It is also used by the not-in-operator
     (handled by `Not`), and for-in-loops (handled by `For`). */
 
-    LBP = 17;
+    LBP = 8;
 }
 
 class Is extends InfixOperator {
 
-    /* This concrete class implements the is-operator and is-not-operator. */
+    /* This concrete class implements the `is`, `is not`, `is of` and `is not of` operators,
+    which map to `Object.is` in the first two cases, and `instanceof` in the second two. */
 
     LBP = 8;
+
+    infix(parser, left) {
+
+        this.push(left);
+
+        if (parser.on(Of)) { // `is of`...
+
+            this.push(parser.advance(true));
+
+        } else if (parser.on(Not)) { // `is not` or `is not of`...
+
+            this.push(parser.advance(true));
+
+            if (parser.on(Of)) this.push(parser.advance(true));
+        }
+
+        return this.push(parser.gatherExpression(this.LBP));
+    }
 }
 
 class LambdaStatement extends Functional {
@@ -920,8 +966,23 @@ class Minus extends GeneralOperator {
 
 class Not extends GeneralOperator {
 
+    /* This concrete class implements the `not` prefix operator, and the `not in` infix
+    operator. */
+
     LBP = 9;
     RBP = 14;
+
+    infix(parser, left) {
+
+        /* This method allows `not` to appear in the infix position if it is followed by
+        `in` (implementing the not-in-operator), and complains in any other case. */
+
+        if (parser.on(In)) {
+
+            return this.push(left, parser.advance(true), parser.gatherExpression(this.LBP));
+
+        } else throw new ParserError("unexpected not-operator", this.location);
+    }
 }
 
 class NotGreater extends InfixOperator {
@@ -942,11 +1003,11 @@ class Nullish extends InfixOperator {
 
 class Of extends InfixOperator {
 
-    LBP = 18;
+    LBP = Infinity;
 
     infix(parser, left) {
 
-        if (left instanceof Variable) return this.push(left, parser.gatherExpression());
+        if (left instanceof Variable) return this.push(left, parser.gatherExpression(8));
         else throw new ParserError("unexpected of-operator", this.location);
     }
 }
@@ -957,9 +1018,11 @@ export class OpenBrace extends Delimiter {
 
     prefix(parser) {
 
-        /* Gather an object expression (updating the operands array in place). */
+        /* This method gathers an object expression, which will be validated later. */
 
-        return this.push(...parser.gatherCompoundExpression(CloseBrace));
+        this.operands = parser.gatherCompoundExpression(CloseBrace);
+
+        return this;
     }
 
     validate(_) { return true }
@@ -969,9 +1032,11 @@ class OpenBracket extends Caller {
 
     prefix(parser) {
 
-        /* Gather an array expression (updating the operands array in place). */
+        /* This method gathers an array expression, which will be validated later. */
 
-        return this.push(...parser.gatherCompoundExpression(CloseBracket));
+        this.operands = parser.gatherCompoundExpression(CloseBracket);
+
+        return this;
     }
 }
 
@@ -979,9 +1044,11 @@ class OpenParen extends Caller {
 
     prefix(parser) {
 
-        /* Gather a group expression (updating the operands array in place). */
+        /* This method gathers a group expression, which will be validated later. */
 
-        return this.push(...parser.gatherCompoundExpression(CloseParen));
+        this.operands = parser.gatherCompoundExpression(CloseParen);
+
+        return this;
     }
 }
 

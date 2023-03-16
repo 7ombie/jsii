@@ -232,8 +232,7 @@ export default function * (source, literate=false) {
         Note: The (minimum-precedence) pair-operator (`:`) is used to map one expression to
         another, and allows object expressions to be parsed like other compound expressions.
 
-        Note: This function is also used for bracketed notation, computed properties etc,
-        and the caller checks the result has the required length (`1`) after the fact. */
+        Note: This function is also used for bracketed notation, computed properties etc. */
 
         listStateStack.push(false);         /// firstly, disable significant newlines, then
         ignoreInsignificantNewlines();      /// ensure that the first `token` is significant
@@ -263,7 +262,8 @@ export default function * (source, literate=false) {
     function gatherParameters() { // api function
 
         /* This function gathers the parameters for a lambda, function or generator header
-        into a `results` array, which is returned.
+        into a `results` array, which is returned. The results will all be valid expressions,
+        with no empty values, but are not otherwise validated (as function parameters).
 
         Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
         not be encountered until the parameters have already been parsed). */
