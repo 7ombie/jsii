@@ -9,10 +9,8 @@ import parse from "./parser.js"
 
 
 let source = `
--> x + y
-=> x = y
-(x, y, z) => x * y + z
-foo => foo * 2
+(x, y, z) => x and y or z
+=> foo * 2
 `;
 
 console.log("source...\n", source);

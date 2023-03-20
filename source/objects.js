@@ -561,11 +561,13 @@ export class Operator extends Token {
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
             case "??": return new Nullish(location, value);
+            case "and": return new And(location, value);
             case "as": return new As(location, value);
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
+            case "or": return new Or(location, value);
         }
     }
 
@@ -680,6 +682,13 @@ class ArrowOperator extends GeneralOperator {
 class AllConstant extends Constant {}
 
 class ArgumentsConstant extends Constant {}
+
+class And extends InfixOperator {
+
+    /* This concrete class implements the logical `and` operator, which compiles to `&&`. */
+
+    LBP = 4;
+}
 
 class As extends InfixOperator {
 
@@ -1126,6 +1135,13 @@ class Of extends InfixOperator {
         if (left instanceof Variable) return this.push(left, parser.gatherExpression(8));
         else throw new ParserError("unexpected of-operator", this.location);
     }
+}
+
+class Or extends InfixOperator {
+
+    /* This concrete class implements the logical `or` operator, which compiles to `||`. */
+
+    LBP = 3;
 }
 
 export class OpenBrace extends Delimiter {

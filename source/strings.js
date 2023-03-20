@@ -65,11 +65,13 @@ export const operators = [
     ">=",
     "->",
     "=>",
+    "and",
     "as",
     "in",
     "is",
     "not",
     "of",
+    "or",
 ];
 
 // export an array containing all of the constant words...
