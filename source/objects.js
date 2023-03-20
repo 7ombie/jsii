@@ -709,6 +709,8 @@ class AssignmentOperator extends InfixOperator {
     LBP = 2;
 }
 
+/// THE CONCRETE TOKEN CLASSES...
+
 class AllConstant extends Constant {}
 
 class ArgumentsConstant extends Constant {}
@@ -749,7 +751,11 @@ class Ask extends PrefixDotOperator {
     invocation in a prefix context, and `?.` in an infix context. */
 }
 
-class Assert extends Keyword {}
+class Assert extends Keyword {
+
+    /* This conrete class provides the assert-keyword, currently only used within import
+    assertions. */
+}
 
 class Assign extends AssignmentOperator {
 
@@ -886,7 +892,7 @@ class Await extends CommandStatement {
 
         /* Climb the block stack till something functional is found, then return `true` if
         it is an asynchronous function block, and `false` otherwise. If nothing functional
-        is found, the validation *succeeds* (note the third argument), as top-level-await
+        is found, the validation *succeeds* (note the third argument), as top-level await
         is valid (unlike all other other such cases). */
 
         return check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
