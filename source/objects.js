@@ -904,8 +904,7 @@ class Exit extends ReturningStatement {
 
 class Export extends Keyword {
 
-    /* This conrete class implements the import-statement, with its various grammars, though
-    it does not attempt to validate the expressions within the grammar. */
+    /* This conrete class implements the export-statement, with its various grammars. */
 
     prefix(parser) {
 
@@ -999,8 +998,7 @@ class If extends PredicatedBlock {
 
 class Import extends Keyword {
 
-    /* This conrete class implements the import-statement, with its various grammars, though
-    it does not attempt to validate the expressions within the grammar. */
+    /* This conrete class implements the import-statement, with its various grammars. */
 
     prefix(parser) {
 
@@ -1018,8 +1016,7 @@ class Import extends Keyword {
 
 class In extends InfixOperator {
 
-    /* This concrete class implements the in-operator. It is also used by the not-in-operator
-    (handled by `Not`), and for-in-loops (handled by `For`). */
+    /* This concrete class implements the in-operator (`in`). */
 
     LBP = 8;
 }
@@ -1027,12 +1024,15 @@ class In extends InfixOperator {
 class Inc extends PrefixOperator {
 
     /* This concrete class implements the `inc` operator, which compiles to the prefix
-    increment operator (`++`). */
+    increment-operator (`++`). */
 
     RBP = 14;
 }
 
-class InfinityConstant extends Constant {}
+class InfinityConstant extends Constant {
+
+    /* This concrete class implements the `Infinity` floating-point constant. */
+}
 
 class Is extends InfixOperator {
 
@@ -1080,6 +1080,8 @@ class LambdaStatement extends Functional {
 }
 
 class Lesser extends InfixOperator {
+
+    /* This is the concrete class for the less-than-operator (`<`). */
 
     LBP = 9;
 }
@@ -1184,8 +1186,9 @@ class Of extends InfixOperator {
     on the left, applied to the (arbitrary) expression on the right.
 
     Note: The language does not include any kind of runtime or preamble, so having a way to
-    include some degree of runtime functionality is very valuable, even though the operator
-    lacks an direct analog in JavaScript (practicality over purity). */
+    effectively include some degree of runtime functionality is very valuable. This is why
+    the of-operator was included, despite having no obvious, direct, JavaScript analog
+    (it also compliments our in-operator and for-in-loops very naturally). */
 
     LBP = Infinity;
 
