@@ -143,7 +143,7 @@ export default function * (source, literate=false) {
 
             if (literate && (index - 1 === lastNewline) && (!on(whitespace))) {
 
-                lexer.gatherUntil(newline);
+                gatherUntil(newline);
 
             } else if (on(space)) {
 
@@ -173,7 +173,7 @@ export default function * (source, literate=false) {
 
             } else if (on(pound)) {
 
-                yield * Comment.lex(api, location);
+                gatherUntil(newline);
 
             } else if (on(delimiters)) {
 

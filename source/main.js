@@ -9,7 +9,7 @@ import parse from "./parser.js"
 
 
 let source = `
-export default expression
+export default expression # foo
 export default function functionName { }
 export default generator name { }
 export default function { }
