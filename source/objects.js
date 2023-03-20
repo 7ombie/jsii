@@ -352,7 +352,6 @@ export class Keyword extends Word {
 
         switch (value) {
 
-            case "as": return new As(location, value);
             case "assert": return new Assert(location, value);
             case "async": return new Async(location, value);
             case "await": return new Await(location, value);
@@ -562,6 +561,7 @@ export class Operator extends Token {
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
             case "??": return new Nullish(location, value);
+            case "as": return new As(location, value);
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
             case "not": return new Not(location, value);

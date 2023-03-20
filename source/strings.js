@@ -65,6 +65,7 @@ export const operators = [
     ">=",
     "->",
     "=>",
+    "as",
     "in",
     "is",
     "not",
@@ -92,7 +93,6 @@ export const constants = [
 // export an array containing all of the keywords...
 
 export const keywords = [
-    "as",
     "assert",
     "async",
     "await",
