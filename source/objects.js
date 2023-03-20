@@ -4,6 +4,7 @@ import {
     closeBrace,
     closeBracket,
     closeParen,
+    colon,
     comma,
     constants,
     digits,
@@ -19,6 +20,7 @@ import {
     quote,
     reserved,
     semicolon,
+    slash,
     symbolics,
     wordCharacters,
 } from "./strings.js"
@@ -88,30 +90,35 @@ export class Token {
         this.value = value;
     }
 
-    // root class default non-implementations...
-
     prefix(_) {
+
+        /* This method allows every token to be parsed in a prefix position, just throwing an
+        exception, unless the token defines (or inherits) something else. */
 
         throw new ParserError("invalid prefix", this.location);
     }
 
     infix(_) {
 
+        /* This method allows every token to be parsed in an infix position, just throwing an
+        exception, unless the token defines (or inherits) something else. */
+
         throw new ParserError("invalid infix", this.location);
     }
 
     validate(_) {
 
+        /* This method allows every token to be validated, just returning `false` (not valid),
+        unless the token defines (or inherits) something else. */
+
         return false;
     }
 
-    // generic helpers...
-
     push(...args) {
 
-        /* This helper is used by `prefix` and `infix` methods to push zero or more
-        operands to the operands array for the current instance. The method returns
-        a reference to `this`, as its caller will invariably need to do so too. */
+        /* This helper is used by `prefix` and `infix` methods to push zero or more operands to
+        the operands array for the current instance. The method returns a reference to `this`,
+        as its caller will invariably need to do so too. */
 
         args.forEach(arg => this.operands.push(arg));
 
@@ -121,14 +128,15 @@ export class Token {
 
 class Terminal extends Token {
 
-    /* This is the internal, abstract base class used by all terminal tokens. */
+    /* This abstract base class is used by all terminal tokens (including the various words,
+    literals and terminators). */
 }
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement-terminators, and is used directly
-    for the implicit terminators that preceed closing braces. It is also used by the lexer
-    to tokenize terminators, and by the parser to classify them. */
+    /* This is the base class for the various statement-terminators (line feeds, semicolons and
+    the implicit End Of File token inserted at the end of every token stream). It is also used
+    by the lexer to tokenize terminators, and by the parser to classify them. */
 
     static * lex(lexer, location) {
 
@@ -148,6 +156,9 @@ export class NumberLiteral extends Terminal {
     static * lex(...args) { yield new NumberLiteral(...args) }
 
     constructor(lexer, location) {
+
+        /* This constructor tokenizes a number literal, ensuring that dots are only including
+        where they are valid (permitting number literals to be followed by a dot operator). */
 
         super(location, lexer.read());
 
@@ -292,12 +303,44 @@ export class Word extends Terminal {
 
         if (keywords.includes(value)) yield Keyword.subclass(location, value);
         else if (operators.includes(value)) yield Operator.subclass(location, value);
-        else if (constants.includes(value)) yield new Constant(location, value);
+        else if (constants.includes(value)) yield Constant.subclass(location, value);
         else if (reserved.includes(value)) yield new Reserved(location, value);
         else yield new Variable(location, value);
     }
 
     validate(_) { return true }
+}
+
+class Constant extends Word {
+
+    /* This is the abstract base class for constant words, used for named numbers (like
+    `Infinity` and `NaN`), as well as magic variables (`this`, `default`, `arguments`,
+    `random`, `void`, `true` etc). It is also used by the `Word` class for sub-
+    classing constants. */
+
+    expression = true;
+
+    prefix(_) { return this }
+
+    static subclass(location, value) {
+
+        switch (value) {
+
+            case "all": return new AllConstant(location, value);
+            case "arguments": return new ArgumentsConstant(location, value);
+            case "default": return new DefaultConstant(location, value);
+            case "false": return new FalseConstant(location, value);
+            case "global": return new GlobalConstant(location, value);
+            case "Infinity": return new InfinityConstant(location, value);
+            case "NaN": return new NaNConstant(location, value);
+            case "null": return new NullConstant(location, value);
+            case "random": return new RandomConstant(location, value);
+            case "super": return new SuperConstant(location, value);
+            case "this": return new ThisConstant(location, value);
+            case "true": return new TrueConstant(location, value);
+            case "void": return new VoidConstant(location, value);
+        }
+    }
 }
 
 export class Keyword extends Word {
@@ -309,6 +352,8 @@ export class Keyword extends Word {
 
         switch (value) {
 
+            case "as": return new As(location, value);
+            case "assert": return new Assert(location, value);
             case "async": return new Async(location, value);
             case "await": return new Await(location, value);
             case "break": return new Break(location, value);
@@ -318,11 +363,13 @@ export class Keyword extends Word {
             case "do": return new Do(location, value);
             case "else": return new Else(location, value);
             case "exit": return new Exit(location, value);
+            case "export": return new Export(location, value);
             case "for": return new For(location, value);
             case "from": return new From(location, value);
             case "function": return new FullFunction(location, value);
             case "generator": return new Generator(location, value);
             case "if": return new If(location, value);
+            case "import": return new Import(location, value);
             case "lambda": return new LambdaStatement(location, value);
             case "let": return new Let(location, value);
             case "pass": return new Pass(location, value);
@@ -612,11 +659,25 @@ class GeneralOperator extends Operator {
     }
 }
 
+class AllConstant extends Constant {}
+
+class ArgumentsConstant extends Constant {}
+
+class As extends InfixOperator {
+
+    /* This concrete class implements the `as` operator, used in import and export statements
+    for assignments and reassignments (like in JavaScript). */
+
+    LBP = 1;
+}
+
 class Ask extends PrefixDotOperator {
 
     /* This concrete class implements the `?` operator, which compiles to a `Math.clz32`
     invocation in a prefix context, and `?.` in an infix context. */
 }
+
+class Assert extends Keyword {}
 
 class Assign extends InfixOperator {
 
@@ -727,17 +788,6 @@ export class Comma extends Delimiter {
     groups, invocations and compound literals, as well as params, declarations etc. */
 }
 
-class Constant extends Word {
-
-    /* This concrete class implements constant words, used for named numbers (`Infinity` and
-    `NaN`), as well as magic variables (`this`, `super`, `arguments`, `random`, `null`, `void`,
-    `true`, `false` and `global`). */
-
-    expression = true;
-
-    prefix(_) { return this }
-}
-
 class Continue extends BranchStatement {
 
     /* This concrete class implements the `continue` statement, just like JavaScript. */
@@ -749,6 +799,8 @@ class Debug extends Keyword {
 
     prefix(_) { return this }
 }
+
+class DefaultConstant extends Constant {}
 
 class Delete extends CommandStatement {
 
@@ -811,6 +863,28 @@ class Exit extends ReturningStatement {
     prefix(_) { return this }
 }
 
+class Export extends Keyword {
+
+    /* This conrete class implements the import-statement, with its various grammars, though
+    it does not attempt to validate the expressions within the grammar. */
+
+    prefix(parser) {
+
+        if (parser.on(DefaultConstant)) {
+
+            return this.push(parser.advance(true), parser.gatherExpression());
+        }
+
+        this.push(parser.gatherExpression());
+
+        if (parser.on(From)) this.push(parser.advance(true), parser.gatherExpression());
+
+        return this;
+    }
+}
+
+class FalseConstant extends Constant {}
+
 class FatArrow extends GeneralOperator {
 
     /* This concrete class implements the fat arrow function operator (`=>`). */
@@ -868,6 +942,8 @@ class Generator extends Functional {
     }
 }
 
+class GlobalConstant extends Constant {}
+
 class Greater extends InfixOperator {
 
     /* This concrete class implements the greater-than operator (`>`). */
@@ -885,6 +961,25 @@ class If extends PredicatedBlock {
     }
 }
 
+class Import extends Keyword {
+
+    /* This conrete class implements the import-statement, with its various grammars, though
+    it does not attempt to validate the expressions within the grammar. */
+
+    prefix(parser) {
+
+        this.push(parser.gatherExpression());
+
+        if (parser.on(Comma)) this.push(parser.advance(true), parser.gatherExpression());
+
+        if (parser.on(From)) this.push(parser.advance(true), parser.gatherExpression());
+
+        if (parser.on(Assert)) this.push(parser.advance(true), parser.gatherExpression());
+
+        return this;
+    }
+}
+
 class In extends InfixOperator {
 
     /* This concrete class implements the in-operator. It is also used by the not-in-operator
@@ -892,6 +987,8 @@ class In extends InfixOperator {
 
     LBP = 8;
 }
+
+class InfinityConstant extends Constant {}
 
 class Is extends InfixOperator {
 
@@ -964,6 +1061,8 @@ class Minus extends GeneralOperator {
     RBP = 11;
 }
 
+class NaNConstant extends Constant {}
+
 class Not extends GeneralOperator {
 
     /* This concrete class implements the `not` prefix operator, and the `not in` infix
@@ -994,6 +1093,8 @@ class NotLesser extends InfixOperator {
 
     LBP = 9;
 }
+
+class NullConstant extends Constant {}
 
 class Nullish extends InfixOperator {
 
@@ -1080,6 +1181,8 @@ class Raise extends InfixOperator {
     }
 }
 
+class RandomConstant extends Constant {}
+
 class Reserved extends Word {
 
     /* This class implements reserved words, which always make it as far as the parser,
@@ -1124,6 +1227,12 @@ class Star extends InfixOperator {
     LBP = 12;
 }
 
+class SuperConstant extends Constant {}
+
+class ThisConstant extends Constant {}
+
+class TrueConstant extends Constant {}
+
 class Unless extends PredicatedBlock {}
 
 class Until extends PredicatedBlock {}
@@ -1136,6 +1245,8 @@ export class Variable extends Word {
 
     prefix(_) { return this }
 }
+
+class VoidConstant extends Constant {}
 
 class Wait extends YieldingStatement {
 
