@@ -563,8 +563,10 @@ export class Operator extends Token {
             case "??": return new Nullish(location, value);
             case "and": return new And(location, value);
             case "as": return new As(location, value);
+            case "dec": return new Dec(location, value);
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
+            case "inc": return new Inc(location, value);
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
             case "or": return new Or(location, value);
@@ -827,6 +829,14 @@ class Debug extends Keyword {
     prefix(_) { return this }
 }
 
+class Dec extends PrefixOperator {
+
+    /* This concrete class implements the `dec` operator, which compiles to the prefix
+    decrement operator (`--`). */
+
+    RBP = 14;
+}
+
 class DefaultConstant extends Constant {}
 
 class Delete extends CommandStatement {
@@ -1010,6 +1020,14 @@ class In extends InfixOperator {
     (handled by `Not`), and for-in-loops (handled by `For`). */
 
     LBP = 8;
+}
+
+class Inc extends PrefixOperator {
+
+    /* This concrete class implements the `inc` operator, which compiles to the prefix
+    increment operator (`++`). */
+
+    RBP = 14;
 }
 
 class InfinityConstant extends Constant {}
