@@ -9,6 +9,8 @@ import parse from "./parser.js"
 
 
 let source = `
+subclass Employee of Person {}
+foo = subclass of Animal {}
 foo || b
 x **= 1
 $elijah //= 45
