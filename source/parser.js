@@ -1,11 +1,13 @@
 import {
     ParserError,
     CloseBrace,
+    CloseBracket,
     Comma,
     EOF,
     Header,
     Keyword,
     OpenBrace,
+    OpenBracket,
     Operator,
     LineFeed,
     Terminator,
@@ -284,6 +286,20 @@ export default function * (source, literate=false) {
         return results;
     }
 
+    function gatherAssignee() { // api function
+
+        /* This function is used by the `For` class for gathering a single assignee, without
+        treating it as an expression (so the in-keyword is not parsed as an infix operator). */
+
+        token.expression = false;
+
+        if (on(Variable)) return gatherVariable();
+
+        if (on(OpenBracket) || on(OpenBrace)) return gather();
+
+        throw new ParserError("invalid assignee", token.location);
+    }
+
     function check(doStop, isValid, fallback=false) { // api function
 
         /* This function allows statements (like `return` and `break`) that can only
@@ -333,6 +349,7 @@ export default function * (source, literate=false) {
         gatherExpression,
         gatherCompoundExpression,
         gatherParameters,
+        gatherAssignee,
         gatherBlock
     };
 

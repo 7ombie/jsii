@@ -9,6 +9,10 @@ import parse from "./parser.js"
 
 
 let source = `
+await for x in y {}
+let x = 1, y, z = 123 + 7
+var [foo, bar] = spam.eggs
+for foo in bar.eggs continue
 subclass Employee of Person {}
 foo = subclass of Animal {}
 foo || b

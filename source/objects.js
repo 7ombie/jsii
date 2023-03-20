@@ -458,6 +458,27 @@ export class Header extends Keyword {
     same line (without a semicolon), if the preceding statement ends with a block. */
 }
 
+class Declaration extends Keyword {
+
+    /* This abstract base class implements `let` and `var` declarations. */
+
+    prefix(parser) {
+
+        // <keyword> <expression> [, <expression>]
+
+        this.push(parser.gatherExpression());
+
+        while (parser.on(Comma)) {
+
+            parser.advance();
+
+            this.push(parser.gatherExpression());
+        }
+
+        return this;
+    }
+}
+
 class PredicatedBlock extends Header {
 
     /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
@@ -897,6 +918,15 @@ class Await extends CommandStatement {
 
     static blocks = [ASYNCGENERATORBLOCK, ASYNCFUNCTIONBLOCK];
 
+    prefix(parser) {
+
+        // await <expression>
+        // await <for-loop>
+
+        if (parser.on(For)) return this.push(parser.gather());
+        else return this.push(parser.gatherExpression(this.LBP));
+    }
+
     validate(check) {
 
         /* Climb the block stack till something functional is found, then return `true` if
@@ -942,7 +972,7 @@ export class CloseBrace extends Closer {
     expressions and destructured assignees. */
 }
 
-class CloseBracket extends Closer {
+export class CloseBracket extends Closer {
 
     /* This concrete class implements the `]` delimiter, used for closing array expressions
     and destructured assignees. */
@@ -1092,7 +1122,24 @@ class Floor extends InfixOperator {
     LBP = 12;
 }
 
-class For extends Header {}
+class For extends Header {
+
+    prefix(parser) {
+
+        /* This method parses a for-in-loop. It must be careful when gathering the param, as
+        the `in` keyword is also an infix operator. */
+
+        // for <assignee> in <expression> <loopblock>
+
+        this.push(parser.gatherAssignee());
+
+        if (!parser.on(In)) throw new ParserError("incomplete for-loop", this.location);
+
+        parser.advance();
+
+        return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
+    }
+}
 
 class From extends Keyword {}
 
@@ -1260,7 +1307,7 @@ class Lesser extends InfixOperator {
     LBP = 9;
 }
 
-class Let extends Keyword {}
+class Let extends Declaration {}
 
 export class LineFeed extends Terminator {
 
@@ -1415,7 +1462,7 @@ export class OpenBrace extends Delimiter {
     validate(_) { return true }
 }
 
-class OpenBracket extends Caller {
+export class OpenBracket extends Caller {
 
     /* This concrete class implements the open-bracket delimiter, which is used for array
     expressions and bracket-notation. */
@@ -1615,7 +1662,7 @@ class Until extends PredicatedBlock {
     construct. */
 }
 
-class Var extends Keyword {}
+class Var extends Declaration {}
 
 export class Variable extends Word {
 
