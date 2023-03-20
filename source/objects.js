@@ -549,6 +549,7 @@ export class Operator extends Token {
             case "-": return new Minus(location, value);
             case "*": return new Star(location, value);
             case "/": return new Slash(location, value);
+            case "%": return new Modulo(location, value);
             case ".": return new Dot(location, value);
             case "!": return new Bang(location, value);
             case "?": return new Ask(location, value);
@@ -561,6 +562,7 @@ export class Operator extends Token {
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
             case "??": return new Nullish(location, value);
+            case "...": return new Spread(location, value);
             case "and": return new And(location, value);
             case "as": return new As(location, value);
             case "dec": return new Dec(location, value);
@@ -1103,6 +1105,11 @@ class Minus extends GeneralOperator {
     RBP = 11;
 }
 
+class Modulo extends InfixOperator {
+
+    LBP = 12;
+}
+
 class NaNConstant extends Constant {}
 
 class Not extends GeneralOperator {
@@ -1253,7 +1260,11 @@ class Raise extends InfixOperator {
     }
 }
 
-class RandomConstant extends Constant {}
+class RandomConstant extends Constant {
+
+    /* This concrete class implements the `random` constant, which always evaluates to a
+    random `Number` between `0` and `1`, compiling to a `Math.random` invocation. */
+}
 
 class Reserved extends Word {
 
@@ -1281,7 +1292,11 @@ class Return extends ReturningStatement {
     }
 }
 
-class Semicolon extends Terminator {}
+class Semicolon extends Terminator {
+
+    /* This concrete class implements the semicolon, used for terminating statements,
+    especially when on the same line. */
+}
 
 class SkinnyArrow extends ArrowOperator {
 
@@ -1291,10 +1306,21 @@ class SkinnyArrow extends ArrowOperator {
 
 class Slash extends InfixOperator {
 
+    /* This concrete class implements the slash operator (`/`), used for (sane) division. */
+
     LBP = 12;
 }
 
+class Spread extends PrefixOperator {
+
+    /* This concrete class implements the spread operator (`...`), used for destructuring. */
+
+    RBP = 2;
+}
+
 class Star extends InfixOperator {
+
+    /* This concrete class implements the star operator (`*`), used for multiplication. */
 
     LBP = 12;
 }
