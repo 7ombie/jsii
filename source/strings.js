@@ -19,9 +19,9 @@ export const terminators = semicolon + newline;
 export const delimiters = ",{[()]}";
 
 export const bases = "xbXB";
-export const binaries = "01";
-export const decimals = binaries + "23456789";
-export const hexadecimals = decimals + "ABCDEF";
+export const binary = "01";
+export const decimal = binary + "23456789";
+export const hexadecimal = decimal + "ABCDEF";
 
 export const symbolics = (
     dot + questionmark + bang + modulo + ampersand + asterisk + bar +
@@ -31,18 +31,9 @@ export const symbolics = (
 export const lowers = "abcdefghijklmnopqrstuvwxyz";
 export const uppers = lowers.toUpperCase();
 export const alphas = uppers + lowers;
-export const alphanumerics = alphas + decimals;
+export const alphanumerics = alphas + decimal;
 export const wordInitials = alphas + dollar + underscore;
-export const wordCharacters = wordInitials + decimals;
-
-// export a hash mapping numeric base names to strings containing the
-// digits that are valid for that base...
-
-export const digits = {
-    binary: binaries,
-    decimal: decimals,
-    hexadecimal: hexadecimals
-};
+export const wordCharacters = wordInitials + decimal;
 
 // export an array containing the spelling for each unique operator...
 
@@ -151,23 +142,16 @@ export const keywords = [
 
 export const reserved = [
     "abstract",
-    "access",
-    "alias",
     "at",
-    "attribute",
-    "augment",
     "auto",
     "be",
-    "borrow",
-    "bubble",
     "by",
     "call",
     "case",
     "catch",
-    "chain",
     "class",
     "co",
-    "com",
+    "construct",
     "constructor",
     "contra",
     "define",
@@ -180,18 +164,14 @@ export const reserved = [
     "get",
     "go",
     "ignore",
-    "implements",
     "inherit",
     "input",
     "interface",
     "invoke",
     "it",
-    "lend",
     "listen",
-    "local",
     "lower",
     "macro",
-    "message",
     "method",
     "module",
     "mono",
@@ -201,8 +181,6 @@ export const reserved = [
     "non",
     "omni",
     "on",
-    "once",
-    "or",
     "output",
     "own",
     "package",
@@ -220,12 +198,10 @@ export const reserved = [
     "returns",
     "require",
     "set",
-    "since",
     "short",
     "static",
     "struct",
     "subclass",
-    "submodule",
     "sym",
     "switch",
     "tele",
@@ -239,7 +215,6 @@ export const reserved = [
     "undefined",
     "uni",
     "use",
-    "version",
     "virtual",
     "with",
 ];

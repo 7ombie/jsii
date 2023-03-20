@@ -1,16 +1,17 @@
 import {
     alphas,
     bases,
+    binary,
     closeBrace,
     closeBracket,
     closeParen,
-    colon,
     comma,
     constants,
-    digits,
+    decimal,
     dollar,
     dot,
     empty,
+    hexadecimal,
     keywords,
     newline,
     openBrace,
@@ -20,7 +21,6 @@ import {
     quote,
     reserved,
     semicolon,
-    slash,
     symbolics,
     wordCharacters,
 } from "./strings.js"
@@ -162,47 +162,46 @@ export class NumberLiteral extends Terminal {
 
         super(location, lexer.read());
 
-        // establish the `base`, and account for a prefix when present...
+        // establish the base and reference the appropriate digit-set...
 
-        let base;
+        let digits;
 
         if (lexer.on("0") && lexer.at(bases)) {
 
             this.value += lexer.advance();
-            base = lexer.on("xX") ? "hexadecimal" : "binary";
+            digits = lexer.on("xX") ? hexadecimal : binary;
 
-        } else base = "decimal";
+        } else digits = decimal;
 
-        // gather as many digits as possible from the appropriate set, then reference
-        // the value (so far) and its first character (ready for validation)...
+        // gather as many digits as possible from the appropriate set...
 
-        lexer.gatherWhile(digits[base], this);
-
-        const [value, first] = [this.value, this.value[0]];
+        lexer.gatherWhile(digits, this);
 
         // validate the value so far, by requiring that it does not start with `zeroes`,
         // unless it starts with a base prefix, or it is just a single zero, as well as
         // checking that it is not `empty` (it is not just a a base prefix without any
         // significant digits)...
 
-        const zeroes = base === "decimal" && first === "0" && value !== "0";
-        const empty = base !== "decimal" && value.length === 2;
+        const [value, first] = [this.value, this.value[0]];
+        const zeroes = digits === decimal && first === "0" && value !== "0";
+        const empty = digits !== decimal && value.length === 2;
 
         if (zeroes) throw new ParserError("leading zeroes are invalid", location);
-        else if (empty) throw new ParserError(`${base} prefix without digits`, location);
+
+        if (empty) throw new ParserError("incomplete base-prefix", location);
 
         // now that the value has been validated, if a decimal point is currently `legal`,
         // given the value so far, and `present` in the source, which requires that at
-        // least one digit immediately follows the dot, gather the dot and any digits
-        // that follow it...
+        // least one decimal digit immediately follows the dot, gather the dot along
+        // with the digits that follow it...
 
-        const legal = base === "decimal" && first !== dot;
-        const present = lexer.at(dot) && lexer.peek(+2, digits.decimal);
+        const legal = digits === decimal && first !== dot;
+        const present = lexer.at(dot) && lexer.peek(+2, decimal);
 
         if (legal && present) {
 
             this.value += lexer.advance();
-            lexer.gatherWhile(digits[base], this);
+            lexer.gatherWhile(digits, this);
         }
     }
 

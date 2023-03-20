@@ -2,7 +2,7 @@ import {
     closeBrace,
     deadspace,
     delimiters,
-    digits,
+    decimal,
     dot,
     empty,
     newline,
@@ -159,7 +159,7 @@ export default function * (source, literate=false) {
 
                 yield * StringLiteral.lex(api, location);
 
-            } else if (on(digits.decimal) || on(dot) && at(digits.decimal)) {
+            } else if (on(decimal) || on(dot) && at(decimal)) {
 
                 yield * NumberLiteral.lex(api, location);
 
