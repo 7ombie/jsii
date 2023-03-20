@@ -562,6 +562,25 @@ export class Operator extends Token {
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
             case "??": return new Nullish(location, value);
+            case "&": return new AND(location, value);
+            case "|": return new OR(location, value);
+            case "||": return new XOR(location, value);
+            case "<<": return new LSHIFT(location, value);
+            case ">>": return new RSHIFT(location, value);
+            case ">>>": return new ARSHIFT(location, value);
+            case "+=": return new AssignPlus(location, value);
+            case "-=": return new AssignMinus(location, value);
+            case "*=": return new AssignStar(location, value);
+            case "/=": return new AssignSlash(location, value);
+            case "%=": return new AssignModulo(location, value);
+            case "//=": return new AssignFloor(location, value);
+            case "**=": return new AssignRaise(location, value);
+            case "&=": return new AssignAND(location, value);
+            case "|=": return new AssignOR(location, value);
+            case "||=": return new AssignXOR(location, value);
+            case "<<=": return new AssignLSHIFT(location, value);
+            case ">>=": return new AssignRSHIFT(location, value);
+            case ">>>=": return new AssignARSHIFT(location, value);
             case "...": return new Spread(location, value);
             case "and": return new And(location, value);
             case "as": return new As(location, value);
@@ -683,6 +702,13 @@ class ArrowOperator extends GeneralOperator {
     }
 }
 
+class AssignmentOperator extends InfixOperator {
+
+    /* This is the abstract base class used by all assignment operators. */
+
+    LBP = 2;
+}
+
 class AllConstant extends Constant {}
 
 class ArgumentsConstant extends Constant {}
@@ -692,6 +718,21 @@ class And extends InfixOperator {
     /* This concrete class implements the logical `and` operator, which compiles to `&&`. */
 
     LBP = 4;
+}
+
+class AND extends InfixOperator {
+
+    /* This concrete class implements the `&` infix operator (bitwise AND). */
+
+    LBP = 7;
+}
+
+class ARSHIFT extends InfixOperator {
+
+    /* This concrete class implements the `>>>` infix operator (bitwise arithmetic-
+    shift-right). */
+
+    LBP = 10;
 }
 
 class As extends InfixOperator {
@@ -710,11 +751,87 @@ class Ask extends PrefixDotOperator {
 
 class Assert extends Keyword {}
 
-class Assign extends InfixOperator {
+class Assign extends AssignmentOperator {
 
-    /* This concrete class implements the `=` assignment operator. */
+    /* This concrete class implements the assignment infix operator (`=`). */
+}
 
-    LBP = 2;
+class AssignAND extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the bitwise AND
+    operator (`&=`). */
+}
+
+class AssignARSHIFT extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the arithmetic
+    right-shift operator (`>>>=`). */
+}
+
+class AssignFloor extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the floor-division
+    operator (`//=`). */
+}
+
+class AssignPlus extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the addition
+    operator (`+=`). */
+}
+
+class AssignLSHIFT extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the left-shift
+    operator (`<<=`). */
+}
+
+class AssignMinus extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the subtraction
+    operator (`-=`). */
+}
+
+class AssignModulo extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the modulo
+    operator (`%=`). */
+}
+
+class AssignOR extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the bitwise OR
+    operator (`|=`). */
+}
+
+class AssignRaise extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the exponentiation
+    operator (`**=`). */
+}
+
+class AssignRSHIFT extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the right-shift
+    operator (`>>=`). */
+}
+
+class AssignSlash extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the sane-division
+    operator (`/=`). */
+}
+
+class AssignStar extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the multiplication
+    operator (`-=`). */
+}
+
+class AssignXOR extends AssignmentOperator {
+
+    /* This concrete class implements the inplace-assignment version of the bitwise XOR
+    operator (`||=`). */
 }
 
 class Async extends Keyword {
@@ -1106,6 +1223,13 @@ export class LineFeed extends Terminator {
     }
 }
 
+class LSHIFT extends InfixOperator {
+
+    /* This concrete class implements the `<<` infix operator (bitwise zero-shift-left). */
+
+    LBP = 10;
+}
+
 class Minus extends GeneralOperator {
 
     /* This concrete class implements the unary and binary minus operators (`-`). */
@@ -1204,6 +1328,13 @@ class Or extends InfixOperator {
     /* This concrete class implements the logical `or` operator, which compiles to `||`. */
 
     LBP = 3;
+}
+
+class OR extends InfixOperator {
+
+    /* This concrete class implements the `|` infix operator (bitwise OR). */
+
+    LBP = 5;
 }
 
 export class OpenBrace extends Delimiter {
@@ -1332,6 +1463,13 @@ class Return extends ReturningStatement {
     }
 }
 
+class RSHIFT extends InfixOperator {
+
+    /* This concrete class implements the `>>` infix operator (bitwise zero-shift-right). */
+
+    LBP = 10;
+}
+
 class Semicolon extends Terminator {
 
     /* This concrete class implements the semicolon, used for terminating statements,
@@ -1418,6 +1556,13 @@ class Wait extends YieldingStatement {
 class While extends PredicatedBlock {
 
     /* This concrete class implements the `while` keyword. */
+}
+
+class XOR extends InfixOperator {
+
+    /* This concrete class implements the `||` infix operator (XOR). */
+
+    LBP = 6;
 }
 
 class Yield extends YieldingStatement {
