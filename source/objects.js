@@ -50,7 +50,7 @@ export class ParserError extends SyntaxError {
         super();
 
         this.stack = [];
-        this.name = "JSIIError";
+        this.name = "ParserError";
         this.message = `${message} ${locator}`;
     }
 }
