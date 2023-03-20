@@ -1146,6 +1146,9 @@ class Or extends InfixOperator {
 
 export class OpenBrace extends Delimiter {
 
+    /* This concrete class implements the open-brace delimiter, which is used for blocks
+    and object expressions. */
+
     expression = true;
 
     prefix(parser) {
@@ -1162,6 +1165,9 @@ export class OpenBrace extends Delimiter {
 
 class OpenBracket extends Caller {
 
+    /* This concrete class implements the open-bracket delimiter, which is used for array
+    expressions and bracket-notation. */
+
     prefix(parser) {
 
         /* This method gathers an array expression, which will be validated later. */
@@ -1170,9 +1176,19 @@ class OpenBracket extends Caller {
 
         return this;
     }
+
+    infix(parser, left) {
+
+        /* This method gathers bracket-notation, which will be validated later. */
+
+        return this.push(left, ...parser.gatherCompoundExpression(CloseBracket));
+    }
 }
 
 class OpenParen extends Caller {
+
+    /* This concrete class implements the open-paren delimiter, which is used for group
+    expressions and invocations. */
 
     prefix(parser) {
 
@@ -1181,6 +1197,13 @@ class OpenParen extends Caller {
         this.operands = parser.gatherCompoundExpression(CloseParen);
 
         return this;
+    }
+
+    infix(parser, left) {
+
+        /* This method gathers a function call, which will be validated later. */
+
+        return this.push(left, ...parser.gatherCompoundExpression(CloseParen));
     }
 }
 

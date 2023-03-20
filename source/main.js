@@ -9,6 +9,9 @@ import parse from "./parser.js"
 
 
 let source = `
+
+foo.bar(spam, eggs + 1)
+x.y.z[a.b.c]
 (x, y, z) => x and y or z
 => foo * 2
 `;
