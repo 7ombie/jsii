@@ -1088,6 +1088,11 @@ class Let extends Keyword {}
 
 export class LineFeed extends Terminator {
 
+    /* This concrete class implements the line feed characters, used to define newlines,
+    which may or may not be significant, depending on the current LIST state, which is
+    maintained by the parser implicitly (removing line feed instances from the token
+    stream as required). */
+
     prefix(parser) {
 
         throw new ParserError("unexpected newline", this.location);
@@ -1101,16 +1106,23 @@ export class LineFeed extends Terminator {
 
 class Minus extends GeneralOperator {
 
+    /* This concrete class implements the unary and binary minus operators (`-`). */
+
     LBP = 14;
     RBP = 11;
 }
 
 class Modulo extends InfixOperator {
 
+    /* This concrete class implements the modulo infix operator (`%`). */
+
     LBP = 12;
 }
 
-class NaNConstant extends Constant {}
+class NaNConstant extends Constant {
+
+    /* This concrete class implements the `NaN` floating-point constant. */
+}
 
 class Not extends GeneralOperator {
 
@@ -1135,23 +1147,45 @@ class Not extends GeneralOperator {
 
 class NotGreater extends InfixOperator {
 
+    /* This concrete class implements our not-greater-than (less-than-or-equal-to) infix
+    operator (`<=`). */
+
     LBP = 9;
 }
 
 class NotLesser extends InfixOperator {
 
+    /* This concrete class implements our not-less-than (greater-than-or-equal-to) infix
+    operator (`>=`). */
+
     LBP = 9;
 }
 
-class NullConstant extends Constant {}
+class NullConstant extends Constant {
 
-class Nullish extends InfixOperator {
+    /* This concrete class implements the `null` constant. */
+}
 
-    LBP = 3;
-    RBP = 14;
+class Nullish extends GeneralOperator {
+
+    /* This concrete class implements the infix nullish operator (`??`). It also handles
+    pairs of clz32-operators (`?`) in a prefix position (as a disambiguation). */
+
+    LBP = 3;    // the infix precedence applies to the nullish operator
+    RBP = 14;   // the prefix precedence applies to clz32 (and equals bitwise-not)
 }
 
 class Of extends InfixOperator {
+
+    /* This concrete class implements the `of` infix operator. This operator must be pre-
+    fixed by a variable name (which it binds to unconditionally). Semantically, it compiles
+    to a function invocation (as in *f of x*), using a function defined by the language. In
+    practice however, the functions are always inlined to an expression denoted by the name
+    on the left, applied to the (arbitrary) expression on the right.
+
+    Note: The language does not include any kind of runtime or preamble, so having a way to
+    include some degree of runtime functionality is very valuable, even though the operator
+    lacks an direct analog in JavaScript (practicality over purity). */
 
     LBP = Infinity;
 
@@ -1242,6 +1276,8 @@ class Pass extends Keyword {
 
 class Plus extends GeneralOperator {
 
+    /* This concrete class implements the `+` operator (prefix and infix). */
+
     LBP = 14;
     RBP = 11;
 }
@@ -1271,12 +1307,12 @@ class Reserved extends Word {
     /* This class implements reserved words, which always make it as far as the parser,
     as they are valid property names (so only invalid in any other context). */
 
-    prefix(parser) {
+    prefix(_) {
 
         throw new ParserError(`reserved word (${this.value})`, this.location);
     }
 
-    infix(parser) {
+    infix(_) {
 
         throw new ParserError(`reserved word (${this.value})`, this.location);
     }
@@ -1284,9 +1320,10 @@ class Reserved extends Word {
 
 class Return extends ReturningStatement {
 
-    prefix(parser) {
+    /* This concrete class implements the `return` keyword, which must be followed by an
+    expression. The `exit` keyword can be used to return without a value. */
 
-        /* Gather an expression (which is required in our dialect of JavaScript). */
+    prefix(parser) {
 
         return this.push(parser.gatherExpression());
     }
@@ -1301,7 +1338,6 @@ class Semicolon extends Terminator {
 class SkinnyArrow extends ArrowOperator {
 
     /* This concrete class implements the skinny-arrow function operator (`->`). */
-
 }
 
 class Slash extends InfixOperator {
@@ -1325,26 +1361,48 @@ class Star extends InfixOperator {
     LBP = 12;
 }
 
-class SuperConstant extends Constant {}
+class SuperConstant extends Constant {
 
-class ThisConstant extends Constant {}
+    /* This concrete class implements the `super` constant. */
+}
 
-class TrueConstant extends Constant {}
+class ThisConstant extends Constant {
 
-class Unless extends PredicatedBlock {}
+    /* This concrete class implements the `this` constant. */
+}
 
-class Until extends PredicatedBlock {}
+class TrueConstant extends Constant {
+
+    /* This concrete class implements the `true` constant. */
+}
+
+class Unless extends PredicatedBlock {
+
+    /* This concrete class implements the `unless` keyword, which compiles to an if-not
+    construct (without any else-clauses). */
+}
+
+class Until extends PredicatedBlock {
+
+    /* This concrete class implements the `until` keyword, which compiles to a while-not
+    construct. */
+}
 
 class Var extends Keyword {}
 
 export class Variable extends Word {
+
+    /* This concrete class implements variable names, as a kind of word. */
 
     expression = true;
 
     prefix(_) { return this }
 }
 
-class VoidConstant extends Constant {}
+class VoidConstant extends Constant {
+
+    /* This concrete class implements the `void` constant, which compiles to `undefined`. */
+}
 
 class Wait extends YieldingStatement {
 
@@ -1354,9 +1412,15 @@ class Wait extends YieldingStatement {
     prefix(_) { return this }
 }
 
-class While extends PredicatedBlock {}
+class While extends PredicatedBlock {
+
+    /* This concrete class implements the `while` keyword. */
+}
 
 class Yield extends YieldingStatement {
+
+    /* This concrete class implements the `yield` keyword, which can begin a formal statement,
+    while also being a valid prefix operator (potentially, at the same time). */
 
     LBP = 2;
     expression = true;
