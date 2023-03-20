@@ -659,6 +659,24 @@ class GeneralOperator extends Operator {
     }
 }
 
+class ArrowOperator extends GeneralOperator {
+
+    LBP = 2;
+    RBP = 2;
+
+    static errorMessage = "arrow function parameters must be parenthesized";
+
+    infix(parser, left) {
+
+        super.infix(parser, left);
+
+        const [ params, expression ] = this.operands;
+
+        if (params instanceof OpenParen) return this;
+        else throw new ParserError(ArrowOperator.errorMessage, params.location);
+    }
+}
+
 class AllConstant extends Constant {}
 
 class ArgumentsConstant extends Constant {}
@@ -885,12 +903,9 @@ class Export extends Keyword {
 
 class FalseConstant extends Constant {}
 
-class FatArrow extends GeneralOperator {
+class FatArrow extends ArrowOperator {
 
-    /* This concrete class implements the fat arrow function operator (`=>`). */
-
-    LBP = 2;
-    RBP = 2;
+    /* This concrete class implements the fat-arrow function operator (`=>`). */
 }
 
 class Floor extends InfixOperator {
@@ -1211,10 +1226,10 @@ class Return extends ReturningStatement {
 
 class Semicolon extends Terminator {}
 
-class SkinnyArrow extends GeneralOperator {
+class SkinnyArrow extends ArrowOperator {
 
-    LBP = 2;
-    RBP = 2;
+    /* This concrete class implements the skinny-arrow function operator (`->`). */
+
 }
 
 class Slash extends InfixOperator {
