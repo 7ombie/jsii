@@ -397,8 +397,6 @@ class BranchStatement extends Keyword {
         /* If the parser is on a valid label, this method gathers it, continuing without
         operands otherwise. */
 
-        // <keyword> [<variable>]
-
         if (parser.on(Variable)) this.push(parser.gatherVariable());
 
         return this;
@@ -420,8 +418,6 @@ class CommandStatement extends Keyword {
     expression (`await`, `delete` etc). */
 
     prefix(parser) {
-
-        // <keyword> <expression>
 
         return this.push(parser.gatherExpression());
     }
@@ -459,8 +455,6 @@ class Declaration extends Keyword {
     /* This abstract base class implements `let` and `var` declarations. */
 
     prefix(parser) {
-
-        // <keyword> <expression> [, <expression>]
 
         this.push(parser.gatherExpression());
 
@@ -547,8 +541,6 @@ class Functional extends Header {
         /* This helper method is used by function and generator parsing methods to gather
         their optional names, optional parameters and required bodies. */
 
-        // [<variable>] [of <params>] <body>
-
         this.push(parser.on(Variable) ? parser.gatherVariable() : null);
 
         if (parser.on(Of)) {
@@ -564,8 +556,6 @@ class Functional extends Header {
 
         /* This helper method is used by various functional parsing methods to gather their
         optional parameters and required bodies. */
-
-        // [<params>] <body>
 
         return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
     }
@@ -951,8 +941,7 @@ class Await extends CommandStatement {
 
     prefix(parser) {
 
-        // await <expression>
-        // await <for-loop>
+        /* This method gathers await-expressions and await-for-statements. */
 
         if (parser.on(For)) return this.push(parser.gather());
         else return this.push(parser.gatherExpression(this.LBP));
@@ -989,7 +978,7 @@ class Class extends Header {
 
     prefix(parser) {
 
-        // class [<variable>] <classblock>
+        /* Gather a class, with its optional name and required body. */
 
         if (parser.on(OpenBrace)) return this.push(parser.gatherBlock(CLASSBLOCK));
 
@@ -1074,8 +1063,6 @@ class Do extends Header {
         argument to the `infix` method of the next token. Otherwise, gather a control
         flow block (without becoming a valid expression). */
 
-        // do [async] <lambda|function|generator>
-
         if (parser.on(Async) || parser.on(Functional)) this.expression = true;
         else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
@@ -1095,8 +1082,8 @@ class Else extends PredicatedBlock {
 
     prefix(parser) {
 
-        // else <simpleblock>
-        // else if <expression> <simpleblock>
+        /* This method gathers an else-clause or an else-if clause, with the latter having
+        a predicate before its block. */
 
         if (parser.on(If)) return this.push(parser.gather());
         else return this.push(parser.gatherBlock(SIMPLEBLOCK));
@@ -1122,9 +1109,6 @@ class Export extends Keyword {
     /* This conrete class implements the export-statement, with its various grammars. */
 
     prefix(parser) {
-
-        // export <expression> [from <expression>]
-        // export default <expression>
 
         if (parser.on(DefaultConstant)) {
 
@@ -1160,8 +1144,6 @@ class For extends Header {
         /* This method parses a for-in-loop. It must be careful when gathering the param, as
         the `in` keyword is also an infix operator. */
 
-        // for <assignee> in <expression> <loopblock>
-
         this.push(parser.gatherAssignee());
 
         if (!parser.on(In)) throw new ParserError("incomplete for-loop", this.location);
@@ -1177,8 +1159,6 @@ class From extends Keyword {}
 class FullFunction extends Functional {
 
     /* This is the concrete class for function statements, which are also expressions. */
-
-    // [do] [async] function [<variable>] [of <params>] <functionblock>
 
     prefix(parser) {
 
@@ -1198,8 +1178,6 @@ class FullFunction extends Functional {
 class Generator extends Functional {
 
     /* This is the concrete class for generator statements, which are also expressions. */
-
-    // [do] [async] generator [<variable>] [of <params>] <generatorblock>
 
     prefix(parser) {
 
@@ -1242,10 +1220,6 @@ class Import extends Keyword {
 
     prefix(parser) {
 
-        // import <expression> [assert <expression>]
-        // import <expression> from <expression> [assert <expression>]
-        // import <expression>, <expression> from <expression> [assert <expression>]
-
         this.push(parser.gatherExpression());
 
         if (parser.on(Comma)) this.push(parser.advance(true), parser.gatherExpression());
@@ -1287,18 +1261,13 @@ class Is extends InfixOperator {
 
     infix(parser, left) {
 
-        // <expression> is <expression>
-        // <expression> is not <expression>
-        // <expression> is of <expression>
-        // <expression> is not of <expression>
-
         this.push(left);
 
-        if (parser.on(Of)) { // `is of`...
+        if (parser.on(Of)) {
 
             this.push(parser.advance(true));
 
-        } else if (parser.on(Not)) { // `is not` or `is not of`...
+        } else if (parser.on(Not)) {
 
             this.push(parser.advance(true));
 
@@ -1312,8 +1281,6 @@ class Is extends InfixOperator {
 class Lambda extends Functional {
 
     /* This is the concrete class for lambda statements, which are also expressions. */
-
-    // [do] [async] lambda [<params>] <functionblock>
 
     prefix(parser) {
 
@@ -1402,9 +1369,6 @@ class Not extends GeneralOperator {
 
     infix(parser, left) {
 
-        // not <expression>
-        // <expression> not in <expression>
-
         if (parser.on(In)) {
 
             return this.push(left, parser.advance(true), parser.gatherExpression(this.LBP));
@@ -1459,8 +1423,6 @@ class Of extends InfixOperator {
     LBP = Infinity;
 
     infix(parser, left) {
-
-        // <variable> of <expression>
 
         if (left instanceof Variable) return this.push(left, parser.gatherExpression(8));
         else throw new ParserError("unexpected of-operator", this.location);
@@ -1581,8 +1543,6 @@ class Raise extends InfixOperator {
 
     infix(parser, left) {
 
-        // <expression> ** <expression>
-
         return this.push(left, parser.gatherExpression(this.LBP - 1));
     }
 }
@@ -1615,8 +1575,6 @@ class Return extends ReturningStatement {
     expression. The `exit` keyword can be used to return without a value. */
 
     prefix(parser) {
-
-        // return <expression>
 
         return this.push(parser.gatherExpression());
     }
@@ -1674,8 +1632,6 @@ class Subclass extends Header {
     expression = true;
 
     prefix(parser) {
-
-        // subclass [<variable>] of <expression> <classbody>
 
         if (!parser.on(Of)) this.push(parser.gatherVariable());
 
@@ -1774,8 +1730,6 @@ class Yield extends YieldingStatement {
         /* Gather an expression (which is required in our dialect of JavaScript), unless the
         parser is on `from`. In which case, gather the keyword, *then* gather the (required)
         expression, collecting both as operands. */
-
-        // yield [from] <expression>
 
         if (parser.on(From)) return this.push(parser.advance(true), parser.gatherExpression());
         else return this.push(parser.gatherExpression());
