@@ -108,8 +108,8 @@ export class Token {
 
     validate(_) {
 
-        /* This method allows every token to be validated, just returning `false` (not valid),
-        unless the token defines (or inherits) something else. */
+        /* This method allow every token to be validated, always failing, unless this method
+        is overridden. */
 
         return false;
     }
@@ -369,10 +369,13 @@ export class Keyword extends Word {
             case "generator": return new Generator(location, value);
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
-            case "lambda": return new LambdaStatement(location, value);
+            case "lambda": return new Lambda(location, value);
             case "let": return new Let(location, value);
+            case "local": return new Local(location, value);
             case "pass": return new Pass(location, value);
+            case "private": return new Private(location, value);
             case "return": return new Return(location, value);
+            case "static": return new Static(location, value);
             case "subclass": return new Subclass(location, value);
             case "unless": return new Unless(location, value);
             case "until": return new Until(location, value);
@@ -451,13 +454,6 @@ class YieldingStatement extends Keyword {
     }
 }
 
-export class Header extends Keyword {
-
-    /* This is the abstract base class for statements that have a block. It is used by the
-    parser to implement LIST, which permits a statement to follow another statement on the
-    same line (without a semicolon), if the preceding statement ends with a block. */
-}
-
 class Declaration extends Keyword {
 
     /* This abstract base class implements `let` and `var` declarations. */
@@ -479,10 +475,45 @@ class Declaration extends Keyword {
     }
 }
 
+class ClassDeclaration extends Declaration {
+
+    /* This is the abstract base class for static and public declarations. */
+
+    prefix(parser) {
+
+        /* This method will (correctly) gather any kind of function when present, and will
+        parse a regular declaration otherwise. */
+
+        if (parser.on(Functional) || parser.on(Async)) return this.push(parser.gather());
+        else return super.prefix(parser);
+    }
+
+    validate(check) {
+
+        /* This method checks that the statement is directly contained by the body of a
+        class. */
+
+        return check($ => true, $ => $ === CLASSBLOCK);
+    }
+}
+
+export class Header extends Keyword {
+
+    /* This is the abstract base class for statements that have a block. It is used by the
+    parser to implement LIST, which permits a statement to follow another statement on the
+    same line (without a semicolon), if the preceding statement ends with a braced block
+    (not just an expression wrapped in braces). */
+}
+
 class PredicatedBlock extends Header {
 
     /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
     `unless` and `until`). */
+
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression(), parser.gatherBlock(this.constructor.block));
+    }
 }
 
 class Functional extends Header {
@@ -949,7 +980,7 @@ class Break extends BranchStatement {
     /* This concrete class implements the `break` statement, just like JavaScript. */
 }
 
-class Class extends Keyword {
+class Class extends Header {
 
     /* This concrete class implements the `class` statement, which cannot extend anything,
     as we use `subclass` for that. */
@@ -1174,12 +1205,16 @@ class Generator extends Functional {
 
         /* This method parses generators without any prefix. */
 
+        if (parser.on(Method)) this.push(parser.advance(true));
+
         return this.gatherFullHeader(parser, GENERATORBLOCK);
     }
 
     infix(parser, prefix) {
 
         /* This method allows generators to be prefixed by `do`, `async` or `do async`. */
+
+        if (parser.on(Method)) this.push(parser.advance(true));
 
         return this.handlePrefix(parser, prefix, GENERATORBLOCK, ASYNCGENERATORBLOCK, true);
     }
@@ -1198,12 +1233,7 @@ class If extends PredicatedBlock {
 
     /* This concrete class implements if-statements. */
 
-    prefix(parser) {
-
-        // if <expression> <simpleblock>
-
-        return this.push(parser.gatherExpression(), parser.gatherBlock(SIMPLEBLOCK));
-    }
+    static block = SIMPLEBLOCK;
 }
 
 class Import extends Keyword {
@@ -1279,7 +1309,7 @@ class Is extends InfixOperator {
     }
 }
 
-class LambdaStatement extends Functional {
+class Lambda extends Functional {
 
     /* This is the concrete class for lambda statements, which are also expressions. */
 
@@ -1307,7 +1337,10 @@ class Lesser extends InfixOperator {
     LBP = 9;
 }
 
-class Let extends Declaration {}
+class Let extends Declaration {
+
+    /* This concrete class implements let-statements, which compile to const-statements. */
+}
 
 export class LineFeed extends Terminator {
 
@@ -1325,6 +1358,11 @@ export class LineFeed extends Terminator {
 
         throw new ParserError("unexpected newline", this.location);
     }
+}
+
+class Local extends ClassDeclaration {
+
+    /* This contrete class implements local-statements, used inside classes. */
 }
 
 class LSHIFT extends InfixOperator {
@@ -1522,6 +1560,17 @@ class Plus extends GeneralOperator {
     RBP = 11;
 }
 
+class Private extends ClassDeclaration {
+
+    /* This contrete class implements private-statements, used inside classes. */
+
+    prefix(parser) {
+
+        if (parser.on(Static) || parser.on(Local)) return this.push(parser.gather());
+        else throw new ParserError("incomplete private-declaration", this.location);
+    }
+}
+
 class Raise extends InfixOperator {
 
     /* Pratt parsers deduct `1` from the left binding power (when passing it along to
@@ -1612,7 +1661,12 @@ class Star extends InfixOperator {
     LBP = 12;
 }
 
-class Subclass extends Keyword {
+class Static extends ClassDeclaration {
+
+    /* This contrete class implements static-statements, used inside classes. */
+}
+
+class Subclass extends Header {
 
     /* This concrete class implements the `subclass` statement, which is used to extend one
     class with another (like `extends` in JavaScript). */
@@ -1654,15 +1708,22 @@ class Unless extends PredicatedBlock {
 
     /* This concrete class implements the `unless` keyword, which compiles to an if-not
     construct (without any else-clauses). */
+
+    static block = SIMPLEBLOCK;
 }
 
 class Until extends PredicatedBlock {
 
     /* This concrete class implements the `until` keyword, which compiles to a while-not
     construct. */
+
+    static block = LOOPBLOCK;
 }
 
-class Var extends Declaration {}
+class Var extends Declaration {
+
+    /* This concrete class implements var-statements, which compile to let-statements. */
+}
 
 export class Variable extends Word {
 
@@ -1689,6 +1750,8 @@ class Wait extends YieldingStatement {
 class While extends PredicatedBlock {
 
     /* This concrete class implements the `while` keyword. */
+
+    static block = LOOPBLOCK;
 }
 
 class XOR extends InfixOperator {
