@@ -9,6 +9,8 @@ import parse from "./parser.js"
 
 
 let source = `
+new foo(x, y, z)
+new foo
 1 + 2 when x * y else spam + eggs
 lambda x, y, args... { return x + y / args }
 `;

@@ -639,6 +639,7 @@ export class Operator extends Token {
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
             case "inc": return new Inc(location, value);
+            case "new": return new New(location, value);
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
             case "or": return new Or(location, value);
@@ -1371,6 +1372,14 @@ class NaNConstant extends Constant {
     /* This concrete class implements the `NaN` floating-point constant. */
 }
 
+class New extends PrefixOperator {
+
+    /* This concrete class implements the new-operator, which copies JavaScript, including
+    the way `new` applies to invocations as a special-case of expression. */
+
+    RBP = 17;
+}
+
 class Not extends GeneralOperator {
 
     /* This concrete class implements the `not` prefix operator, and the `not in` infix
@@ -1492,7 +1501,7 @@ export class OpenBracket extends Caller {
 
         /* This method gathers bracket-notation, which will be validated later. */
 
-        return this.push(left, ...parser.gatherCompoundExpression(CloseBracket));
+        return this.push(left, this, ...parser.gatherCompoundExpression(CloseBracket));
     }
 }
 
@@ -1514,7 +1523,7 @@ class OpenParen extends Caller {
 
         /* This method gathers a function call, which will be validated later. */
 
-        return this.push(left, ...parser.gatherCompoundExpression(CloseParen));
+        return this.push(left, this, ...parser.gatherCompoundExpression(CloseParen));
     }
 }
 
