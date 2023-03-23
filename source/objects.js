@@ -642,6 +642,7 @@ export class Operator extends Token {
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
             case "or": return new Or(location, value);
+            case "when": return new When(location, value);
         }
     }
 
@@ -737,27 +738,38 @@ class GeneralOperator extends Operator {
 
 class ArrowOperator extends GeneralOperator {
 
-    LBP = 2;
-    RBP = 2;
+    /* This is the abstract base class for the arrow operators. Both operators support prefix
+    and infix grammars, which are right-associative. */
 
-    static errorMessage = "arrow function parameters must be parenthesized";
+    LBP = 2;
+    RBP = 1;
 
     infix(parser, left) {
 
-        super.infix(parser, left);
+        /* This method overrides the inherited version to ensure that the `left` parameter
+        (when present) is wrapped in parens, and that the operator is right-associative. */
 
-        const [ params, expression ] = this.operands;
+        const message = "arrow function parameters must be parenthesized";
 
-        if (params instanceof OpenParen) return this;
-        else throw new ParserError(ArrowOperator.errorMessage, params.location);
+        if (left instanceof OpenParen) {
+
+            return this.push(left, parser.gatherExpression(this.RBP));
+
+        } else throw new ParserError(message, left.location);
     }
 }
 
 class AssignmentOperator extends InfixOperator {
 
-    /* This is the abstract base class used by all assignment operators. */
+    /* This is the abstract base class used by all assignment operators, which are right-
+    associative. */
 
     LBP = 2;
+
+    infix(parser, left) {
+
+        return this.push(left, parser.gatherExpression(this.LBP - 1));
+    }
 }
 
 /// THE CONCRETE TOKEN CLASSES...
@@ -1518,8 +1530,8 @@ class Plus extends GeneralOperator {
 
     /* This concrete class implements the `+` operator (prefix and infix). */
 
-    LBP = 14;
-    RBP = 11;
+    LBP = 11;   // this is the precedence of the infix operator
+    RBP = 14;   // this is the precedence of the prefix operator
 }
 
 class Private extends ClassDeclaration {
@@ -1535,9 +1547,8 @@ class Private extends ClassDeclaration {
 
 class Raise extends InfixOperator {
 
-    /* Pratt parsers deduct `1` from the left binding power (when passing it along to
-    recursive invocations) to implement operators with right-associativity. In our case,
-    this rule only applies to the exponentiation operator, implemented here. */
+    /* This concrete class implements the exponentiation infix operator, which is right-
+    associative. */
 
     LBP = 13;
 
@@ -1605,11 +1616,16 @@ class Slash extends InfixOperator {
     LBP = 12;
 }
 
-class Spread extends PrefixOperator {
+class Spread extends Operator {
 
-    /* This concrete class implements the spread operator (`...`), used for destructuring. */
+    /* This concrete class implements the spread suffix-operator (`...`). */
 
-    RBP = 2;
+    LBP = 2;
+
+    infix(_, left) {
+
+        return this.push(left);
+    }
 }
 
 class Star extends InfixOperator {
@@ -1701,6 +1717,24 @@ class Wait extends YieldingStatement {
     a generator without a value (instead of writing `yield void`). */
 
     prefix(_) { return this }
+}
+
+class When extends Operator {
+
+    /* This concrete class implements the when-else ternary operator (`x when y else z`),
+    which is right-associative. */
+
+    LBP = 2;
+
+    infix(parser, left) {
+
+        this.push(left, parser.gatherExpression());
+
+        if (parser.on(Else)) parser.advance();
+        else throw new ParserError("incomplete when-operation", this.location);
+
+        return this.push(parser.gatherExpression(this.LBP - 1));
+    }
 }
 
 class While extends PredicatedBlock {

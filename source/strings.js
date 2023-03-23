@@ -73,6 +73,7 @@ export const operators = [
     "not",
     "of",
     "or",
+    "when",
     "+=",
     "-=",
     "*=",

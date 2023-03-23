@@ -165,12 +165,12 @@ export default function * (source, literate=false) {
         else throw new ParserError("required a variable", advance().location);
     }
 
-    function gatherExpression() { // api function
+    function gatherExpression(RBP) { // api function
 
         /* This function wraps the Pratt function to ensure that the result is an expression
         (not a formal statement), complaining otherwise. */
 
-        const candidate = gather();
+        const candidate = gather(RBP);
 
         if (candidate.expression) return candidate;
         else throw new ParserError("required an expression", candidate.location);
