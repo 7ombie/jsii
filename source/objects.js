@@ -636,6 +636,8 @@ export class Operator extends Token {
             case "and": return new And(location, value);
             case "as": return new As(location, value);
             case "dec": return new Dec(location, value);
+            case "freeze": return new Freeze(location, value);
+            case "frozen": return new Frozen(location, value);
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
             case "inc": return new Inc(location, value);
@@ -643,6 +645,10 @@ export class Operator extends Token {
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
             case "or": return new Or(location, value);
+            case "pack": return new Pack(location, value);
+            case "packed": return new Packed(location, value);
+            case "seal": return new Seal(location, value);
+            case "sealed": return new Sealed(location, value);
             case "when": return new When(location, value);
         }
     }
@@ -1167,7 +1173,21 @@ class For extends Header {
     }
 }
 
+class Freeze extends PrefixOperator {
+
+    /* This concrete class implements the `freeze` operator, which compiles to an invocation
+    of `Object.freeze`. */
+
+    RBP = 14;
+}
+
 class From extends Keyword {}
+
+class Frozen extends Operator {
+
+    /* This concrete class implements the `frozen` operator, used by `Is` to implement the
+    `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
+}
 
 class FullFunction extends Functional {
 
@@ -1267,24 +1287,28 @@ class InfinityConstant extends Constant {
 
 class Is extends InfixOperator {
 
-    /* This concrete class implements the `is`, `is not`, `is of` and `is not of` operators,
-    which map to `Object.is` in the first two cases, and `instanceof` in the second two. */
+    /* This concrete class implements the `is`, `is not`, `is of`, `is not of`, `is packed`,
+    `is sealed` and `is frozen` operators. */
 
     LBP = 8;
 
     infix(parser, left) {
 
+        pushCurrent = () => this.push(parser.advance(true));
+
         this.push(left);
+
+        if (parser.on(Packed) || parser.on(Sealed) || parser.on(Frozen)) return pushCurrent();
 
         if (parser.on(Of)) {
 
-            this.push(parser.advance(true));
+            pushCurrent();
 
         } else if (parser.on(Not)) {
 
-            this.push(parser.advance(true));
+            pushCurrent();
 
-            if (parser.on(Of)) this.push(parser.advance(true));
+            if (parser.on(Of)) pushCurrent();
         }
 
         return this.push(parser.gatherExpression(this.LBP));
@@ -1527,6 +1551,20 @@ class OpenParen extends Caller {
     }
 }
 
+class Pack extends PrefixOperator {
+
+    /* This concrete class implements the `pack` operator, which compiles to an invocation
+    of `Object.preventExtensions`. */
+
+    RBP = 14;
+}
+
+class Packed extends Operator {
+
+    /* This concrete class implements the `packed` operator, used by `Is` to implement the
+    `is packed` suffix operation, which compiles to `!Object.isExtensible(R)`. */
+}
+
 class Pass extends Keyword {
 
     /* This concrete class implements the `pass` keyword, used to create an explicitly
@@ -1605,6 +1643,20 @@ class RSHIFT extends InfixOperator {
     /* This concrete class implements the `>>` infix operator (bitwise zero-shift-right). */
 
     LBP = 10;
+}
+
+class Seal extends PrefixOperator {
+
+    /* This concrete class implements the `seal` operator, which compiles to an invocation
+    of `Object.seal`. */
+
+    RBP = 14;
+}
+
+class Sealed extends Operator {
+
+    /* This concrete class implements the `sealed` operator, used by `Is` to implement the
+    `is sealed` suffix operation, which compiles to an `Object.isSealed` invocation. */
 }
 
 class Semicolon extends Terminator {

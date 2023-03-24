@@ -9,9 +9,12 @@ import parse from "./parser.js"
 
 
 let source = `
-new foo(x, y, z)
-new foo
-1 + 2 when x * y else spam + eggs
+o is packed
+o is sealed
+o is frozen
+pack new foo(x, y, z)
+seal new foo
+freeze 1 + 2 when x * y else spam + eggs
 lambda x, y, args... { return x + y / args }
 `;
 
