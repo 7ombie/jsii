@@ -1,7 +1,6 @@
 import {
     ParserError,
     CloseBrace,
-    CloseBracket,
     Comma,
     EOF,
     Header,

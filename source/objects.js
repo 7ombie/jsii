@@ -359,6 +359,7 @@ export class Keyword extends Word {
             case "continue": return new Continue(location, value);
             case "debug": return new Debug(location, value);
             case "delete": return new Delete(location, value);
+            case "dev": return new Dev(location, value);
             case "do": return new Do(location, value);
             case "else": return new Else(location, value);
             case "exit": return new Exit(location, value);
@@ -1067,6 +1068,20 @@ class Delete extends CommandStatement {
     expression = true;
 }
 
+class Dev extends Keyword {
+
+    /* This concrete class implements the `dev` qualifier, which can prefix any statement,
+    formal or informal, ensuring it will only be included in the compiled output when the
+    parser is in `devmode`. */
+
+    prefix(parser) {
+
+        /* This method gathers anything valid as a single operand. */
+
+        return this.push(parser.gather());
+    }
+}
+
 class Do extends Header {
 
     /* This concrete class implements the `do` keyword, which prefixes blocks to create
@@ -1294,7 +1309,7 @@ class Is extends InfixOperator {
 
     infix(parser, left) {
 
-        pushCurrent = () => this.push(parser.advance(true));
+        const pushCurrent = () => this.push(parser.advance(true));
 
         this.push(left);
 

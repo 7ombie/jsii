@@ -9,7 +9,9 @@ import parse from "./parser.js"
 
 
 let source = `
-o is packed
+dev debug
+dev if x { Y }
+dev 1 + 2 * 3 + 3
 o is sealed
 o is frozen
 pack new foo(x, y, z)
