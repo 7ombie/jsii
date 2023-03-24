@@ -484,7 +484,7 @@ class ClassDeclaration extends Declaration {
         /* This method will (correctly) gather any kind of function when present, and will
         parse a regular declaration otherwise. */
 
-        if (parser.on(Functional) || parser.on(Async)) return this.push(parser.gather());
+        if (parser.on(Functional, Async)) return this.push(parser.gather());
         else return super.prefix(parser);
     }
 
@@ -1127,7 +1127,7 @@ class Do extends Header {
         argument to the `infix` method of the next token. Otherwise, gather a control
         flow block (without becoming a valid expression). */
 
-        if (parser.on(Async) || parser.on(Functional)) this.expression = true;
+        if (parser.on(Async, Functional)) this.expression = true;
         else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
@@ -1357,7 +1357,7 @@ class Is extends InfixOperator {
 
         this.push(left);
 
-        if (parser.on(Packed) || parser.on(Sealed) || parser.on(Frozen)) return pushCurrent();
+        if (parser.on(Packed, Sealed, Frozen)) return pushCurrent();
 
         if (parser.on(Of)) {
 
@@ -1393,11 +1393,23 @@ class Lambda extends Functional {
     }
 }
 
-class Lesser extends InfixOperator {
+class Lesser extends GeneralOperator {
 
-    /* This is the concrete class for the less-than-operator (`<`). */
+    /* This is the concrete class for the less-than-operator (`<`). It also implements labels,
+    which use `<name>` (and can only apply to loops in our dialect)*/
 
     LBP = 9;
+
+    prefix(parser) {
+
+        this.push(parser.gatherVariable());
+
+        if (parser.on(Greater)) this.push(parser.advance(true));
+        else throw new ParserError("incomplete label", this.location);
+
+        if (parser.on(While, Until, For)) return this.push(parser.gather());
+        else throw new ParserError("label without loop", this.location);
+    }
 }
 
 class Let extends Declaration {
@@ -1646,7 +1658,7 @@ class Private extends ClassDeclaration {
 
     prefix(parser) {
 
-        if (parser.on(Static) || parser.on(Local)) return this.push(parser.gather());
+        if (parser.on(Static, Local)) return this.push(parser.gather());
         else throw new ParserError("incomplete private-declaration", this.location);
     }
 }

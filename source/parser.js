@@ -352,7 +352,7 @@ export default function * (source, literate=false) {
         gatherBlock
     };
 
-    const blockTypeStack = [3, -1];
+    const blockTypeStack = [];
     const listStateStack = [true];
     const tokens = lex(source, literate);
 

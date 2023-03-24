@@ -9,10 +9,10 @@ import parse from "./parser.js"
 
 
 let source = `
+<spam> while x while y { 1 }
 function (foo) of x, y { return 1 }
 function foo of x, y { return 1 }
 function of x, y { return 1 }
-
 throw new Foo()
 dev if x { Y }
 dev 1 + 2 * 3 + 3
