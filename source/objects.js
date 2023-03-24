@@ -378,6 +378,7 @@ export class Keyword extends Word {
             case "return": return new Return(location, value);
             case "static": return new Static(location, value);
             case "subclass": return new Subclass(location, value);
+            case "throw": return new Throw(location, value);
             case "unless": return new Unless(location, value);
             case "until": return new Until(location, value);
             case "var": return new Var(location, value);
@@ -1745,6 +1746,11 @@ class SuperConstant extends Constant {
 class ThisConstant extends Constant {
 
     /* This concrete class implements the `this` constant. */
+}
+
+class Throw extends CommandStatement {
+
+    /* This concrete class implements the `throw` statement. */
 }
 
 class TrueConstant extends Constant {

@@ -144,6 +144,7 @@ export const keywords = [
     "return",
     "static",
     "subclass",
+    "throw",
     "unless",
     "until",
     "var",

@@ -9,7 +9,7 @@ import parse from "./parser.js"
 
 
 let source = `
-dev debug
+throw new Foo()
 dev if x { Y }
 dev 1 + 2 * 3 + 3
 o is sealed
