@@ -545,9 +545,23 @@ class Functional extends Header {
     gatherFullHeader(parser, blockType) {
 
         /* This helper method is used by function and generator parsing methods to gather
-        their optional names, optional parameters and required bodies. */
+        their optional names, optional parameters and required bodies (and supports
+        computed properties, using parenthesis (instead of brackets)). */
 
-        this.push(parser.on(Variable) ? parser.gatherVariable() : null);
+        // first, handle the name (which may be computed), if present...
+
+        if (parser.on(Variable)) {
+
+            this.push(parser.gatherVariable());
+
+        } else if (parser.on(OpenParen)) {
+
+            parser.advance();
+            this.push(parser.gatherCompoundExpression(CloseParen));
+
+        } else this.push(null);
+
+        // now, handle the optional parameters and required function body...
 
         if (parser.on(Of)) {
 
