@@ -427,6 +427,8 @@ class CommandStatement extends Keyword {
 
 class ReturningStatement extends Keyword {
 
+    /* This abstract base class is used by `Return` and `Exit`. */
+
     validate(check) {
 
         /* Climb the block stack till something functional is found, then return `true`
@@ -437,6 +439,8 @@ class ReturningStatement extends Keyword {
 }
 
 class YieldingStatement extends Keyword {
+
+    /* This abstract base class is used by `Yield` and `Wait`. */
 
     LBP = 2
     expression = true;
@@ -783,9 +787,16 @@ class AssignmentOperator extends InfixOperator {
 
 /// THE CONCRETE TOKEN CLASSES...
 
-class AllConstant extends Constant {}
+class AllConstant extends Constant {
 
-class ArgumentsConstant extends Constant {}
+    /* This concrete class implements the `all` constant, used instead of an asterisk
+    in import and export statements. */
+}
+
+class ArgumentsConstant extends Constant {
+
+    /* This concrete class implements the `arguments` constant. */
+}
 
 class And extends InfixOperator {
 
@@ -1059,7 +1070,11 @@ class Dec extends PrefixOperator {
     RBP = 14;
 }
 
-class DefaultConstant extends Constant {}
+class DefaultConstant extends Constant {
+
+    /* This concrete class implements the `default` constant, used by import and export
+    statements. */
+}
 
 class Delete extends CommandStatement {
 
@@ -1158,7 +1173,10 @@ class Export extends Keyword {
     }
 }
 
-class FalseConstant extends Constant {}
+class FalseConstant extends Constant {
+
+    /* This concrete class implements the `false` constant. */
+}
 
 class FatArrow extends ArrowOperator {
 
@@ -1174,10 +1192,13 @@ class Floor extends InfixOperator {
 
 class For extends Header {
 
+    /* This concrete class implements for-in loops (old school for-loops have not been
+    designed yet, but will be added in some form. */
+
     prefix(parser) {
 
-        /* This method parses a for-in-loop. It must be careful when gathering the param, as
-        the `in` keyword is also an infix operator. */
+        /* This method parses a for-in-loop. It must be careful when gathering the param,
+        as the `in` keyword is also an infix operator. */
 
         this.push(parser.gatherAssignee());
 
@@ -1197,7 +1218,11 @@ class Freeze extends PrefixOperator {
     RBP = 14;
 }
 
-class From extends Keyword {}
+class From extends Keyword {
+
+    /* This concrete class implements the `from` keyword, used by import and export
+    statements. */
+}
 
 class Frozen extends Operator {
 
@@ -1247,7 +1272,11 @@ class Generator extends Functional {
     }
 }
 
-class GlobalConstant extends Constant {}
+class GlobalConstant extends Constant {
+
+    /* This concrete class implements the `global` constant, which compiles to
+    `globalThis`. */
+}
 
 class Greater extends InfixOperator {
 
