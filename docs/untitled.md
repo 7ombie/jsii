@@ -1,94 +1,118 @@
-# JSII: JavaScript with Hindsight
+JSII: JavaScript with Hindsight
+===============================
 
-JSII is short for JavaScript 2, and is normally pronounced *Jessie* (like Toy Story 2).
+JSII (pronounced *Jessie*) is short for JavaScript 2. It is a temporary name, while I come up
+with a better one.
 
-JSII provides a nice, new JavaScript syntax that compiles to regular, old JavaScript syntax,
-minus the warts and all.
+JSII is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
+any type annotations). JSII compiles to regular, old JavaScript syntax.
 
-## Statement Grammar
+Statement Grammar
+-----------------
 
-JSII has a simple, statement grammar with curly braces.
+JSII has a simple, statement grammar with curly braces. Newlines are significant (generally
+terminating the current statement). Indentation is insignificant.
 
-All *formal statements* start with a *keyword*, while *informal statements* (expression
-statements) never start with a keyword (they are just expressions). This rule has a
-couple of implications:
+### Significant Whitespace
 
-1) Block-statements start with a keyword (they use `do { ... }`).
-2) Empty statements also start (and end) with a keyword (they use `pass`).
+JSII replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
+(LIST). The logic is explained later, but it is basically the same as Python: Newlines outside
+of parens, brackets or braces (that are part of the current statement) terminate the statement.
 
-Note: JSII does not have (and will never have) a do-while statement.
+Note: JSII does not provide a continuation symbol for explicitly continuing logical lines (like
+the `\` symbol in Python). There is always a better way to write it.
 
-Note: Per Item 1, destructuring assignments do not require parenthesis. For example, this is a
-legal expression (and therefore, a valid informal statement, when on its own line):
+Note: Enforcing (less than) 120 columns (instead of 80) in source files is recommended.
 
-	{x, y, z} = object
+JSII does not use semicolons. However, it is still possible to have more than one statement on
+the same line. You just use commas between the statements instead.
 
-JSII also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
-respectively), though unless-blocks do not support else-clauses.
+### Formality
 
-## Statement Termination
+All formal statements start with a keyword. Block-statements use `do` (like `do { ... }`), and
+empty statements use `pass`. There are no exceptions.
 
-Automatic Semicolon Insertion (ASI) has been replaced with significant newlines. The logic is
-explained elsewhere, but it basically just works.
+Note: As a result of the above rule, destructuring assignments never require extra parenthesis.
+This is a valid (informal) statement:
 
-The language does not use semicolons. However, you can still have more than one statement on
-the same line (using commas to separate them instead). You can also join two or more lines to
-form a longer logical line with an explicit *continuation indicator*.
+    {x, y, z} = object
 
-## Paren-Free Mode
+Informal (expression) statements do not *normally* start with keyword. However, there are one or
+two exceptions. For example, `yield` is a keyword, but `yield x` is still a valid expression, so
+`yield x` could be used as a formal statement, or as an expression (within a larger statement):
 
-JSII implements a variation of Eich's *paren-free mode*, without requiring braces around every
-block.
+    yield x        // formal statement
+		x = yield x    // expression
 
-Predicates never require parens. The following statements are legal:
+Whether a statement begins with a keyword or not is generally unimportant, but it is relevant to
+the way JSII sugars blocks and predicates.
 
-	if x > y { return x }
+### Paren-Free
 
-	while x > 0 { console.log(x -= 1) }
+JSII implements something similar to Eich's *paren-free mode*. Our version still drops the parens
+from around predicates, but does not require braces around every block.
 
-JSII tidies up some edgecases regarding blocks: All code-blocks are either *function bodies* (or
-just *bodies*) that must always be wrapped in braces, or *control flow blocks* (or just *blocks*)
-that can either be a single formal statement (starting with a keyword), or any number of
-statements (of any kind) wrapped in braces.
+Parens around predicates are never required, so this kind of thing is all good:
+
+    if x > y { return x }
+
+    while x > 0 { console.log(x -= 1) }
+
+Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
+require braces, but blocks are a little more flexible.
+
+Braces around blocks become optional when the block contains a single statement (formal or informal)
+that begins with a keyword.
 
 Revisiting the previous example, we can see that the braces are not required in the first case:
 
-	if x > y return x
+    if x > y return x
 
-However, this would be illegal:
+The nested statement forms a control-flow block (not a function body), and is a single statement
+(`return x`) that begins with a keyword (`return`). Likewise, this is also valid:
+
+    if x > y yield x
+
+The same does not apply to the second example from before. This would be illegal:
 
 	if x > y console.log(x)
 
-An informal statement must always be wrapped in braces:
+The braces still are required here, due to the lack of a keyword at the start of the statement:
 
 	if x > y { console.log(x) }
 
-Statements can (still) be recursively subordinated by simple concatentation, so this kind of
-thing is legal:
+### Compound Statements
 
-	while x >= 0 if x % 2 { console.log(x) }
+Compound statements (those that contain blocks of other statements, like `if`, `while`, `for` etc)
+are all formal statements (so they all begin with a keyword). Therefore, when we have a block that
+only contains one other block, we are permitted to concatenate the headers. For example:
+
+    for row in rows for column in columns { console.log(index, row, column), index += 1 }
+
+    for candidate in candidates if eligible(candidate) yield candidate
+
+Note: This can be repeated recursively to any level of nesting.
 
 Note: You are still free to wrap predicate expressions in logically redudant parens wherever it
 improves readability, as with any expression.
 
-JSII uses a slightly modified grammar for iteration:
+For-in loops in JSII have the same semantics as for-of loops in JS:
 
-	for <param> in <expression> <block>
+	for <assignees> in <expression> <block>
 
-For example:
+Note that `for` is a declarator that declares one or more constants *for* each iteration. This
+compliments the two principle declarators, `let` and `var`, which compile to `const` and `let`
+respectively.
 
-	for row in rows for column in columns { console.log(row, column) }
-
-Note that JSII uses for-in grammar to express a JavaScript for-of loop (and redefines the `in`
-operator elsewhere).
-
-Also note that `for` is a declarator that declares a constant *for* each iteration. This
-compliments the two principle declarators, `let` and `var`, which compile to `const` and
-`let` respectively.
+The grammar of `<assignees>` is exactly the same (unpacking) grammar that is used by declarations
+and assignments (`let <assignees> = <expression>`).
 
 Note: There is currently no support for declaring a loop variable as anything other than a
 block-scoped, per-iteration constant (pending usecases for the wackier stuff that JavaScript
 permits).
+
+JSII also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
+respectively), though unless-blocks do not support else-clauses.
 
 ## The `of` Operator
 
