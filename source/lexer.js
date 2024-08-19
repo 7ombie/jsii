@@ -1,5 +1,6 @@
 import {
     closeParen,
+    comma,
     delimiters,
     decimal,
     dot,
@@ -32,11 +33,11 @@ export default function * (source, literate=false) {
     so they can handle the specifics of parsing the given token type, yielding one or
     more tokens of that type. */
 
-    function align() {
+    function registerPotentialNewline() {
 
         /* This helper is used internally to update `lastNewline` to note the index
-        of the most recent newline, before updating the line number. As newlines
-        can be implied by semicolons, we need to check for a proper newline. */
+        of the most recent newline, before updating the line number. As new logical
+        lines can be created by commas, we need to check for a proper newline. */
 
         if (!on(newline)) return;
 
@@ -123,11 +124,15 @@ export default function * (source, literate=false) {
         return characters.includes(source[index + offset]);
     }
 
-    function interpolate(mode) { // api function
+    function interpolate(mode=undefined) { // api function
 
-        /* This function permits setting the value of `interpolating` via the API. */
+        /* This function acts as a getter and setter, allowing the caller to set and
+        query the value of `interpolating` via the API. When passed a bool, it acts
+        as a setter (and returns nothing), while a call with no arguments queries
+        the API (without changing the value). */
 
-        interpolating = mode;
+        if (mode === undefined) return interpolating;
+        else interpolating = mode;
     }
 
     function * gatherStream() { // api function
@@ -152,7 +157,7 @@ export default function * (source, literate=false) {
 
                 yield * Terminator.lex(api, location);
 
-                do { align() } while (at(whitespace) && advance())
+                do { registerPotentialNewline() } while (at(comma + whitespace) && advance())
 
             } else if (on(quote)) {
 
@@ -186,7 +191,6 @@ export default function * (source, literate=false) {
             } else throw new ParserError(`unexpected character (${character})`, location);
         }
 
-        // if (!interpolating) yield * Terminator.lex(api, locate());
         yield * Terminator.lex(api, locate());
     }
 

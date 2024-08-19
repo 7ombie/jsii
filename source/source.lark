@@ -1,0 +1,18 @@
+generator foo { yield 100 }
+
+"outer: \(  "inner: \(  "innermost: \(if x { y })"  ) 2"  ) 1"
+
+<spam> while x while y { 1 }
+function (foo) of x, y { return 1 }
+function foo of x, y { return 1 }
+function of x, y { return 1 }
+throw new Foo()
+dev if x { Y }
+dev 1 + 2 * 3 + 3
+o is sealed
+o is frozen
+pack new foo(x, y, z)
+seal new foo
+freeze 1 + 2 when x * y else spam + eggs
+lambda x, y, args... { return x + y / args }
+

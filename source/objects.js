@@ -236,13 +236,15 @@ export class StringLiteral extends Terminal {
 
             if (lexer.on(backslash) && lexer.at(openParen)) {
 
+                let previousState = lexer.interpolate();
+
                 lexer.advance();
                 lexer.interpolate(true);
 
                 this.value.push([...lexer.gatherStream()]);
                 this.value.push(empty);
 
-                lexer.interpolate(false);
+                lexer.interpolate(previousState);
 
             } else this.value[this.value.length - 1] += lexer.read();
         }
@@ -250,7 +252,7 @@ export class StringLiteral extends Terminal {
         lexer.advance();
     }
 
-    prefix(api) {
+    prefix(_) {
 
         for (const [index, section] of Object.entries(this.value)) {
 
@@ -1297,16 +1299,12 @@ class Generator extends Functional {
 
         /* This method parses generators without any prefix. */
 
-        if (parser.on(Method)) this.push(parser.advance(true));
-
         return this.gatherFullHeader(parser, GENERATORBLOCK);
     }
 
     infix(parser, prefix) {
 
         /* This method allows generators to be prefixed by `do`, `async` or `do async`. */
-
-        if (parser.on(Method)) this.push(parser.advance(true));
 
         return this.handlePrefix(parser, prefix, GENERATORBLOCK, ASYNCGENERATORBLOCK, true);
     }

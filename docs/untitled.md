@@ -1,11 +1,15 @@
 JSII: JavaScript with Hindsight
 ===============================
 
-JSII (pronounced *Jessie*) is short for JavaScript 2. It is a temporary name, while I come up
-with a better one.
+**IGNORE ~~~ THIS IS AN IDEAS DOC WITH TODO LISTS AND API SKETCHES ETC ~~~ IT IS NOT CORRECT**
+
+JSII (pronounced *Jessie*) is short for JavaScript 2. The name sucks. erm...
 
 JSII is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
 any type annotations). JSII compiles to regular, old JavaScript syntax.
+
+> I'm open to supporting optional type annotations (that are validated by JSII), but haven't
+> given it much thought.
 
 Statement Grammar
 -----------------
@@ -20,39 +24,40 @@ JSII replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Stateme
 of parens, brackets or braces (that are part of the current statement) terminate the statement.
 
 Note: JSII does not provide a continuation symbol for explicitly continuing logical lines (like
-the `\` symbol in Python). There is always a better way to write it.
+the `\` symbol in Python). In practice, there's always a better way to do it.
 
 Note: Enforcing (less than) 120 columns (instead of 80) in source files is recommended.
 
 JSII does not use semicolons. However, it is still possible to have more than one statement on
-the same line. You just use commas between the statements instead.
+the same line. You just use commas between the statements instead. This works especially well
+with inline blocks:
 
-### Formality
+    if legal(character) { count += 1, yield character }
+
+### Keywords
 
 All formal statements start with a keyword. Block-statements use `do` (like `do { ... }`), and
-empty statements use `pass`. There are no exceptions.
-
-Note: As a result of the above rule, destructuring assignments never require extra parenthesis.
-This is a valid (informal) statement:
+empty statements use `pass`. This avoids ambiguity with informal (expression) statements. For
+example, destructuring assignments never require extra parenthesis:
 
     {x, y, z} = object
 
-Informal (expression) statements do not *normally* start with keyword. However, there are one or
-two exceptions. For example, `yield` is a keyword, but `yield x` is still a valid expression, so
-`yield x` could be used as a formal statement, or as an expression (within a larger statement):
+Informal statements do not *generally* start with a keyword, but they are grammatically arbitrary
+expressions, so there are exceptions. For example, `yield` is a keyword, but `yield x` is still a
+valid expression, so `yield x` could appear as a formal statement (by itself) or as an expression
+(within a larger statement):
 
-    yield x        // formal statement
-		x = yield x    // expression
+    yield x                // formal statement
+    x = yield x            // expression
 
-Whether a statement begins with a keyword or not is generally unimportant, but it is relevant to
-the way JSII sugars blocks and predicates.
+This observation is unimportant, except in regard to the way JSII sugars blocks and predicates.
 
-### Paren-Free
+### Blocks & Predicates
 
 JSII implements something similar to Eich's *paren-free mode*. Our version still drops the parens
 from around predicates, but does not require braces around every block.
 
-Parens around predicates are never required, so this kind of thing is all good:
+Parens around predicates are always optional, so this kind of thing is all good:
 
     if x > y { return x }
 
@@ -61,48 +66,66 @@ Parens around predicates are never required, so this kind of thing is all good:
 Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
 require braces, but blocks are a little more flexible.
 
-Braces around blocks become optional when the block contains a single statement (formal or informal)
-that begins with a keyword.
+Braces around blocks become optional when the block contains a single statement that begins with a
+keyword. It does not matter whether the statement is formal or informal. The parser only cares
+whether the statement begins with a keyword or not.
 
 Revisiting the previous example, we can see that the braces are not required in the first case:
 
     if x > y return x
 
 The nested statement forms a control-flow block (not a function body), and is a single statement
-(`return x`) that begins with a keyword (`return`). Likewise, this is also valid:
+(`return x`) that begins with a keyword (`return`). Likewise, this is also allowed:
 
     if x > y yield x
 
-The same does not apply to the second example from before. This would be illegal:
+The same does not apply to the second example from before. This would raise a syntax error:
 
-	if x > y console.log(x)
+    if x > y console.log(x)
 
-The braces still are required here, due to the lack of a keyword at the start of the statement:
+The braces are still required here, as the block does not begin with a keyword:
 
-	if x > y { console.log(x) }
+    if x > y { console.log(x) }
 
 ### Compound Statements
 
 Compound statements (those that contain blocks of other statements, like `if`, `while`, `for` etc)
 are all formal statements (so they all begin with a keyword). Therefore, when we have a block that
-only contains one other block, we are permitted to concatenate the headers. For example:
+only contains one other block, we can inline the headers. For example:
 
-    for row in rows for column in columns { console.log(index, row, column), index += 1 }
+    for row in rows for column in columns { console.log(row, column) }
 
     for candidate in candidates if eligible(candidate) yield candidate
 
-Note: This can be repeated recursively to any level of nesting.
+Note: This can recur to any degree (space permitting).
 
-Note: You are still free to wrap predicate expressions in logically redudant parens wherever it
-improves readability, as with any expression.
+Declarations
+------------
 
-For-in loops in JSII have the same semantics as for-of loops in JS:
+Declarations use  `let` and `var`, which compile to `const` and `let` respectively. There is no
+way access JavaScript's `var` semantics. Everything is block-scoped, and is either a constant,
+declared with `let`, or a variable, declared with `var`.
 
-	for <assignees> in <expression> <block>
+    let pi = 3.141
+		var xp = 0
+
+The grammar for unpacking is copied directly from JS:
+
+    var [x, y, z] = [0, 0, 0]
+
+Control Flow
+------------
+
+You've already seen that JSII treats parens around predicates as optional, and you're familiar with
+rules for bodies and blocks. You've also seen examples of if-statements, while-statements etc, so
+you know how that works.
+
+For-in loops in JSII have the same semantics as for-of loops in JS, with a slightly nicer grammar:
+
+    for <assignees> in <expression> <block>
 
 Note that `for` is a declarator that declares one or more constants *for* each iteration. This
-compliments the two principle declarators, `let` and `var`, which compile to `const` and `let`
-respectively.
+compliments the two principle declarators, `let` and `var`.
 
 The grammar of `<assignees>` is exactly the same (unpacking) grammar that is used by declarations
 and assignments (`let <assignees> = <expression>`).
@@ -112,57 +135,69 @@ block-scoped, per-iteration constant (pending usecases for the wackier stuff tha
 permits).
 
 JSII also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
-respectively), though unless-blocks do not support else-clauses.
+respectively), though unless-blocks do not (and will never) support else-clauses:
+
+    until game.over { animate() }
+
+		unless result.error return
+
+Note: Only use `unless` or `until` if you would otherwise need to negate the entire predicate.
+
+Note: The logical operators use words (`not`, `and` and `or`), while the bitwise operators have
+been redesigned. They now use different spellings for the operators (for example, the prefix
+operators `!` and `?` are used for bitwise-not and count-leading-zeros). Bitwise operations
+also infer unsigned semantics (twiddling bits in twos-compliment is just confusing).
 
 ## The `of` Operator
 
 JSII has an `of` operator with the following grammar:
 
-	<identifier> of <expression>
+    <identifier> of <expression>
 
-This applies a simple (always inlined) *language function*, identified by the lefthand identifier
-to the expression on the right (as in *f of x*). This can be used to transform values at runtime.
-For example:
+This applies a simple (always inlined) *functional operator* (defined by JSII, and specified by
+the identifier) to the expression on the right (as in *f of x*). This is used to sugar common
+operations on single expressions. For example:
 
-	keys of object				->	Object.keys(object)
-	descriptors of object		->	Object.getOwnPropertyDescriptors(object)
+    keys of object          -> Object.keys(object)
+    descriptors of object   -> Object.getOwnPropertyDescriptors(object)
 
 This can be especially useful inside for-in loops. For example:
 
-	for key in keys of object { console.log(key) }
-	for value in values of object { console.log(value) }
-	for [key, value] in entries of object { console.log(key, value) }
+    for key in keys of object { console.log(key) }
+    for value in values of object { console.log(value) }
+    for [key, value] in entries of object { console.log(key, value) }
 
 The of-operator is also useful for performing membership tests on the keys or values of an object:
 
-	key in keys of object
-	index in indices of array
-	value in values of object
+    key in keys of object
+    index in keys of array
+    value in values of object
+    value in values of array
 
-Note: The `indices` language function is just an alias for the `keys` function, and was provided
-to improve readability when applied to arrays.
+Note: The `in` operator is an infix operator that calls the `includes` method of the rvalue,
+passing the lvalue as the only argument (`x in y` translates to `y.includes(x)`).
 
-While it may not be obvious if you're new to JSII, the above code has some performance
-ramifications that are more obvious when we consider what it would compile to. Having seen
-that `a in b` compiles to `b.includes(a)`, and that `keys in o` compiles to `Object.keys(o)`,
-then we should expect the previous example to compile to this:
+While it may not be immediately obvious, the above code has some performance implications that are
+more obvious when we consider what it would compile to. Having seen that `a in b` compiles to
+`b.includes(a)`, and that `keys of o` compiles to `Object.keys(o)`, then we should expect
+the previous example to compile to this:
 
     Object.keys(object).includes(key)
     Object.keys(array).includes(index)
     Object.values(object).includes(value)
+    Object.values(array).includes(value)
 
-Now, it should be pretty obvious that we need to create a new array (from the keys or values of
-the object), just to call its `includes` method (because that's how `in` works), to get back a
-bool, before immediately throwing away the array we just created.
+We can now see that we need to create a new array, containing the keys or values of the operand
+object (or array), to call its `includes` method, before immediately throwing away the array
+we just created, and only keeping the boolean we needed.
 
-Creating an extra array is currently unavoidable for the third case (checking the values), as
-that's just how it's done in JavaScript, but the first two cases (checking the keys) could be
-replaced with a more optimal call to `Object.hasOwn`. Fortunately, this is the kind of thing
-we can reliably detect and optimize automatically:
+Creating an extra array is currently unavoidable for the third and fourth cases (which check the
+values), as that's just how it's done in JavaScript, but the first two cases (checking the keys)
+could be replaced with a more optimal call to `Object.hasOwn`. Fortunately, this is the kind of
+thing we can reliably detect and optimize automatically:
 
-    key in keys of object						-> Object.hasOwn(object, key)
-	index in indices of array					-> Object.hasOwn(array, index)
-    value in values of object					-> Object.values(object).includes(value)
+    key in keys of object          -> Object.hasOwn(object, key)
+    index in keys of array         -> Object.hasOwn(array, index)
 
 Note: Using something like `object?key` will often be a better choice still (see the section
 on *Dot Operators* below).
@@ -171,12 +206,12 @@ For performance reasons, and to provide an escape hatch, the optimizer will neve
 or more adjacent operations into a single operation, if they are explicitly separated by
 (otherwise redundant) parenthesis:
 
-    key in (keys of object)						-> Object.keys(object).includes(key)
+    key in (keys of object)        -> Object.keys(object).includes(key)
 
 This only applies to the operators actually being optimized away. Wrapping the overall expression,
 or any of its sub-expressions, in parenthesis has no effect on optimization:
 
-    ((key) in keys of (object))					-> (Object.hasOwn((object), (key)))
+    ((key) in keys of (object))    -> Object.hasOwn(object, key)
 
 ## JSON Operators
 
@@ -186,10 +221,8 @@ JSII provides two prefix operators for doing JSON, one named `serialize` and ano
 The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compiles to
 `JSON.parse`. For example:
 
-	deserialize serialize object					-> JSON.parse(JSON.stringify(object))
-
-	serialize {a: 1} in serialize {a: 1, b: 2}	    -> JSON.stringify({a: 1, b: 2})
-                                                           .includes(JSON.stringify({a: 1}))
+    deserialize serialize o        -> JSON.parse(JSON.stringify(o))
+    serialize x in serialize y     -> JSON.stringify(y).includes(JSON.stringify(x))
 
 ## Mutablity Operators
 
@@ -204,19 +237,18 @@ object, while `isSealed` and `isFrozen` return `true` if we *cannot* mutate the 
 In JSII, pack, seal and freeze (consistently) define three levels of progressively more
 immutable state:
 
-	pack object									-> Object.preventExtensions(object)
-	seal object									-> Object.seal(object)
-	freeze object								-> Object.freeze(object)
+    pack o                         -> Object.preventExtensions(o)
+    seal o                         -> Object.seal(o)
+    freeze o                       -> Object.freeze(o)
 
-	packed object								-> !Object.isExtensible(object)
-	sealed object								-> Object.isSealed(object)
-	frozen object								-> Object.isFrozen(object)
+    packed o                       -> !Object.isExtensible(o)
+    sealed o                       -> Object.isSealed(o)
+    frozen o                       -> Object.isFrozen(o)
 
 ## The JS Namespace
 
 You have seen that JSII uses names for operators (and other things) that are valid variable
-names in JavaScript. While this rarely matters these days (now that our code is generally
-composed from modules), it is still possible to access any varaiable in underlying the
+names in JavaScript. If this is ever an issue, you can access any varaiable in the underlying
 JavaScript namespace by referencing it as a property of the `js` namespace:
 
 	let js.serialize = js.pack				-> const serialize = pack;
@@ -227,12 +259,12 @@ Naturally, this works for the name of the namespace too:
 
 ## Function Grammar
 
-The function grammar has been revised. We decoupled the convenience of the arrow-grammar from
-the semantics of JavaScript's various function types (so you can declare an arrow-function
-with a header-block grammar, and a full-fat function with an arrow-operator).
+The function grammar has been revised to decouple the convenience of the arrow-grammar from the
+semantics of JavaScript's various function types (so you can declare an arrow-function with a
+header-block grammar, and a full-fat function with an arrow-operator etc).
 
 As the term *arrow-function* would be a purely syntactic distinction in JSII, each of the three
-principle function types is given its own simple name, and corresponding keyword:
+principle function types is given its own simple name and corresponding keyword:
 
 * Arrow Functions are called *lambdas*, and use the keyword `lambda`.
 * Full Fat Functions are called *functions*, and use the keyword `function`.
@@ -251,17 +283,21 @@ in a moment).
 
 ### Lambda Expressions
 
-The grammar for lambda blocks looks like this:
+The grammar for lambda-statements (which are also valid expressions) looks like this:
 
-	lambda <params> <body>
+    lambda <params> <body>
 
 JSII parameters are expressed exactly as they are in JavaScript (including support for
 destructuring), just without the parenthesis (meaning that they can be omitted from function
 definitions entirely when there are no parameters).
 
-As always, function bodies must be wrapped in braces. For example:
+As always, bodies must be wrapped in braces. For example:
 
-	let sum = lambda x, y { return x + y }
+    let sum = lambda x, y { return x + y }
+
+Note: In JSII, we generally use the arrow-operators (covered below) for lambdas/functions/etc
+that return a single expression, so the header-block statement-grammars require explicit
+return-statements.
 
 ### Function Expressions and Generator Expressions
 
@@ -278,147 +314,131 @@ The parameters are also optional. When present, they are prefixed by the `of` ke
 As in JavaScript, we can *declare* a function (assigning a name to an otherwise anonymous
 function):
 
-	let sum = function of x, y { return x + y }
+    let sum = function of x, y { return x + y }
 
 We can also *define* a function, naming it directly:
 
-	function sum of x, y { return x + y }
+    function sum of x, y { return x + y }
 
-We generally recommend using the first syntax to declare top-level functions, and the second to
+We generally recommend using the first syntax to declare top-level functions, and the latter to
 define named methods inside class blocks. However, we also recommend using a lambda (over a
-function) wherever a lambda would suffice, so most top-level functions are actually
-declared as lambdas.
+function) wherever a lambda would suffice, so in practice, most top-level functions are
+actually declared as lambdas.
 
-Note: The compiler never generates *function statements*, instead ensuring that all function
-definitions are expressions (any extra parens and void operatiors are omitted from the
-examples in these docs).
+Note: The compiler ensures that all function definitions are valid expressions (any extra parens
+are omitted from the examples in these docs).
 
 ### The `do` Qualifier
 
-The do-qualifier (spelt `do`) can qualify the `lambda`, `function` or `generator` keywords to
-convert the corresponding function to an IIFE (immediately invoking the function, and evaluating
-to the returned value). For example:
+The do-qualifier can qualify the `lambda`, `function` or `generator` keywords to convert the
+corresponding function to an IIFE (immediately invoking the function, and evaluating to the
+returned value). For example:
 
-	do function animate of delta=0 {
-		requestAnimationFrame(animate)
-		renderer.render(delta)
-	}
+    do function animate of delta = 0 {
+        requestAnimationFrame(animate)
+        renderer.render(delta)
+    }
 
-Note: Technically, "dangling dogballs" are legal in JSII, but only implicitly, and they are
-always redudant. Do not do this:
+Note: The "dangling dogballs operator" is legal in JSII, but only implicitly, and it's always
+redundant, so please, do not do this:
 
-	function {
-		...
-	}()
+    function animate of delta = 0 {
+        requestAnimationFrame(animate)
+        renderer.render(delta)
+    }()
 
 ### The `async` Qualifier
 
-The async-qualifier (spelt `async`) can qualify the `lambda`, `function` or `generator` keywords
-to create an asynchronous version of the respective function-type. For example:
+The async-qualifier can qualify the `lambda`, `function` or `generator` keywords to create an
+asynchronous version of the respective function-type. A few examples:
 
-	let read = async function of url {
-		let response = await fetch(url)
-		return await response.text()
-	}
+    let read = async lambda url {
+        let response = await fetch(url)
+        return await response.text()
+    }
+
+    let read = async function of url { return await (await fetch(url)).text() }
+
+    let read = async generator of urls {
+
+        for url in urls { let response = await fetch(url), yield await response.data() }
+    }
 
 ### The `do async` Qualfied Qualifier
 
-As mentioned, JSII has a single qualified qualifier, the do-async qualifier, spelt `do async`. It
-can qualify `lambda`, `function` or `generator`. This does exactly what you'd expect (immediately
+As mentioned, JSII has a *qualified qualifier*. The do-async-qualifier, spelt `do async`, can
+qualify `lambda`, `function` or `generator`. This does exactly what you'd expect (immediately
 invokes the function and evaluates to a promise).
 
-	let promise = do async lambda {
-		let response = await fetch("/britney/hitme.mp3")
-		return await response.arrayBuffer()
-	}
+    let promise = do async lambda {
+        let response = await fetch("/britney/hitme.mp3")
+        return await response.arrayBuffer()
+    }
 
 ### The Arrow Operators
 
-The language defines two arrow operators (`->` and `=>`) with the following (prefix and infix)
-syntax:
+The language defines two arrow operators (`->` and `=>`), which both have prefix and infix forms:
 
-	-> <expression> 							() => <expression>
-	=> <expression>							function() { return <expression> }
+    -> <expression>                 -> () => <expression>
+    => <expression>                 -> function() { return <expression> }
 
-	(<params>) -> <expression> 				(<params>) => <expression>
-	(<params>) => <expression>				function(<params>) { return <expression> }
+    (<params>) -> <expression>      -> (<params>) => <expression>
+    (<params>) => <expression>      -> function(<params>) { return <expression> }
 
 Note: The params (when present) must be in parenthesis.
 
-Note: The expression is an expression. It cannot be a formal statement. There is no arrow-block
-grammar in JSII.
+Note: The expression must be an expression. It must evaluate to something, which will be returned.
 
-Note: Other potential arrow operators (like `<->` and `<=>`) have been reserved for other
-function types, pending a usecase. However, given that the body can only contain a single
-expression, arrow operators for any of the other function types seem useless.
+Note: Other potential arrow operators have been reserved for other function types, pending a valid
+usecase. However, given that the body can only ever contain a single expression, arrow operators
+for the other function types seem redundant in practice.
 
-### The `await` operator and For-Await Loops
+### The `await` Operator and Asynchronous Looping
 
-In JSII, `await` works almost exactly like it does JavaScript:
+In JSII, `await` works exactly like it does JavaScript:
 
-	await <promise-expression>
+    await <asynchronous-expression>
 
-To await a promise, then iterate over each item in the result, you can use this syntax:
+When invoking an async-function that returns a normal iterator, we can traverse the iterator with a
+normal for-in-statement that waits for the expression to resolve first:
 
-	for <param> in await <promise-expression>
+    for <assignees> in await <asynchronous-expression>
 
-To iterate over each promise yielded by an asnychronous generator, use this syntax:
+When we want to iterate over the values yielded by an async-generator, we use this grammar instead:
 
-	for await <param> in <promise-generator-expression>
+    wait for <assignees> in <asynchronous-generator-expression>
 
-## Yielding & Trading
+Note: We call that a *wait-for-in-loop*.
 
-JSII uses yield-statements and yield expressions just like in JavaScript, except that in
-JSII, `yield *` is spelled `yield from`:
+## Yielding from Generators
 
-    yield                               -> yield;
-    yield item                          -> yield item;
-    yield from stream                   -> yield * stream;
-    item = yield item                   -> item = yield item;
+JSII uses yield-statements (which are also valid expressions), just like in JavaScript, except
+that in JSII, `yield *` is spelled `yield from`:
 
-Note: When a statement begins with `yield` (like the first three lines above), it is a formal
-statement, while statements that (only) use `yield` as an operator are informal (like on the last
-line above). This works exactly like if-statements (that begin with `if`) and if-else-expressions
-(that use `if` as an operator).
+    yield                           -> yield;
+    yield item                      -> yield item;
+    yield from stream               -> yield * stream;
+    item = yield item               -> item = yield item;
 
 ### Comments
 
-Line comments start on a hash character (`#`) or a leftward-skinny-arrow (`<-`) or a caret (`^`),
-and run to end of the line. They can appear after a line continuation marker (without affecting
-it), but can (obviously) not contain one.
-
-The hash (`#`) is used for comments that appear on their own line, effectively creating headers
-and subheaders that introduce the code beneath.
-
-The arrow (`<-`) is used to append a comment to the end of a line of code, to comment on that
-line specifically.
-
-The caret (`^`) is used (often as a bunch of carets) to point to a specific group of character
-within a line of code, by adding a comment below the line.
-
-Below are examples of all three types of line-comment:
-
-	# this block of code illustrates how line-commentry works
-
-	let numbers = [1, 2, 3]	<- set up some data to play with
-	let results = funkyOperation(numbers)
-	              ^^^^^^^^^^^^^^ this may throw a `NastyError`
+Line comments start on a hash character (`#`), then run to end of the line.
 
 Multiline comments generally just use multiple (single) line-comments, except docstrings, which
 use a double-quoted string literal. For example:
 
-	let sum = lambda ...args {
+    let sum = lambda ...args {
 
-		"This is how we write docstrings for functions and classes in
-		JSII. This style is only used for module, class and funtion
-		docsstrings, to set them apart from inline commentry."
+        "This is how we write docstrings for functions and classes in
+        JSII. This style is only used for module, class and funtion
+        docsstrings, to set them apart from inline commentry."
 
-		return args.reduce((tally, previous) -> tally + previous, 0)
-	}
+        return args.reduce((tally, previous) -> tally + previous, 0)
+    }
 
-Note: JSII uses `//` for floating-point floor division:
+Note: JSII uses `//` for floor-division:
 
-	x // y			-> Math.floor(x / y)
+    x // y			-> Math.floor(x / y)
 
 ### Dot Operators
 
@@ -519,18 +539,18 @@ If the last line of a multiline, accented literal only contains whitespace, it i
 For example, this string contains one line (`spam and eggs`), with no leading or trailing spaces
 in the value of the expression:
 
-	let string = """
-		spam and eggs
-	"""
+		let string = """
+				spam and eggs
+				"""
 
-	let string = '''
+		let string = '''
 		spam and eggs
-	'''
+		'''
 
-	let string = ```
-		spam and eggs, then so more
-		this is some more data, obviously
-	```
+		let string = ```
+				spam and eggs, then so more
+				this is some more data, obviously
+				```
 
 ## Compound Expressions
 
