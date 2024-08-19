@@ -14,9 +14,8 @@ export const [openBrace, closeBrace] = ["{", "}"];
 // export the various character groups as strings...
 
 export const whitespace = space + newline;
-export const deadspace = semicolon + whitespace;
-export const terminators = semicolon + newline;
-export const delimiters = ",{[()]}";
+export const terminators = newline + comma;
+export const delimiters = "{[()]}";
 
 export const bases = "xbXB";
 export const binary = "01";
@@ -196,9 +195,9 @@ export const reserved = [
     "on",
     "output",
     "own",
-    "package",
     "post",
     "pre",
+    "package",
     "preserve",
     "property",
     "protected",

@@ -1,5 +1,6 @@
 import {
     alphas,
+    backslash,
     bases,
     binary,
     closeBrace,
@@ -8,7 +9,6 @@ import {
     comma,
     constants,
     decimal,
-    dollar,
     dot,
     empty,
     hexadecimal,
@@ -20,10 +20,11 @@ import {
     operators,
     quote,
     reserved,
-    semicolon,
     symbolics,
     wordCharacters,
 } from "./strings.js"
+
+import parse from "./parser.js"
 
 const LOOPBLOCK = -1;
 const SIMPLEBLOCK = 0;
@@ -35,7 +36,7 @@ const CLASSBLOCK = 5;
 
 export class ParserError extends SyntaxError {
 
-    /* This concrete class is used for all syntax errors across the parser stages. */
+    /* This concrete class is used for all syntax errors across the parser stage. */
 
     constructor(message, location) {
 
@@ -108,10 +109,18 @@ export class Token {
 
     validate(_) {
 
-        /* This method allow every token to be validated, always failing, unless this method
-        is overridden. */
+        /* This method allows every token to be validated (based on which types of blocks it is
+        nested within), always failing, unless this method is overridden. */
 
         return false;
+    }
+
+    generate() {
+
+        /* This method (which is often overridden by a subclass) is used by the code generator
+        stage to convert the token into the corresponding JavaScript source. */
+
+        return this.value.toString();
     }
 
     push(...args) {
@@ -134,14 +143,14 @@ class Terminal extends Token {
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement-terminators (line feeds, semicolons and
-    the implicit End Of File token inserted at the end of every token stream). It is also used
-    by the lexer to tokenize terminators, and by the parser to classify them. */
+    /* This is the base class for the various statement-terminators (line feeds, commas and the
+    implicit End Of File token inserted at the end of every token stream). It is also used by
+    the lexer to tokenize terminators, and by the parser to classify them. */
 
     static * lex(lexer, location) {
 
         if (lexer.on(newline)) yield new LineFeed(location, "<LF>");
-        else if (lexer.on(semicolon)) yield new Semicolon(location, semicolon);
+        else if (lexer.on(comma)) yield new Comma(location, comma);
         else yield new EOF(location, "<EOF>");
     }
 }
@@ -225,7 +234,7 @@ export class StringLiteral extends Terminal {
 
         while ((!lexer.at(quote)) && lexer.advance()) {
 
-            if (lexer.on(dollar) && lexer.at(openBrace)) {
+            if (lexer.on(backslash) && lexer.at(openParen)) {
 
                 lexer.advance();
                 lexer.interpolate(true);
@@ -241,9 +250,28 @@ export class StringLiteral extends Terminal {
         lexer.advance();
     }
 
-    prefix(_) { return this }
+    prefix(api) {
+
+        for (const [index, section] of Object.entries(this.value)) {
+
+            if (Array.isArray(section)) this.value[index] = Array.from(parse(section));
+        }
+
+        return this
+    }
 
     validate(_) { return true }
+
+    // generate() {
+
+    //     let results = [];
+
+    //     for (const section of this.value) {
+
+    //         if (section instanceof String) results.push(section);
+    //         else results.push(section.generate());
+    //     }
+    // }
 }
 
 export class Delimiter extends Terminal {
@@ -256,8 +284,6 @@ export class Delimiter extends Terminal {
         const value = lexer.read();
 
         switch (value) {
-
-            case comma: yield new Comma(location, value); break;
 
             case openParen: yield new OpenParen(location, value); break;
             case closeParen: yield new CloseParen(location, value); break;
@@ -1058,7 +1084,7 @@ class Colon extends InfixOperator {
     LBP = 1;
 }
 
-export class Comma extends Delimiter {
+export class Comma extends Terminator {
 
     /* This concrete class implements the `,` delimiter, used for delimiting expressions in
     groups, invocations and compound literals, as well as params, declarations etc. */
@@ -1728,12 +1754,6 @@ class Sealed extends Operator {
 
     /* This concrete class implements the `sealed` operator, used by `Is` to implement the
     `is sealed` suffix operation, which compiles to an `Object.isSealed` invocation. */
-}
-
-class Semicolon extends Terminator {
-
-    /* This concrete class implements the semicolon, used for terminating statements,
-    especially when on the same line. */
 }
 
 class SkinnyArrow extends ArrowOperator {

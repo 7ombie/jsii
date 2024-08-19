@@ -1,6 +1,6 @@
 import lex from "./lexer.js"
 import parse from "./parser.js"
-
+import generate from "./generator.js"
 
 
 
@@ -9,6 +9,8 @@ import parse from "./parser.js"
 
 
 let source = `
+hanky + panky, 125
+"spam and \\(funky + monkey, 125)"
 <spam> while x while y { 1 }
 function (foo) of x, y { return 1 }
 function foo of x, y { return 1 }
@@ -27,4 +29,5 @@ lambda x, y, args... { return x + y / args }
 console.log("source...\n", source);
 console.log("output...");
 // for (const token of lex(source)) console.log("token:", token);
-for (const statement of parse(source, false)) console.log("statement:", statement);
+for (const statement of parse(source)) console.log("statement:", statement);
+// for (const string of generate(source)) console.log(string);

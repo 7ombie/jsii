@@ -1,12 +1,11 @@
 import {
-    closeBrace,
-    deadspace,
+    closeParen,
     delimiters,
     decimal,
     dot,
     empty,
     newline,
-    openBrace,
+    openParen,
     pound,
     quote,
     space,
@@ -68,7 +67,7 @@ export default function * (source, literate=false) {
 
         if (interpolating) {
 
-            if (on(closeBrace) && nesting === 0) return undefined;
+            if (on(closeParen) && nesting === 0) return undefined;
 
         } else if (character === undefined) return undefined;
 
@@ -153,7 +152,7 @@ export default function * (source, literate=false) {
 
                 yield * Terminator.lex(api, location);
 
-                do { align() } while (at(deadspace) && advance())
+                do { align() } while (at(whitespace) && advance())
 
             } else if (on(quote)) {
 
@@ -179,8 +178,7 @@ export default function * (source, literate=false) {
 
                 if (interpolating) {
 
-                    if (on(openBrace)) nesting++;
-                    else if (on(closeBrace)) nesting--;
+                    if (on(openParen)) { nesting++ } else if (on(closeParen)) { nesting-- }
                 }
 
                 yield * Delimiter.lex(api, location);
@@ -188,7 +186,18 @@ export default function * (source, literate=false) {
             } else throw new ParserError(`unexpected character (${character})`, location);
         }
 
-        if (!interpolating) yield * Terminator.lex(api, locate());
+        // if (!interpolating) yield * Terminator.lex(api, locate());
+        yield * Terminator.lex(api, locate());
+    }
+
+    if (Array.isArray(source)) {
+        
+        // this block used to pass an array of tokens (from a string interpolation) to the
+        // parser (as its `source` argument) without it noticing the difference
+
+        yield * source;
+
+        return;
     }
 
     const api = {
