@@ -1,12 +1,15 @@
+x += freeze 1
+
 for each from expression { console.log(each) }
 
 async function f { await call() }
 
 generator foo { return {foo: 2} }
 
-"outer: \(  "inner: \(  "innermost: \(if x { y })"  ) 2"  ) 1"
+"outer: \(  "inner: \(  "innermost: \( boogie + woogie )"  ) 2"  ) 1"
 
-spam: while x while y for thing from otherThing { blah }
+label: while x while y for thing from otherThing { blah }
+
 for each in range { breakfast() }
 
 function (foo) of x, y { return 1 }

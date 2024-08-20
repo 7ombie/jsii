@@ -254,26 +254,22 @@ export class StringLiteral extends Terminal {
 
     prefix(_) {
 
-        for (const [index, section] of Object.entries(this.value)) {
+        for (const [index, section] of Object.entries(this.value)) if (Array.isArray(section)) {
 
-            if (Array.isArray(section)) this.value[index] = Array.from(parse(section));
+            const expression = this.value[index] = Array.from(parse(section));
+
+            for (const subexpression of expression) if (!subexpression.expression) {
+
+                const message = "string interpolations can only contain expressions";
+
+                throw new ParserError(message, subexpression.location);
+            }
         }
 
         return this
     }
 
     validate(_) { return true }
-
-    // generate() {
-
-    //     let results = [];
-
-    //     for (const section of this.value) {
-
-    //         if (section instanceof String) results.push(section);
-    //         else results.push(section.generate());
-    //     }
-    // }
 }
 
 export class Delimiter extends Terminal {
@@ -1086,13 +1082,13 @@ class Colon extends InfixOperator {
 
     infix(parser, prefix) {
 
-        if (parser.on(If, Else, While, For, Do)) {
+        if (parser.on(If, Else, While, For, Do, Unless, Until)) {
 
             this.expression = false;
             this.push(prefix, parser.gather());
 
             if (this.operands[1].expression) {
-                
+
                 throw new ParserError("unexpected expression", this.operands[1].location);
             }
 
@@ -1272,7 +1268,7 @@ class Freeze extends PrefixOperator {
     /* This concrete class implements the `freeze` operator, which compiles to an invocation
     of `Object.freeze`. */
 
-    RBP = 14;
+    RBP = 1;
 }
 
 class From extends Keyword {
@@ -1654,7 +1650,7 @@ class Pack extends PrefixOperator {
     /* This concrete class implements the `pack` operator, which compiles to an invocation
     of `Object.preventExtensions`. */
 
-    RBP = 14;
+    RBP = 1;
 }
 
 class Packed extends Operator {
@@ -1748,7 +1744,7 @@ class Seal extends PrefixOperator {
     /* This concrete class implements the `seal` operator, which compiles to an invocation
     of `Object.seal`. */
 
-    RBP = 14;
+    RBP = 1;
 }
 
 class Sealed extends Operator {
