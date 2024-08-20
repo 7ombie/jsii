@@ -1,8 +1,14 @@
-generator foo { yield 100 }
+for each from expression { console.log(each) }
+
+async function f { await call() }
+
+generator foo { return {foo: 2} }
 
 "outer: \(  "inner: \(  "innermost: \(if x { y })"  ) 2"  ) 1"
 
-<spam> while x while y { 1 }
+spam: while x while y for thing from otherThing { blah }
+for each in range { breakfast() }
+
 function (foo) of x, y { return 1 }
 function foo of x, y { return 1 }
 function of x, y { return 1 }

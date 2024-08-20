@@ -160,7 +160,6 @@ export const reserved = [
     "auto",
     "be",
     "by",
-    "call",
     "case",
     "catch",
     "co",

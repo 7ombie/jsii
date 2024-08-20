@@ -172,7 +172,7 @@ export default function * (source, literate=false) {
         const candidate = gather(RBP);
 
         if (candidate.expression) return candidate;
-        else throw new ParserError("required an expression", candidate.location);
+        else throw new ParserError("expected an expression", candidate.location);
     }
 
     function gatherBlock(type) { // api function

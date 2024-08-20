@@ -1004,7 +1004,7 @@ class Async extends Keyword {
     }
 }
 
-class Await extends CommandStatement {
+class Await extends Header {
 
     /* This concrete class implements the `await` operator, used to await promises. */
 
@@ -1015,10 +1015,9 @@ class Await extends CommandStatement {
 
     prefix(parser) {
 
-        /* This method gathers await-expressions and await-for-statements. */
+        /* This method gathers await-expressions. */
 
-        if (parser.on(For)) return this.push(parser.gather());
-        else return this.push(parser.gatherExpression(this.LBP));
+        return this.push(parser.gatherExpression(this.LBP));
     }
 
     validate(check) {
@@ -1081,9 +1080,26 @@ class CloseParen extends Closer {
 class Colon extends InfixOperator {
 
     /* This concrete class implements the `:` pseudo-operator, used for delimiting key-value
-    pairs in object expressions. */
+    pairs in object expressions, and for labels on blocks. */
 
     LBP = 1;
+
+    infix(parser, prefix) {
+
+        if (parser.on(If, Else, While, For, Do, Await)) {
+
+            this.expression = false;
+            this.push(prefix, parser.gather());
+
+            if (this.operands[1].expression) {
+                
+                throw new ParserError("unexpected expression", this.operands[1].location);
+            }
+
+        } else super.infix(parser, prefix);
+
+        return this;
+    }
 }
 
 export class Comma extends Terminator {
@@ -1244,9 +1260,8 @@ class For extends Header {
 
         this.push(parser.gatherAssignee());
 
-        if (!parser.on(In)) throw new ParserError("incomplete for-loop", this.location);
-
-        parser.advance();
+        if (parser.on(In, From)) this.push(parser.advance(parser.on(In) ? In : From));
+        else throw new ParserError("incomplete for-loop", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
     }
@@ -1417,23 +1432,11 @@ class Lambda extends Functional {
     }
 }
 
-class Lesser extends GeneralOperator {
+class Lesser extends InfixOperator {
 
-    /* This is the concrete class for the less-than-operator (`<`). It also implements labels,
-    which use `<name>` (and can only apply to loops in our dialect)*/
+    /* This is the concrete class for the less-than-operator (`<`). */
 
     LBP = 9;
-
-    prefix(parser) {
-
-        this.push(parser.gatherVariable());
-
-        if (parser.on(Greater)) this.push(parser.advance(true));
-        else throw new ParserError("incomplete label", this.location);
-
-        if (parser.on(While, Until, For)) return this.push(parser.gather());
-        else throw new ParserError("label without loop", this.location);
-    }
 }
 
 class Let extends Declaration {
