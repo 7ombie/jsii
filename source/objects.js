@@ -1004,7 +1004,7 @@ class Async extends Keyword {
     }
 }
 
-class Await extends Header {
+class Await extends CommandStatement {
 
     /* This concrete class implements the `await` operator, used to await promises. */
 
