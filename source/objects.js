@@ -1086,7 +1086,7 @@ class Colon extends InfixOperator {
 
     infix(parser, prefix) {
 
-        if (parser.on(If, Else, While, For, Do, Await)) {
+        if (parser.on(If, Else, While, For, Do)) {
 
             this.expression = false;
             this.push(prefix, parser.gather());
