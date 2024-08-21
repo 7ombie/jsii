@@ -1,10 +1,11 @@
 x += freeze 1
 
-foo: if expression { continue foo }
+foo: if expression { break foo }
 
 async function f { await call() }
 
-generator foo { return {foo: 2} }
+generator foo { yield }
+generator foo { return }
 
 "outer: \(  "inner: \(  "innermost: \( boogie + woogie )"  ) 2"  ) 1"
 

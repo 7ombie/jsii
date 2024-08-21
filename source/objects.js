@@ -384,7 +384,6 @@ export class Keyword extends Word {
             case "dev": return new Dev(location, value);
             case "do": return new Do(location, value);
             case "else": return new Else(location, value);
-            case "exit": return new Exit(location, value);
             case "export": return new Export(location, value);
             case "for": return new For(location, value);
             case "from": return new From(location, value);
@@ -404,7 +403,6 @@ export class Keyword extends Word {
             case "unless": return new Unless(location, value);
             case "until": return new Until(location, value);
             case "var": return new Var(location, value);
-            case "wait": return new Wait(location, value);
             case "while": return new While(location, value);
             case "yield": return new Yield(location, value);
         }
@@ -435,37 +433,6 @@ class CommandStatement extends Keyword {
     prefix(parser) {
 
         return this.push(parser.gatherExpression());
-    }
-}
-
-class ReturningStatement extends Keyword {
-
-    /* This abstract base class is used by `Return` and `Exit`. */
-
-    validate(parser) {
-
-        /* Climb the block stack till something functional is found, then return `true`
-        if it is anything other than a class block, and `false` if it is one. */
-
-        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
-    }
-}
-
-class YieldingStatement extends Keyword {
-
-    /* This abstract base class is used by `Yield` and `Wait`. */
-
-    LBP = 2
-    expression = true;
-
-    static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
-
-    validate(parser) {
-
-        /* Climb the block stack till something functional is found, then return `true` if
-        it is a block for a generator function, else `false`. */
-
-        return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }
 
@@ -1240,14 +1207,6 @@ export class EOF extends Terminator {
     to every token stream, and used by the parser to check for the end of the file. */
 }
 
-class Exit extends ReturningStatement {
-
-    /* This concrete class implements the `exit` statement, which is used for returning from
-    a function without a value (instead of writing `return void`). */
-
-    prefix(_) { return this }
-}
-
 class Export extends Keyword {
 
     /* This conrete class implements the export-statement, with its various grammars. */
@@ -1761,14 +1720,23 @@ class Reserved extends Word {
     }
 }
 
-class Return extends ReturningStatement {
+class Return extends Keyword {
 
-    /* This concrete class implements the `return` keyword, which must be followed by an
-    expression. The `exit` keyword can be used to return without a value. */
+    /* This concrete class implements the `return` keyword, which is followed by an
+    optional expression. */
 
     prefix(parser) {
 
-        return this.push(parser.gatherExpression());
+        if (parser.on(Terminator, Closer)) return this;
+        else return this.push(parser.gatherExpression());
+    }
+
+    validate(parser) {
+
+        /* Climb the block stack till something functional is found, then return `true`
+        if it is anything other than a class block, and `false` if it is one. */
+
+        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 }
 
@@ -1905,14 +1873,6 @@ class VoidConstant extends Constant {
     /* This concrete class implements the `void` constant, which compiles to `undefined`. */
 }
 
-class Wait extends YieldingStatement {
-
-    /* This concrete class implements the `wait` statement, which is used for yielding from
-    a generator without a value (instead of writing `yield void`). */
-
-    prefix(_) { return this }
-}
-
 class When extends Operator {
 
     /* This concrete class implements the when-else ternary operator (`x when y else z`),
@@ -1945,7 +1905,7 @@ class XOR extends InfixOperator {
     LBP = 6;
 }
 
-class Yield extends YieldingStatement {
+class Yield extends Keyword {
 
     /* This concrete class implements the `yield` keyword, which can begin a formal statement,
     while also being a valid prefix operator (potentially, at the same time). */
@@ -1953,13 +1913,24 @@ class Yield extends YieldingStatement {
     LBP = 2;
     expression = true;
 
+    static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
+
     prefix(parser) {
 
-        /* Gather an expression (which is required in our dialect of JavaScript), unless the
-        parser is on `from`. In which case, gather the keyword, *then* gather the (required)
-        expression, collecting both as operands. */
+        /* Gather an optional expression, unless the parser is on `from`. In which case, gather
+        the keyword, *then* gather a required expression. */
 
         if (parser.on(From)) return this.push(parser.advance(true), parser.gatherExpression());
+        else if (parser.on(Terminator, Closer)) return this;
         else return this.push(parser.gatherExpression());
     }
+
+    validate(parser) {
+
+        /* Climb the block stack till something functional is found, then return `true` if
+        it is a block for a generator function, else `false`. */
+
+        return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
+    }
+
 }

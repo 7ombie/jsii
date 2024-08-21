@@ -1,19 +1,3 @@
-TODO
-====
-
-Ensure active labels are never reassigned.
-
-Add a new API getter-setter to the Parser API named `label` that takes a label string (getter mode)
-or a label string and a bool (setter mode):
-
-		parser.label("foo")        // getter
-		parser.label("foo", true)  // setter
-
-The getter returns `true` when the given label is *active* and bound to a loop block, `false` when
-the label is *active* and bound to a simple block, and `null` when the label is *inactive*.
-
-This will allow `break` and `continue` to ensure they only reference valid labels.
-
 JS2: JavaScriptScript
 =====================
 
@@ -1007,8 +991,8 @@ McFly rethinks the whole `in` header-block grammars for iteration, for-in loops 
 
 Note: Logic uses `and`, `or` and `not`.
 
-+ `!`       Bitwise NOT                         ! x         -> ~x
-+ `?`       Count Leading Zeros                 ? x         -> Math.clz32(x)
++ `!`       Bitwise NOT                         !x          -> ~x
++ `?`       Count Leading Zeros                 ?x          -> Math.clz32(x)
 
 + `&`       Bitwise AND                         x & y       -> x & y
 + `|`       Bitwise OR                          x | y       -> x | y
