@@ -16,7 +16,7 @@ import {
 
 import lex from "./lexer.js"
 
-export default function * (source, literate=false) {
+export default function * parse(source, literate=false) {
 
     /* This generator implements the parser stage, and yields an AST node for each top-level
     statement. Like the lexer stage, the specifics of parsing any given grammar are left to
@@ -349,7 +349,8 @@ export default function * (source, literate=false) {
         gatherCompoundExpression,
         gatherParameters,
         gatherAssignee,
-        gatherBlock
+        gatherBlock,
+        parse // the `StringLiteral` class calls `parse` recursively on interpolations
     };
 
     const blockTypeStack = [];

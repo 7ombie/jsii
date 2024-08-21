@@ -1,34 +1,34 @@
-JSII: JavaScript with Hindsight
-===============================
+JS2: JavaScriptScript
+=====================
 
-**IGNORE ~~~ THIS IS AN IDEAS DOC WITH TODO LISTS AND API SKETCHES ETC ~~~ IT IS NOT CORRECT**
+**IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
 
-JSII (pronounced *Jessie*) is short for JavaScript 2. The name sucks. erm...
+JS2 is short for JavaScriptScript (this is not final, obviously).
 
-JSII is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
-any type annotations). JSII compiles to regular, old JavaScript syntax.
+JS2 is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
+any type annotations). JS2 compiles to regular, old JavaScript syntax.
 
-> I'm open to supporting optional type annotations (that are validated by JSII), but haven't
+> I'm open to supporting optional type annotations (that are validated by JS2), but haven't
 > given it much thought.
 
 Statement Grammar
 -----------------
 
-JSII has a simple, statement grammar with curly braces. Newlines are significant (generally
+JS2 has a simple, statement grammar with curly braces. Newlines are significant (generally
 terminating the current statement). Indentation is insignificant.
 
 ### Significant Whitespace
 
-JSII replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
+JS2 replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
 (LIST). The logic is explained later, but it is basically the same as Python: Newlines outside
 of parens, brackets or braces (that are part of the current statement) terminate the statement.
 
-Note: JSII does not provide a continuation symbol for explicitly continuing logical lines (like
+Note: JS2 does not provide a continuation symbol for explicitly continuing logical lines (like
 the `\` symbol in Python). In practice, there's always a better way to do it.
 
 Note: Enforcing (less than) 120 columns (instead of 80) in source files is recommended.
 
-JSII does not use semicolons. However, it is still possible to have more than one statement on
+JS2 does not use semicolons. However, it is still possible to have more than one statement on
 the same line. You just use commas between the statements instead. This works especially well
 with inline blocks:
 
@@ -50,11 +50,11 @@ valid expression, so `yield x` could appear as a formal statement (by itself) or
     yield x                // formal statement
     x = yield x            // expression
 
-This observation is unimportant, except in regard to the way JSII sugars blocks and predicates.
+This observation is unimportant, except in regard to the way JS2 sugars blocks and predicates.
 
 ### Blocks & Predicates
 
-JSII implements something similar to Eich's *paren-free mode*. Our version still drops the parens
+JS2 implements something similar to Eich's *paren-free mode*. Our version still drops the parens
 from around predicates, but does not require braces around every block.
 
 Parens around predicates are always optional, so this kind of thing is all good:
@@ -116,11 +116,11 @@ The grammar for unpacking is copied directly from JS:
 Control Flow
 ------------
 
-You've already seen that JSII treats parens around predicates as optional, and you're familiar with
+You've already seen that JS2 treats parens around predicates as optional, and you're familiar with
 rules for bodies and blocks. You've also seen examples of if-statements, while-statements etc, so
 you know how that works.
 
-For-in loops in JSII have the same semantics as for-of loops in JS, with a slightly nicer grammar:
+For-in loops in JS2 have the same semantics as for-of loops in JS, with a slightly nicer grammar:
 
     for <assignees> in <expression> <block>
 
@@ -134,7 +134,7 @@ Note: There is currently no support for declaring a loop variable as anything ot
 block-scoped, per-iteration constant (pending usecases for the wackier stuff that JavaScript
 permits).
 
-JSII also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
+JS2 also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
 respectively), though unless-blocks do not (and will never) support else-clauses:
 
     until game.over { animate() }
@@ -150,11 +150,11 @@ also infer unsigned semantics (twiddling bits in twos-compliment is just confusi
 
 ## The `of` Operator
 
-JSII has an `of` operator with the following grammar:
+JS2 has an `of` operator with the following grammar:
 
     <identifier> of <expression>
 
-This applies a simple (always inlined) *functional operator* (defined by JSII, and specified by
+This applies a simple (always inlined) *functional operator* (defined by JS2, and specified by
 the identifier) to the expression on the right (as in *f of x*). This is used to sugar common
 operations on single expressions. For example:
 
@@ -215,7 +215,7 @@ or any of its sub-expressions, in parenthesis has no effect on optimization:
 
 ## JSON Operators
 
-JSII provides two prefix operators for doing JSON, one named `serialize` and another named
+JS2 provides two prefix operators for doing JSON, one named `serialize` and another named
 `deserialize`.
 
 The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compiles to
@@ -226,15 +226,15 @@ The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compi
 
 ## Mutablity Operators
 
-JSII provides prefix operators for *packing*, *sealing* and *freezing* objects, with a
+JS2 provides prefix operators for *packing*, *sealing* and *freezing* objects, with a
 corresponding set for checking whether an object is *packed*, *sealed* or *frozen*.
 
 While the terms *seal* and *freeze* should be familiar to any JS dev, the term *pack* was
-introduced by JSII to refer to `Object.preventExtensions` and `Object.isExtensible`, fixing
+introduced by JS2 to refer to `Object.preventExtensions` and `Object.isExtensible`, fixing
 an inconsistency in JavaScript, where `isExtensible` returns `true` if we *can* mutate the
 object, while `isSealed` and `isFrozen` return `true` if we *cannot* mutate the object.
 
-In JSII, pack, seal and freeze (consistently) define three levels of progressively more
+In JS2, pack, seal and freeze (consistently) define three levels of progressively more
 immutable state:
 
     pack o                         -> Object.preventExtensions(o)
@@ -247,7 +247,7 @@ immutable state:
 
 ## The JS Namespace
 
-You have seen that JSII uses names for operators (and other things) that are valid variable
+You have seen that JS2 uses names for operators (and other things) that are valid variable
 names in JavaScript. If this is ever an issue, you can access any varaiable in the underlying
 JavaScript namespace by referencing it as a property of the `js` namespace:
 
@@ -263,7 +263,7 @@ The function grammar has been revised to decouple the convenience of the arrow-g
 semantics of JavaScript's various function types (so you can declare an arrow-function with a
 header-block grammar, and a full-fat function with an arrow-operator etc).
 
-As the term *arrow-function* would be a purely syntactic distinction in JSII, each of the three
+As the term *arrow-function* would be a purely syntactic distinction in JS2, each of the three
 principle function types is given its own simple name and corresponding keyword:
 
 * Arrow Functions are called *lambdas*, and use the keyword `lambda`.
@@ -273,10 +273,10 @@ principle function types is given its own simple name and corresponding keyword:
 Lambdas, functions and generators each support a (paren-free) general purpose, header-block
 syntax, and each has an asynchronous variant that uses `async` as a *qualifier*.
 
-Note: In JSII, a *qualifier* is a word that prefixes some other token to qualify it in some way.
+Note: In JS2, a *qualifier* is a word that prefixes some other token to qualify it in some way.
 Qualifiers look a bit like named prefix operators, but they are lexically attached to the very
 next token, known as the *subject* (and not some arbitrary expression). Qualifiers are used
-extensively in JSII, to qualify keywords, named operators, array and object literals,
+extensively in JS2, to qualify keywords, named operators, array and object literals,
 arbitrary expressions (inside parens) and even other qualifiers (recursively), though
 there is currently only one example of a qualified qualifier (which you will see
 in a moment).
@@ -287,7 +287,7 @@ The grammar for lambda-statements (which are also valid expressions) looks like 
 
     lambda <params> <body>
 
-JSII parameters are expressed exactly as they are in JavaScript (including support for
+JS2 parameters are expressed exactly as they are in JavaScript (including support for
 destructuring), just without the parenthesis (meaning that they can be omitted from function
 definitions entirely when there are no parameters).
 
@@ -295,7 +295,7 @@ As always, bodies must be wrapped in braces. For example:
 
     let sum = lambda x, y { return x + y }
 
-Note: In JSII, we generally use the arrow-operators (covered below) for lambdas/functions/etc
+Note: In JS2, we generally use the arrow-operators (covered below) for lambdas/functions/etc
 that return a single expression, so the header-block statement-grammars require explicit
 return-statements.
 
@@ -339,7 +339,7 @@ returned value). For example:
         renderer.render(delta)
     }
 
-Note: The "dangling dogballs operator" is legal in JSII, but only implicitly, and it's always
+Note: The "dangling dogballs operator" is legal in JS2, but only implicitly, and it's always
 redundant, so please, do not do this:
 
     function animate of delta = 0 {
@@ -366,7 +366,7 @@ asynchronous version of the respective function-type. A few examples:
 
 ### The `do async` Qualfied Qualifier
 
-As mentioned, JSII has a *qualified qualifier*. The do-async-qualifier, spelt `do async`, can
+As mentioned, JS2 has a *qualified qualifier*. The do-async-qualifier, spelt `do async`, can
 qualify `lambda`, `function` or `generator`. This does exactly what you'd expect (immediately
 invokes the function and evaluates to a promise).
 
@@ -395,7 +395,7 @@ for the other function types seem redundant in practice.
 
 ### The `await` Operator and Asynchronous Looping
 
-In JSII, `await` works exactly like it does JavaScript:
+In JS2, `await` works exactly like it does JavaScript:
 
     await <asynchronous-expression>
 
@@ -412,8 +412,8 @@ Note: We call that a *wait-for-in-loop*.
 
 ## Yielding from Generators
 
-JSII uses yield-statements (which are also valid expressions), just like in JavaScript, except
-that in JSII, `yield *` is spelled `yield from`:
+JS2 uses yield-statements (which are also valid expressions), just like in JavaScript, except
+that in JS2, `yield *` is spelled `yield from`:
 
     yield                           -> yield;
     yield item                      -> yield item;
@@ -430,19 +430,19 @@ use a double-quoted string literal. For example:
     let sum = lambda ...args {
 
         "This is how we write docstrings for functions and classes in
-        JSII. This style is only used for module, class and funtion
+        JS2. This style is only used for module, class and funtion
         docsstrings, to set them apart from inline commentry."
 
         return args.reduce((tally, previous) -> tally + previous, 0)
     }
 
-Note: JSII uses `//` for floor-division:
+Note: JS2 uses `//` for floor-division:
 
     x // y			-> Math.floor(x / y)
 
 ### Dot Operators
 
-JSII has three dot operators, `.`, `!` and `?` (using `not` for boolean inversion, and
+JS2 has three dot operators, `.`, `!` and `?` (using `not` for boolean inversion, and
 `a if b else c` for ternaries).
 
 Dot notation uses the period character (`.`), exactly like JavaScript, for general property
@@ -471,13 +471,13 @@ Note: JavaScript's binary infix nullish operator (`??`) is supported (directly):
 
 ## Equality
 
-JSII redid JavaScript's equality operations (using a qualified `is not` operator for inversion):
+JS2 redid JavaScript's equality operations (using a qualified `is not` operator for inversion):
 
 	not a					-> !a
 	a is b 					-> Object.is(a, b)
 	a is not b				-> !(Object.is(a, b))
 
-In JSII, qualifiers always apply whenever they can. This simple rule allows us to use qualifiers
+In JS2, qualifiers always apply whenever they can. This simple rule allows us to use qualifiers
 extensively, without running into the kinds of issues CoffeeScript had, where `a is not b` and
 `a isnt b` meant two different things:
 
@@ -578,7 +578,7 @@ maps etc):
 	let data = map {"x": 1, 2: 3}			-> const data = new Map([["x", 1], [2, 3]]);
 
 To provide for this functionality (and the fact that destructuring assignments do not require
-parenthesis), the JSII Parser treats (parenthesized) *sequence expressions* and (bracketed)
+parenthesis), the JS2 Parser treats (parenthesized) *sequence expressions* and (bracketed)
 *array expressions* as sequences of (zero or more) comma-separated, arbitrary expressions, and
 (braced) *object expressions* are, likewise, parsed as sequences of comma-separated pairs of
 colon-separated expressions.
@@ -598,7 +598,7 @@ and others that will be interpreted differently:
 Literate programming allows you to separate all of your commentry and docstring from your code,
 generally improving the readability of both.
 
-The JSII Parser has a literate programming flag, which causes files to be parsed using the
+The JS2 Parser has a literate programming flag, which causes files to be parsed using the
 literate syntax, which is very simple: Lines that begin with whitespace are code lines and
 every other line is commentary.
 
@@ -610,7 +610,7 @@ anything you like on comment lines, and to use them however you wish.
 
 Note: This simple approach limits you to simple markup. For example, nested bullet points or
 HTML sections would not work, even if they started onside and contained no whitelines, as any
-indented lines would be interpreted as JSII code.
+indented lines would be interpreted as JS2 code.
 
 
 
@@ -1038,8 +1038,8 @@ Note: Logic uses `and`, `or` and `not`.
 ++ import.meta
 + import()
 + in operator
-++ JSII-in operator
-+ JSII-of operator
+++ JS2-in operator
++ JS2-of operator
 + Increment (++)
 --- Inequality (!=)
 + instanceof

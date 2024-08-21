@@ -24,15 +24,13 @@ import {
     wordCharacters,
 } from "./strings.js"
 
-import parse from "./parser.js"
-
-const LOOPBLOCK = -1;
-const SIMPLEBLOCK = 0;
-const FUNCTIONBLOCK = 1;
-const GENERATORBLOCK = 2;
-const ASYNCGENERATORBLOCK = 3;
-const ASYNCFUNCTIONBLOCK = 4;
-const CLASSBLOCK = 5;
+const LOOPBLOCK = -1;                // while, until, for
+const SIMPLEBLOCK = 0;               // if, else, unless, do
+const FUNCTIONBLOCK = 1;             // lambda, function
+const GENERATORBLOCK = 2;            // generator
+const ASYNCGENERATORBLOCK = 3;       // async generator
+const ASYNCFUNCTIONBLOCK = 4;        // async function
+const CLASSBLOCK = 5;                // class
 
 export class ParserError extends SyntaxError {
 
@@ -252,11 +250,11 @@ export class StringLiteral extends Terminal {
         lexer.advance();
     }
 
-    prefix(_) {
+    prefix(parser) {
 
         for (const [index, section] of Object.entries(this.value)) if (Array.isArray(section)) {
 
-            const expression = this.value[index] = Array.from(parse(section));
+            const expression = this.value[index] = [...parser.parse(section)];
 
             for (const subexpression of expression) if (!subexpression.expression) {
 
@@ -426,15 +424,6 @@ class BranchStatement extends Keyword {
         if (parser.on(Variable)) this.push(parser.gatherVariable());
 
         return this;
-    }
-
-    validate(check) {
-
-        /* Walk the block stack, ignoring simple blocks, to check if the first non-simple
-        block is a loop block. If so, this statement is valid (return `true`), and not
-        otherwise (return `false`). */
-
-        return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 
@@ -1035,7 +1024,22 @@ class Bang extends PrefixDotOperator {
 
 class Break extends BranchStatement {
 
-    /* This concrete class implements the `break` statement, just like JavaScript. */
+    /* This concrete class implements the `break` statement, which is just like JS. */
+
+    validate(check) {
+
+        /* Labled break-statements are valid inside any control-flow block, so we can
+        simply check the immediate context to establish that it is not the body of
+        anything functional.
+
+        Unlabeled break-statements are only valid inside a loop, though they may be
+        nested inside simple blocks within the loop. Therefore, we handle unlabled
+        breaks by climbing the stack, ignoring any simple blocks, and checking
+        that the first non-simple block is a loop. */
+
+        if (this.operands.length) return check($ => true, $ => $ < FUNCTIONBLOCK);
+        else return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    }
 }
 
 class Class extends Header {
@@ -1107,6 +1111,16 @@ export class Comma extends Terminator {
 class Continue extends BranchStatement {
 
     /* This concrete class implements the `continue` statement, just like JavaScript. */
+
+    validate(check) {
+
+        /* A continue-statement is only valid inside a loop (whether the statement has a
+        label or not), though it may be nested inside simple blocks within the loop.
+        Therefore, climb the stack, ignoring simple blocks, and check that the
+        first non-simple block is a loop. */
+
+        return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    }
 }
 
 class Debug extends Keyword {

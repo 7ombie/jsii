@@ -26,7 +26,7 @@ import {
     Word,
 } from "./objects.js"
 
-export default function * (source, literate=false) {
+export default function * lex(source, literate=false) {
 
     /* This function implements the lexer as a collection of helper functions, which
     it shares with the `lex` generator methods of the classes exported by `objects.js`,

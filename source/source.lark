@@ -1,6 +1,6 @@
 x += freeze 1
 
-for each from expression { console.log(each) }
+for each from expression { break foo }
 
 async function f { await call() }
 

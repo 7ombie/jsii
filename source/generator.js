@@ -1,6 +1,6 @@
 import parse from "./parser.js"
 
-export default function * (source, literate=false) {
+export default function * generate(source, literate=false) {
   
     for (const statement of parse(source, literate)) {
 
