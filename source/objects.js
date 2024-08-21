@@ -442,12 +442,12 @@ class ReturningStatement extends Keyword {
 
     /* This abstract base class is used by `Return` and `Exit`. */
 
-    validate(check) {
+    validate(parser) {
 
         /* Climb the block stack till something functional is found, then return `true`
         if it is anything other than a class block, and `false` if it is one. */
 
-        return check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 }
 
@@ -460,12 +460,12 @@ class YieldingStatement extends Keyword {
 
     static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
 
-    validate(check) {
+    validate(parser) {
 
         /* Climb the block stack till something functional is found, then return `true` if
         it is a block for a generator function, else `false`. */
 
-        return check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
+        return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
 }
 
@@ -501,12 +501,12 @@ class ClassDeclaration extends Declaration {
         else return super.prefix(parser);
     }
 
-    validate(check) {
+    validate(parser) {
 
         /* This method checks that the statement is directly contained by the body of a
         class. */
 
-        return check($ => true, $ => $ === CLASSBLOCK);
+        return parser.check($ => true, $ => $ === CLASSBLOCK);
     }
 }
 
@@ -1005,14 +1005,14 @@ class Await extends CommandStatement {
         return this.push(parser.gatherExpression(this.LBP));
     }
 
-    validate(check) {
+    validate(parser) {
 
         /* Climb the block stack till something functional is found, then return `true` if
         it is an asynchronous function block, and `false` otherwise. If nothing functional
         is found, the validation *succeeds* (note the third argument), as top-level await
         is valid (unlike all other other such cases). */
 
-        return check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
+        return parser.check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
     }
 }
 
@@ -1026,19 +1026,29 @@ class Break extends BranchStatement {
 
     /* This concrete class implements the `break` statement, which is just like JS. */
 
-    validate(check) {
+    validate(parser) {
 
         /* Labled break-statements are valid inside any control-flow block, so we can
         simply check the immediate context to establish that it is not the body of
-        anything functional.
+        anything functional, while also ensuring the label is active.
 
         Unlabeled break-statements are only valid inside a loop, though they may be
         nested inside simple blocks within the loop. Therefore, we handle unlabled
         breaks by climbing the stack, ignoring any simple blocks, and checking
         that the first non-simple block is a loop. */
 
-        if (this.operands.length) return check($ => true, $ => $ < FUNCTIONBLOCK);
-        else return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        if (this.operands.length) { // labeled break...
+
+            let label = this.operands[0];
+
+            if (parser.label(label) === null) {
+
+                throw new ParserError(`undefined label '${label.value}'`, label.location);
+            }
+
+            return parser.check($ => true, $ => $ < FUNCTIONBLOCK);
+
+        } else return parser.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 
@@ -1086,17 +1096,22 @@ class Colon extends InfixOperator {
 
     infix(parser, prefix) {
 
-        if (parser.on(If, Else, While, For, Do, Unless, Until)) {
+        /* If this colon is part of a label, update the parser to note whether the label is
+        bound to a loop statement or a simple block statement. Then, gather the statement,
+        before nullifying the label. Otherwise, just treat the colon like a normal infix
+        operator. */
+
+        if (parser.on(Do, Else, For, If, Unless, Until, While)) { // a label...
+
+            if (parser.label(prefix) === null) parser.label(prefix, parser.on(For, Until, While));
+            else throw new ParserError("cannot reassign an active label", prefix.location);
 
             this.expression = false;
             this.push(prefix, parser.gather());
 
-            if (this.operands[1].expression) {
+            parser.label(prefix, null);
 
-                throw new ParserError("unexpected expression", this.operands[1].location);
-            }
-
-        } else super.infix(parser, prefix);
+        } else super.infix(parser, prefix); // a key-value pair
 
         return this;
     }
@@ -1112,14 +1127,25 @@ class Continue extends BranchStatement {
 
     /* This concrete class implements the `continue` statement, just like JavaScript. */
 
-    validate(check) {
+    validate(parser) {
 
         /* A continue-statement is only valid inside a loop (whether the statement has a
         label or not), though it may be nested inside simple blocks within the loop.
-        Therefore, climb the stack, ignoring simple blocks, and check that the
-        first non-simple block is a loop. */
+        
+        If there is a label, ensure it is active and bound to a loop, then in either case,
+        climb the stack, ignoring simple blocks, and check that the first non-simple block
+        is a loop. */
 
-        return check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        if (this.operands.length) { // labeled continue...
+
+            let label = this.operands[0];
+            let state = parser.label(label);
+
+            if (state === null) throw new ParserError("undefined label", label.location);
+            else if (state === false) throw new ParserError("must continue a loop", label.location);
+        }
+
+        return parser.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 

@@ -205,7 +205,15 @@ export default function * lex(source, literate=false) {
     }
 
     const api = {
-        advance, on, at, peek, read, interpolate, gatherWhile, gatherUntil, gatherStream
+        advance,
+        at,
+        gatherStream,
+        gatherUntil,
+        gatherWhile,
+        interpolate,
+        on,
+        peek,
+        read
     };
 
     let [character, interpolating] = [empty, false];

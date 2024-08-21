@@ -1,6 +1,6 @@
 x += freeze 1
 
-for each from expression { break foo }
+foo: if expression { continue foo }
 
 async function f { await call() }
 
@@ -8,7 +8,9 @@ generator foo { return {foo: 2} }
 
 "outer: \(  "inner: \(  "innermost: \( boogie + woogie )"  ) 2"  ) 1"
 
-label: while x while y for thing from otherThing { blah }
+dance: while x while y {
+    function { moves: for thing from otherThing { break moves } }
+}
 
 for each in range { breakfast() }
 

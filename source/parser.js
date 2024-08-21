@@ -99,7 +99,7 @@ export default function * parse(source, literate=false) {
             /* Use the `validate` method of the token instance to check it, and complain if
             it is not valid (given the blocks it is nested within). */
 
-            if (result.validate(check)) return result;
+            if (result.validate(api)) return result;
 
             throw new ParserError(`unexpected ${result.value} statement`, result.location);
         }
@@ -205,11 +205,20 @@ export default function * parse(source, literate=false) {
 
         blockTypeStack.push(type);
 
-        if (functional) listStateStack.push(true);
+        if (functional) {
+            
+            listStateStack.push(true);
+            labelHashStack.push({});
+        }
 
         let result = braced ? [...LIST()] : gatherFormalStatement();
 
-        if (functional) { listStateStack.pop(); ignoreInsignificantNewlines() }
+        if (functional) {
+            
+            listStateStack.pop();
+            labelHashStack.pop();
+            ignoreInsignificantNewlines();
+        }
 
         blockTypeStack.pop();
 
@@ -235,8 +244,8 @@ export default function * parse(source, literate=false) {
 
         Note: This function is also used for bracketed notation, computed properties etc. */
 
-        listStateStack.push(false);         /// firstly, disable significant newlines, then
-        ignoreInsignificantNewlines();      /// ensure that the first `token` is significant
+        listStateStack.push(false);         //| firstly, disable significant newlines, then
+        ignoreInsignificantNewlines();      //| ensure that the first `token` is significant
 
         const results = on(Comma) ? [null] : []; // account for a leading empty assignee
 
@@ -339,9 +348,35 @@ export default function * parse(source, literate=false) {
         return fallback;
     }
 
+    function label(name, value=undefined) { // api function
+
+        /* This function is a getter-setter, used to get and set the state of labels.
+        It takes a `Varaible` instance (`name`) and an optional ternary value (one of
+        `true`, `false` or `null`).
+
+        When the second argument is left undefined (getter mode), the function returns
+        `true` when the given label is active and bound to a loop block, `false` when
+        it is active and bound to a simple block, and `null` when it is inactive (as
+        it cannot be found in the hash of labels on top of the Label-Hash Stack).
+
+        When the second argument is set (setter mode), its value is used to update the
+        state of the given label on the Label-Hash Stack.
+
+        Note: The Label-Hash Stack is a stack, which has label-hashes pushed and popped
+        automatically (by `gatherBlock`) whenever entering or leaving a function body.
+        The hashes on the stack map label names (as strings) to their ternary state. */
+
+        let lastIndex = labelHashStack.length - 1;
+
+        if (value === undefined) return labelHashStack[lastIndex][name.value] ?? null;
+        else if (value === null) delete labelHashStack[lastIndex][name.value];
+        else labelHashStack[lastIndex][name.value] = value;
+    }
+ 
     const api = {
         on,
         advance,
+        check,
         gather,
         gatherVariable,
         gatherProperty,
@@ -350,10 +385,12 @@ export default function * parse(source, literate=false) {
         gatherParameters,
         gatherAssignee,
         gatherBlock,
+        label,
         parse // the `StringLiteral` class calls `parse` recursively on interpolations
     };
 
     const blockTypeStack = [];
+    const labelHashStack = [{}];
     const listStateStack = [true];
     const tokens = lex(source, literate);
 
