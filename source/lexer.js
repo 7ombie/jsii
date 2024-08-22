@@ -194,15 +194,17 @@ export default function * lex(source, literate=false) {
         yield * Terminator.lex(api, locate());
     }
 
-    if (Array.isArray(source)) {
-        
-        // this block used to pass an array of tokens (from a string interpolation) to the
-        // parser (as its `source` argument) without it noticing the difference
+    if (source instanceof Array) {
 
-        yield * source;
+        // this block intervenes when an array of tokens is passed to the lexer (in practice,
+        // via `parse`, which is called (recursively) by `StringLiteral.prefix` to parse the
+        // tokens in string interpolations) as the `source` argument, allowing the parser to
+        // parse tokens without change (as if they were just another source string)...
 
-        return;
+        yield * source; return;
     }
+
+    // assuming the lexer was passed a string, initialize and run the lexer normally...
 
     const api = {
         advance,

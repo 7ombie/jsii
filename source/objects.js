@@ -252,7 +252,7 @@ export class StringLiteral extends Terminal {
 
     prefix(parser) {
 
-        for (const [index, section] of Object.entries(this.value)) if (Array.isArray(section)) {
+        for (const [index, section] of Object.entries(this.value)) if (section instanceof Array) {
 
             const expression = this.value[index] = [...parser.parse(section)];
 
@@ -594,7 +594,7 @@ export class Operator extends Token {
         operator instance. */
 
         switch (value) {
-            case ":": return new Colon(location, value);
+            case ":": return new Label(location, value);
             case "=": return new Assign(location, value);
             case "+": return new Plus(location, value);
             case "-": return new Minus(location, value);
@@ -619,6 +619,8 @@ export class Operator extends Token {
             case "<<": return new LSHIFT(location, value);
             case ">>": return new RSHIFT(location, value);
             case ">>>": return new ARSHIFT(location, value);
+            case "==": return new Equal(location, value);
+            case "!=": return new NotEqual(location, value);
             case "+=": return new AssignPlus(location, value);
             case "-=": return new AssignMinus(location, value);
             case "*=": return new AssignStar(location, value);
@@ -635,12 +637,10 @@ export class Operator extends Token {
             case "...": return new Spread(location, value);
             case "and": return new And(location, value);
             case "as": return new As(location, value);
-            case "dec": return new Dec(location, value);
             case "freeze": return new Freeze(location, value);
             case "frozen": return new Frozen(location, value);
             case "is": return new Is(location, value);
             case "in": return new In(location, value);
-            case "inc": return new Inc(location, value);
             case "new": return new New(location, value);
             case "not": return new Not(location, value);
             case "of": return new Of(location, value);
@@ -1054,7 +1054,7 @@ class CloseParen extends Closer {
     arrow params and function invocations. */
 }
 
-class Colon extends InfixOperator {
+class Label extends InfixOperator {
 
     /* This concrete class implements the `:` pseudo-operator, used for delimiting key-value
     pairs in object expressions, and for labels on blocks. */
@@ -1121,14 +1121,6 @@ class Debug extends Keyword {
     /* This concrete class implements the `debug` statement, which compiles to `debugger`. */
 
     prefix(_) { return this }
-}
-
-class Dec extends PrefixOperator {
-
-    /* This concrete class implements the `dec` operator, which compiles to the prefix
-    decrement operator (`--`). */
-
-    RBP = 14;
 }
 
 class DefaultConstant extends Constant {
@@ -1199,6 +1191,13 @@ class Else extends PredicatedBlock {
         if (parser.on(If)) return this.push(parser.gather());
         else return this.push(parser.gatherBlock(SIMPLEBLOCK));
     }
+}
+
+class Equal extends InfixOperator {
+
+    /* This concrete class implements the `==` operator, which compiles to `Object.is`. */
+
+    LBP = 8;
 }
 
 export class EOF extends Terminator {
@@ -1365,14 +1364,6 @@ class In extends InfixOperator {
     LBP = 8;
 }
 
-class Inc extends PrefixOperator {
-
-    /* This concrete class implements the `inc` operator, which compiles to the prefix
-    increment-operator (`++`). */
-
-    RBP = 14;
-}
-
 class InfinityConstant extends Constant {
 
     /* This concrete class implements the `Infinity` floating-point constant. */
@@ -1380,8 +1371,8 @@ class InfinityConstant extends Constant {
 
 class Is extends InfixOperator {
 
-    /* This concrete class implements the `is`, `is not`, `is of`, `is not of`, `is packed`,
-    `is sealed` and `is frozen` operators. */
+    /* This concrete class implements the `is`, `is not`, `is packed`, `is sealed`
+    and `is frozen` operators. */
 
     LBP = 8;
 
@@ -1397,12 +1388,7 @@ class Is extends InfixOperator {
 
             pushCurrent();
 
-        } else if (parser.on(Not)) {
-
-            pushCurrent();
-
-            if (parser.on(Of)) pushCurrent();
-        }
+        } else if (parser.on(Not)) { pushCurrent() }
 
         return this.push(parser.gatherExpression(this.LBP));
     }
@@ -1513,6 +1499,13 @@ class Not extends GeneralOperator {
 
         } else throw new ParserError("unexpected not-operator", this.location);
     }
+}
+
+class NotEqual extends InfixOperator {
+
+    /* This concrete class implements the `!=` operator, which compiles to `!Object.is`. */
+
+    LBP = 8;
 }
 
 class NotGreater extends InfixOperator {

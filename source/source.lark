@@ -1,4 +1,7 @@
-x += freeze 1
+x == freeze 1
+spam != ham
+theory is String
+theory is not String
 
 foo: if expression { break foo }
 

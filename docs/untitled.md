@@ -1,81 +1,82 @@
-JS2: JavaScriptScript
-=====================
+Lark: A Modern JavaScript Dialect 
+=================================
 
 **IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
 
-JS2 is short for JavaScriptScript (this is not final, obviously).
+Lark is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
+any type annotations). Lark compiles to regular, old JavaScript syntax.
 
-JS2 is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
-any type annotations). JS2 compiles to regular, old JavaScript syntax.
-
-> I'm open to supporting optional type annotations (that are validated by JS2), but haven't
-> given it much thought.
+> I'm open to supporting optional type annotations (that are validated by Lark), but haven't
+> given it much thought yet.
 
 Statement Grammar
 -----------------
 
-JS2 has a simple, statement grammar with curly braces. Newlines are significant (generally
+Lark has a simple, statement grammar with curly braces. Newlines are significant (generally
 terminating the current statement). Indentation is insignificant.
 
 ### Significant Whitespace
 
-JS2 replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
+Lark replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
 (LIST). The logic is explained later, but it is basically the same as Python: Newlines outside
 of parens, brackets or braces (that are part of the current statement) terminate the statement.
 
-Note: JS2 does not provide a continuation symbol for explicitly continuing logical lines (like
+Note: Lark does not provide a continuation symbol for explicitly continuing logical lines (like
 the `\` symbol in Python). In practice, there's always a better way to do it.
 
 Note: Enforcing (less than) 120 columns (instead of 80) in source files is recommended.
 
-JS2 does not use semicolons. However, it is still possible to have more than one statement on
+Lark does not use semicolons. However, it is still possible to have more than one statement on
 the same line. You just use commas between the statements instead. This works especially well
 with inline blocks:
 
-    if legal(character) { count += 1, yield character }
+    if valid(candidate) { count += 1, yield candidate }
 
 ### Keywords
 
-All formal statements start with a keyword. Block-statements use `do` (like `do { ... }`), and
-empty statements use `pass`. This avoids ambiguity with informal (expression) statements. For
-example, destructuring assignments never require extra parenthesis:
+Every proper statement (every statement aside from expression statements) starts with a keyword.
+Block-statements use `do` (like `do { ... }`), and empty statements use `pass`. This avoids any
+ambiguity with expression statements. For example, destructuring assignments never require
+extra parenthesis in Lark:
 
     {x, y, z} = object
 
-Informal statements do not *generally* start with a keyword, but they are grammatically arbitrary
-expressions, so there are exceptions. For example, `yield` is a keyword, but `yield x` is still a
-valid expression, so `yield x` could appear as a formal statement (by itself) or as an expression
-(within a larger statement):
-
-    yield x                // formal statement
-    x = yield x            // expression
-
-This observation is unimportant, except in regard to the way JS2 sugars blocks and predicates.
+Expression statements do not *generally* start with a keyword, but they're arbitrary expressions,
+so there are exceptions. For example, `yield` is a keyword and a valid expression. This is not
+normally important, but is worth noting before considering the way Lark sugars its blocks and
+predicates...
 
 ### Blocks & Predicates
 
-JS2 implements something similar to Eich's *paren-free mode*. Our version still drops the parens
-from around predicates, but does not require braces around every block.
+Lark implements something similar to Eich's *paren-free mode*. However, while Lark drops the parens
+from around predicates, it does not require braces around every block.
 
-Parens around predicates are always optional, so this kind of thing is all good:
+Parens around predicates are always optional, so this kind of thing is always acceptable:
 
     if x > y { return x }
 
     while x > 0 { console.log(x -= 1) }
 
-Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
-require braces, but blocks are a little more flexible.
+Braces around blocks are optional is some contexts and required in others...
 
-Braces around blocks become optional when the block contains a single statement that begins with a
-keyword. It does not matter whether the statement is formal or informal. The parser only cares
-whether the statement begins with a keyword or not.
+Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
+always require braces, but braces around blocks become optional when the block contains a single
+*formal* statement. In Lark, statements are considered *formal* when they begin with a keyword,
+and *informal* otherwise.
+
+Note: When establishing whether a given statement is formal or informal, the parser only considers
+whether the statement begins with a keyword or not. There are keywords that open formal statements
+(such as `yield`, `await`, `function` *et cetera*) that are also valid expressions.
+
+Note: The distinction between formal and informal statements only matters when establishing whether
+or not braces are required around a control-flow block. The concept is entirely lexical.
 
 Revisiting the previous example, we can see that the braces are not required in the first case:
 
     if x > y return x
 
-The nested statement forms a control-flow block (not a function body), and is a single statement
-(`return x`) that begins with a keyword (`return`). Likewise, this is also allowed:
+The nested statement forms a control-flow block (not a function body), and is a single formal
+statement (`return x`). Likewise, this is also allowed:
 
     if x > y yield x
 
@@ -90,8 +91,8 @@ The braces are still required here, as the block does not begin with a keyword:
 ### Compound Statements
 
 Compound statements (those that contain blocks of other statements, like `if`, `while`, `for` etc)
-are all formal statements (so they all begin with a keyword). Therefore, when we have a block that
-only contains one other block, we can inline the headers. For example:
+are all proper statements (which are always formal). Therefore, when we have a block that only
+contains one other block, we can inline the headers. For example:
 
     for row in rows for column in columns { console.log(row, column) }
 
@@ -116,11 +117,11 @@ The grammar for unpacking is copied directly from JS:
 Control Flow
 ------------
 
-You've already seen that JS2 treats parens around predicates as optional, and you're familiar with
+You've already seen that Lark treats parens around predicates as optional, and you're familiar with
 rules for bodies and blocks. You've also seen examples of if-statements, while-statements etc, so
 you know how that works.
 
-For-in loops in JS2 have the same semantics as for-of loops in JS, with a slightly nicer grammar:
+For-in loops in Lark have the same semantics as for-of loops in JS, with a slightly nicer grammar:
 
     for <assignees> in <expression> <block>
 
@@ -134,7 +135,7 @@ Note: There is currently no support for declaring a loop variable as anything ot
 block-scoped, per-iteration constant (pending usecases for the wackier stuff that JavaScript
 permits).
 
-JS2 also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
+Lark also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
 respectively), though unless-blocks do not (and will never) support else-clauses:
 
     until game.over { animate() }
@@ -150,11 +151,11 @@ also infer unsigned semantics (twiddling bits in twos-compliment is just confusi
 
 ## The `of` Operator
 
-JS2 has an `of` operator with the following grammar:
+Lark has an `of` operator with the following grammar:
 
     <identifier> of <expression>
 
-This applies a simple (always inlined) *functional operator* (defined by JS2, and specified by
+This applies a simple (always inlined) *functional operator* (defined by Lark, and specified by
 the identifier) to the expression on the right (as in *f of x*). This is used to sugar common
 operations on single expressions. For example:
 
@@ -213,9 +214,17 @@ or any of its sub-expressions, in parenthesis has no effect on optimization:
 
     ((key) in keys of (object))    -> Object.hasOwn(object, key)
 
+The `of` operator supports a range of builtin operations. The list is not finalized, but will
+include stuff like this (as well as the stuff above):
+
+    type of x                      -> typeof x
+		prototype of x                 -> Object.getPrototypeOf(x)
+		names of x                     -> Object.getOwnPropertyNames(x)
+		symbols of x                   -> Object.getOwnPropertySymbols(x)
+
 ## JSON Operators
 
-JS2 provides two prefix operators for doing JSON, one named `serialize` and another named
+Lark provides two prefix operators for doing JSON, one named `serialize` and another named
 `deserialize`.
 
 The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compiles to
@@ -226,36 +235,36 @@ The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compi
 
 ## Mutablity Operators
 
-JS2 provides prefix operators for *packing*, *sealing* and *freezing* objects, with a
+Lark provides prefix operators for *packing*, *sealing* and *freezing* objects, with a
 corresponding set for checking whether an object is *packed*, *sealed* or *frozen*.
 
 While the terms *seal* and *freeze* should be familiar to any JS dev, the term *pack* was
-introduced by JS2 to refer to `Object.preventExtensions` and `Object.isExtensible`, fixing
+introduced by Lark to refer to `Object.preventExtensions` and `Object.isExtensible`, fixing
 an inconsistency in JavaScript, where `isExtensible` returns `true` if we *can* mutate the
 object, while `isSealed` and `isFrozen` return `true` if we *cannot* mutate the object.
 
-In JS2, pack, seal and freeze (consistently) define three levels of progressively more
+In Lark, pack, seal and freeze (consistently) define three levels of progressively more
 immutable state:
 
     pack o                         -> Object.preventExtensions(o)
     seal o                         -> Object.seal(o)
     freeze o                       -> Object.freeze(o)
 
-    packed o                       -> !Object.isExtensible(o)
-    sealed o                       -> Object.isSealed(o)
-    frozen o                       -> Object.isFrozen(o)
+    o is packed                    -> !Object.isExtensible(o)
+    o is sealed                    -> Object.isSealed(o)
+    o is frozen                    -> Object.isFrozen(o)
 
 ## The JS Namespace
 
-You have seen that JS2 uses names for operators (and other things) that are valid variable
+You have seen that Lark uses names for operators (and other things) that are valid variable
 names in JavaScript. If this is ever an issue, you can access any varaiable in the underlying
 JavaScript namespace by referencing it as a property of the `js` namespace:
 
-	let js.serialize = js.pack				-> const serialize = pack;
+    let js.serialize = js.pack     -> const serialize = pack;
 
 Naturally, this works for the name of the namespace too:
 
-	js.js = js.js.js								-> js = js.js
+    js.js = js.js.js               -> js = js.js
 
 ## Function Grammar
 
@@ -263,7 +272,7 @@ The function grammar has been revised to decouple the convenience of the arrow-g
 semantics of JavaScript's various function types (so you can declare an arrow-function with a
 header-block grammar, and a full-fat function with an arrow-operator etc).
 
-As the term *arrow-function* would be a purely syntactic distinction in JS2, each of the three
+As the term *arrow-function* would be a purely syntactic distinction in Lark, each of the three
 principle function types is given its own simple name and corresponding keyword:
 
 * Arrow Functions are called *lambdas*, and use the keyword `lambda`.
@@ -273,10 +282,10 @@ principle function types is given its own simple name and corresponding keyword:
 Lambdas, functions and generators each support a (paren-free) general purpose, header-block
 syntax, and each has an asynchronous variant that uses `async` as a *qualifier*.
 
-Note: In JS2, a *qualifier* is a word that prefixes some other token to qualify it in some way.
+Note: In Lark, a *qualifier* is a word that prefixes some other token to qualify it in some way.
 Qualifiers look a bit like named prefix operators, but they are lexically attached to the very
 next token, known as the *subject* (and not some arbitrary expression). Qualifiers are used
-extensively in JS2, to qualify keywords, named operators, array and object literals,
+extensively in Lark, to qualify keywords, named operators, array and object literals,
 arbitrary expressions (inside parens) and even other qualifiers (recursively), though
 there is currently only one example of a qualified qualifier (which you will see
 in a moment).
@@ -287,7 +296,7 @@ The grammar for lambda-statements (which are also valid expressions) looks like 
 
     lambda <params> <body>
 
-JS2 parameters are expressed exactly as they are in JavaScript (including support for
+Lark parameters are expressed exactly as they are in JavaScript (including support for
 destructuring), just without the parenthesis (meaning that they can be omitted from function
 definitions entirely when there are no parameters).
 
@@ -295,7 +304,7 @@ As always, bodies must be wrapped in braces. For example:
 
     let sum = lambda x, y { return x + y }
 
-Note: In JS2, we generally use the arrow-operators (covered below) for lambdas/functions/etc
+Note: In Lark, we generally use the arrow-operators (covered below) for lambdas/functions/etc
 that return a single expression, so the header-block statement-grammars require explicit
 return-statements.
 
@@ -339,7 +348,7 @@ returned value). For example:
         renderer.render(delta)
     }
 
-Note: The "dangling dogballs operator" is legal in JS2, but only implicitly, and it's always
+Note: The "dangling dogballs operator" is legal in Lark, but only implicitly, and it's always
 redundant, so please, do not do this:
 
     function animate of delta = 0 {
@@ -366,7 +375,7 @@ asynchronous version of the respective function-type. A few examples:
 
 ### The `do async` Qualfied Qualifier
 
-As mentioned, JS2 has a *qualified qualifier*. The do-async-qualifier, spelt `do async`, can
+As mentioned, Lark has a *qualified qualifier*. The do-async-qualifier, spelt `do async`, can
 qualify `lambda`, `function` or `generator`. This does exactly what you'd expect (immediately
 invokes the function and evaluates to a promise).
 
@@ -393,27 +402,23 @@ Note: Other potential arrow operators have been reserved for other function type
 usecase. However, given that the body can only ever contain a single expression, arrow operators
 for the other function types seem redundant in practice.
 
-### The `await` Operator and Asynchronous Looping
+### The `await` Operator and Asynchronous For-Loops
 
-In JS2, `await` works exactly like it does JavaScript:
+In Lark, `await` works exactly like it does JavaScript:
 
     await <asynchronous-expression>
 
-When invoking an async-function that returns a normal iterator, we can traverse the iterator with a
-normal for-in-statement that waits for the expression to resolve first:
+When we want to iterate over the values yielded by an async-generator, Lark has a for-from loop
+(instead of JavaScript's for-await-of loop):
 
-    for <assignees> in await <asynchronous-expression>
+    for <assignees> from <asynchronous-generator-expression>
 
-When we want to iterate over the values yielded by an async-generator, we use this grammar instead:
-
-    wait for <assignees> in <asynchronous-generator-expression>
-
-Note: We call that a *wait-for-in-loop*.
+Note: Lark does not use the asterisk for generators. It has a `generator` keyword, and copies the
+`yield from <expression>` grammar (described below) from Python.
 
 ## Yielding from Generators
 
-JS2 uses yield-statements (which are also valid expressions), just like in JavaScript, except
-that in JS2, `yield *` is spelled `yield from`:
+In Lark, `yield *` is spelled `yield from`:
 
     yield                           -> yield;
     yield item                      -> yield item;
@@ -430,599 +435,181 @@ use a double-quoted string literal. For example:
     let sum = lambda ...args {
 
         "This is how we write docstrings for functions and classes in
-        JS2. This style is only used for module, class and funtion
+        Lark. This style is only used for module, class and funtion
         docsstrings, to set them apart from inline commentry."
 
         return args.reduce((tally, previous) -> tally + previous, 0)
     }
 
-Note: JS2 uses `//` for floor-division:
+Note: Lark uses `//` for floor-division:
 
     x // y			-> Math.floor(x / y)
 
 ### Dot Operators
 
-JS2 has three dot operators, `.`, `!` and `?` (using `not` for boolean inversion, and
-`a if b else c` for ternaries).
+Lark has three dot operators, `.`, `!` and `?` (using `not` for boolean inversion, and
+`x when predicate else y` for ternaries).
 
 Dot notation uses the period character (`.`), exactly like JavaScript, for general property
 access. Private access uses `!` (replacing the JavaScript spelling of `.#`), and the nullish
 coalescing operator is spelt `?` (replacing `?.`):
 
-	this.foo 		-> this.foo
-	this!foo 		-> this.#foo
-	this?foo		-> this?.foo
+    this.foo        -> this.foo
+    this!foo        -> this.#foo
+    this?foo        -> this?.foo
 
-	foo?()			-> foo?.()
-	foo?[x]			-> foo?.[x]
+    foo?()	        -> foo?.()
+    foo?[x]	        -> foo?.[x]
 
-	this.foo?()		-> this.foo?.()
-	this.foo?[x]		-> this.foo?.[x]
+    this.foo?()		  -> this.foo?.()
+    this.foo?[x]		-> this.foo?.[x]
 
-Note: The `?!` operator has been reserved (to replace `?.#`), pending a usecase. We would prefer
+Note: The `?!` operator has been reserved (to replace `?.#`), pending a usecase. I'd prefer
 to only use a single-character at any point in the chain (preserving the single-dot-per-step
-vibe), but we will support the following, if shown to be useful:
+vibe), but will support the following, if shown to be useful:
 
-	this?!foo		-> this?.#foo
+    this?!foo       -> this?.#foo
 
 Note: JavaScript's binary infix nullish operator (`??`) is supported (directly):
 
-	a ?? b			-> a ?? b
+    a ?? b          -> a ?? b
 
 ## Equality
 
-JS2 redid JavaScript's equality operations (using a qualified `is not` operator for inversion):
+Lark redid JavaScript's equality operations to use `==` and `!=`, but using the `Object.is`
+function:
 
-	not a					-> !a
-	a is b 					-> Object.is(a, b)
-	a is not b				-> !(Object.is(a, b))
+    a == b          -> Object.is(a, b)
+    a != b          -> !Object.is(a, b)
 
-In JS2, qualifiers always apply whenever they can. This simple rule allows us to use qualifiers
-extensively, without running into the kinds of issues CoffeeScript had, where `a is not b` and
-`a isnt b` meant two different things:
+Note: The JavaScript `==` and `===` operators, along with `!=` and `!==`, are not available in
+Lark.
 
-	a is not b				-> !(Object.is(a, b))
-	a is (not b)			-> Object.is(a, !b)
-	(not a) is b			-> Object.is(!a, b)
+Lark uses the `is` operator instead of JavaScript's `instanceof`, and includes an `is not`
+operator for checking the opposite:
 
-Note: The expression on the last line could drop the parens (`not a is b`), as logical-not has
-far higher precedence than equality operators. The example just illustrates that this can also
-be expressed symmetrically.
-
-The traditional equality operators are reserved for defining shallow (`==`) and deep (`===`)
-equality operators later, if we ever have anything we can compile them to (there is no
-runtime (or preamble), so operator semantics must always be expressed inline, using
-vanilla JS).
+    message is String        -> message instanceof String
+		message is not String    -> !(message instanceof String)
 
 ## String Literals
 
-You can wrap string literals in accents, single-quotes or double-quotes.
+Lark string literals use (double) quotes, with the same syntax as Swift.
 
-Literals that use accents or single-quotes can contain interpolations that use the same syntax
-as JavaScript (a dollar-prefixed pair of (properly nested) curly braces).
+Single-line string literals are wrapped in a single pair of quotes:
 
-Strings that use double-quotes cannot contain interpolations.
+    let name = "Lark"
 
-We generally use accented literals for all string-literal-expressions, and use double-quoted
-literals for docstrings.
+Multiline literals use pairs of three (adjacent) quotes. The lines of the expressed string are
+the lines that fall *between* the opening and closing quotes. It is a syntax error to have any
+characters (except insignificant trailing whitespace) after the opening quotes, or to have any
+characters, except indentation, before the closing quotes.
 
-Single-quoted literals are only supported because removing them seemed overly opinionated. They
-are redundant.
+The indentation level of the closing quotes is removed from the lines within the literal. For
+example, this string contains one, onside line that reads `spam and eggs`:
 
-Double-quoted string literals can span multiple lines, and contain everything between the open
-double-quote and the closing one.
+    let string = """
+        spam and eggs
+        """
 
-Accented literals are only single-line-strings if they contain no newlines. They are
-multiline-strings if the literal contains a newline before any visible character or
-interpolation (you open the string literal, then immediately start a new line).
+The literal does not have to be indented. For example, this (three-line) string has closing
+quotes at the same level as the opening quotes:
 
-Note: Multiline, accented literals with visible characters on the first line raise a
-syntax error.
+    let string = """
+    this line is onside
+      this line is indented by two spaces
+    this line is onside again
+		"""
 
-Note: Trailing spaces after the opening accent (before the newline) are ignored.
+Single escape-characters work like JavaScript. This string literal contains two lines:
 
-The parser counts the number of spaces at the beginning of the first, new line in a multiline,
-accented literal (immediately following the line that the literal began on), and ignores that
-many spaces at the start of that line, and every line that follows it.
+    "Line1\nLine2"
 
-Note: The number of spaces can be zero.
+Multi-character escape sequences are not supported. Interpolations are used instead (again,
+using Swift grammar). Lark interpolations use the same escape character as always `\`, and
+the interpolated expression is wrapped in parens (like an expression). These two strings
+are identical:
 
-Note: If you need to begin a multiline string with whitespace, use an interpolation (at least,
-at the beginning).
+    "1 + 2 == 3"
+		"1 + 2 == \(1 + 2)"
 
-Note: The first character after the spaces on the first, new line must not be a (hard) newline
-character (it may be one or more *interpolated* whitespace characters). It is a syntax error to
-begin a multiline string with a whiteline.
+Lark goes slightly further than Swift, permitting any number of comma-separated expressions
+in the same interpolation (like an escaped tuple):
 
-If the last line of a multiline, accented literal only contains whitespace, it is ignored.
+		"\(x, y, z)"
 
-For example, this string contains one line (`spam and eggs`), with no leading or trailing spaces
-in the value of the expression:
+Note: The values of the expressions are treated as adjacent interpolations (without spaces), so
+the previous example is just a nicer way to write this:
 
-		let string = """
-				spam and eggs
-				"""
-
-		let string = '''
-		spam and eggs
-		'''
-
-		let string = ```
-				spam and eggs, then so more
-				this is some more data, obviously
-				```
+    "\(x)\(y)\(z)"
 
 ## Compound Expressions
 
-The *subject* of a qualifier (the token being qualified) can be any valid word (a keyword, named
-operator or another qualifier, but not a variable name or reserved word).
 
-The subject of a qualifier can also be an open paren, bracket or brace. In which case, the
-qualifier applies to the entire expression (up to the corresponding (properly matched) closing
-paren, bracket or brace).
+Array and object literals are similar to JavaScript, with a few exceptions.
 
-Unqualfied compound expressions work exactly as you'd expect from JavaScript, compiling to
-grouped expressions, array literals and object literals. However, there is one exception here:
-Objects defined with object literals have null prototypes by default:
+Objects defined with object literals have `null` prototypes by default:
 
-	let o = {x: 1}							-> const o = {__proto__: null, x: 1}
+    let o = {x: 1}                        -> const o = {__proto__: null, x: 1}
 
 If you want a different prototype, you have to set it explicitly:
 
-	let oo = {__proto__: Object, x: 1}		-> const oo = {__proto__: Object, x: 1}
+    let oo = {__proto__: Object, x: 1}    -> const oo = {__proto__: Object, x: 1}
 
-Qualified compund expressions are used to create other kinds of compound types (typed arrays,
-maps etc):
+Furthermore, unlike JavaScript, you cannot use a name to express a key and value with that
+name. This will not do what it would do in JavaScript:
 
-	let bytes = u8 [1, 2, 3]				-> const bytes = new Uint8Array([1, 2, 3]);
-	let data = map {"x": 1, 2: 3}			-> const data = new Map([["x", 1], [2, 3]]);
+    let o = {foo, bar}
 
-To provide for this functionality (and the fact that destructuring assignments do not require
-parenthesis), the JS2 Parser treats (parenthesized) *sequence expressions* and (bracketed)
-*array expressions* as sequences of (zero or more) comma-separated, arbitrary expressions, and
-(braced) *object expressions* are, likewise, parsed as sequences of comma-separated pairs of
-colon-separated expressions.
+This limitation is a compromise that Lark makes to permit the introduction of map-literals
+and set-literals. Map literals use colon-separated expressions in square brackets:
 
-The keys in an object expression are interpreted and compiled, based on the qualifier (or the
-absence of one). This means that certain types of keys will be valid in, for example, an object
-expression with the map-qualifier that are not valid in a regular (unqualified) object literal,
-and others that will be interpreted differently:
+    let map = [1: "x", 2: "y"]             -> const data = new Map([[1, "x"], [2, "y"]]);
 
-	{x: 1}									-> {x: 1}
-	map {x: 1}								-> ReferenceError: x is not defined
-	map {Function: f}						-> new Map([[Function, f]])
-	{Function: f}							-> {Function: f}
+You can do a similar thing with curly braces to express sets:
+
+    let set = {1, 2, 3, 4}                 -> const set = new Set([1, 2, 3, 4]);
+
+To disambiguate between the overloaded characters, empty objects and maps must use a colon:
+
+    []     -> empty array
+		{}     -> empty set
+		[:]    -> empty map
+		{:}    -> empty object (with a null prototype)
 
 ## Literate Programming
 
-Literate programming allows you to separate all of your commentry and docstring from your code,
-generally improving the readability of both.
+Literate programming allows you to separate all of your commentry and docstrings from your
+code, generally improving the readability of both.
 
-The JS2 Parser has a literate programming flag, which causes files to be parsed using the
+The Lark Parser has a literate programming flag, which causes files to be parsed using the
 literate syntax, which is very simple: Lines that begin with whitespace are code lines and
 every other line is commentary.
 
-Code lines are parsed as normal (leading whitespace is insignificant, even in multiline strings).
-Everything else is ignored (and thrown away by the parser).
+Code lines are parsed as normal (leading whitespace is insignificant, even inside multiline
+strings). Everything else is ignored (and thrown away by the parser).
 
-We do not stipulate that comments must be Markdown, or anything like that. You are free to put
-anything you like on comment lines, and to use them however you wish.
+Lark does not stipulate that comments must be Markdown, or anything like that. You are free
+to put anything you like on comment lines, and to use them however you wish.
 
 Note: This simple approach limits you to simple markup. For example, nested bullet points or
-HTML sections would not work, even if they started onside and contained no whitelines, as any
-indented lines would be interpreted as JS2 code.
-
-
-
-
-
-
-
-
-
-For Example:
-
-	const skillset = a |> (predicate ? % : alternative) |> %.skills;
-
-	let skillset = a >> $ if predicate else alternative >> $.skills
-
-	a >> b		-> b(a)
-	a >>> b(%)	-> b(a)
-
-	getUserData(user) | processUserData | console.log
-
-	getUserData(user) || processUserData($) || console.log($)
-
-	getUserData(user) || processUserData($) | console.log
-
-	let validateArray = generator rows, columns {
-
-		for r in rows for c in cols if invalid(r, c) throw new CustomError(r, c)
-		else yield {row: r, column: c}
-	}
-
-	for (const r of rows) for (const c of cols) if (invalid(r, c)) throw new RangeError(message);
-	else yield {row: r, column: c};
-
-	if x > 0 console.log(x)						-> ERROR: subordinate statement cannot be an expression
-
-	if x > 0: console.log(x) 					-> if (x > 0) console.log(x);
-
-	if x > 0 put x								-> if (x > 0) console.log(x);
-
-	if x > 0 put x, y, z							-> ERROR: unexpected or superfluous comma
-
-	if x > 0 put [x, y, z]						-> if (x > 0) console.log([x, y, z]);
-
-	if x > 0: console.log(x, y, z)				-> if (x > 0) console.log(x, y, z);
-
-	if x > 0									-> ERROR: expected block (found newline)
-	if x > 0:									-> ERROR: expected block (found newline)
-
-	if x > 0 pass
-
-	put js.put									-> console.log(put)
-	js.peg = js.js								-> peg = js;
-	import { js.foo as bar } from "./main.js"		-> import { foo as bar } from "./main.js";
-	export js.not								-> export not;
-
-	let a = I64 [1, 2, 3]
-	let b = record {a: 3, b: 2}
-
-	let sum = closure ...args {
-		let result = 0
-		for arg in args: result += arg
-		return result
-	}
-
-	let sum = function {
-		const args = Array.from(arguments)
-		return args.reduce((arg, tally) -> tally + arg, 0)
-	}
-
-	let enumerate = generator tally=0, step=1 {	-> const enumerate = function * (tally=0, step=1) {
-		yield tally								-> 	   yield tally;
-		repeat if x > 4 yield tally += step		->     while (true) if (x > 4) yield tally += step;
-	}											-> }
-
-	let read = async function url {
-		let response = await fetch(url)
-		return await response.text()
-	}
-
-	let erm = async generator x {
-		# need to come up with a short example
-	}
-
-The `do` qualifier is always less offensive:
-
-	if predicate do function { ... }
-
-Note; More functional languages often use`do` as a general purpose invocation operator. However,
-here it is a *qualifier*, and is strictly used to prefix statements that *define* functions, and cannot prefix
-an arbitray expression (whether it evaluates to a function or not). Neither of the following lines parse:
-
-	let context = do new AudioContext
-	let oscillator = do context.createOscillator
-
-Note: You cannot use `do` with arrow syntax.
-
-	let Sprite = class {
-		static directory = "../sprites"
-	}
-
-	let SpaceInvader = class extends Sprite {
-
-		static sfx = new SFX("pew")
-
-		static put this.sfx
-		static put super.directory
-
-		static if this.sfx.name is "pew" and super.directory is "../sprites" { ... }
-		else { ... }
-
-		static foo
-		static {
-			let x = 0
-			this.foo = x
-		}
-	}
-
-	Object..shuffle 				-> Object.prototype.shuffle
-	Object.!shuffle				-> Object.prototype.#shuffle
-	Object.?shuffle				-> Object.prototype?.shuffle
-	Object.?[x]					-> Object.prototype?.[x]
-	Object.?()					-> Object.prototype?.()
-	Object.?!shuffle				-> Object.prototype?.#shuffle
-
-## Exception Handling
-
-	sketchy if predicate return dodgyFunction()
-	on error if predicate { ... }
-	capture error on ReferenceError { ... }
-	capture { stacktrace } on RangeError { ... }
-
-	capture error trying return dodgyFunction()
-	on TypeError { ... }
-	on { stacktrace } from ReferenceError { ... }
-	on error in [InputError, ParseError] { ... }
-	on in [InputError, ParseError] { ... }
-	on Error { ... }
-	whatever { ... }
-
-	catch { stacktrace } from TypeError
-
-	on <ErrorClass>
-	on <param> from <ErrorClass>
-	on in <ErrorClassArray>
-	on <param> in <ErrorClassArray>
-
-	try { dodgyFunction() }
-	catch error {
-		const $$predicate = [SyntaxError, RangeError];
-		if (Array.isArray($$.predicate) && $$.predicate.includes(error.constructor) || )
-		} else if (error instanceof $$predicate)
-	}
-
-	on SyntaxError then {
-		# can handle error, but not access it...
-	}
-	capture error SyntaxError: dodgyFunction()
-	on SyntaxError then {
-		# can handle and reference error as `error`...
-	}
-
-	capture { stacktrace } trying: dodgyFunction()
-	on SyntaxError, RangeError then {
-		# can handle error and access the `stacktrace`
-		# attribute as `statcktrace`...
-	}
-
-	do function animate of delta=performance.now() {	-> void function animate(delta=performance.now()) {
-		requestAnimationFrame(animate)				->    requestAnimationFrame(animate);
-		renderer.render()							->	  renderer.render();
-	}			  									-> }();
-
-# Membership Tests
-
-	a in b					-> b.includes(a)
-	a not in b				-> !(b.includes(a))
-
-## Functional Stuff
-
-
-## METHODS ??
-
-	method getNames of void { ... }
-	method setLocation of x, y { ... }
-
-	method <name> of <args> { ... }
-	generator method <name> of <args> { ... }
-	async method <name> of <args> { ... }
-	async generator method <name> of <args> { ... }
-
-	getter <name> { ... }
-	setter <name> of <arg> { ... }
-	async getter <name> { ... }
-	async setter <name> of <arg> { ... }
-
-# Iteration
-
-	for <params> in <expression> <block> 		-> for (const <param> of <expression>) { <block> }
-
-Currently, there is no support for loop variables that vary within a given iteration, or reusing nonlocal
-variables etc (pending a usecase).
-
-Examples:
-
-	let array = [1, 2, 3]
-	let object = {a: 1, b: 2}
-
-	for n in array: put(n)
-	1
-	2
-	3
-
-	for key in keys of object: put(key)
-	"a"
-	"b"
-
-	for [index, value] in entries of array: put(index, value)
-	0 1
-	1 2
-	2 3
-
-	for [key, value] in entries of object: put(key, value)
-	"a" 1
-	"b" 2
-
-	for <names> in array: ...				#   for (const $MCFLY23 of array) {
-													const <names> = $MCFLY23;
-													...
-												}
-
-	for <names> in keys of obj: ...			# 	for (const $MCFLY24 of Object.keys(obj)) {
-													const <names> = $MCFLY24;
-													...
-												}
-
-	for <names> in entries of obj: ...		# 	for (const $MCFLY25 of Object.entries(obj)) {
-													const <names> = $MCFLY25;
-													...
-												}
-
-	for <names> in names of obj: ...			# 	for (const $MCFLY26 of Object.getOwnPropertyNames(obj)) {
-													const <names> = $MCFLY26;
-													...
-												}
-
-	for <names> in symbols of obj: ...			# 	for (const $MCFLY27 of Object.getOwnPropertySymbols(obj)) {
-													const <names> = $MCFLY27;
-													...
-												}
-
-	for <names> in descriptors of obj: ...	# 	for (const $MCFLY28 of Object.entries(Object.getOwnPropertyDescriptors(obj)) {
-													const <names> = $MCFLY28;
-													...
-												}
-
-## Iteration
-
-McFly rethinks the whole `in` header-block grammars for iteration, for-in loops and a for-in-of loops.
-
-1) The `equals` operator is defined using the deep-equals logic
-   from [How to Get a Perfect Deep Equal in JavaScript][1].
-2) The `mimics` operator is defined using the shallow-equals
-   logic from [How to Get a Perfect Deep Equal in JavaScript][1].
-
-[1]: https://levelup.gitconnected.com/how-to-get-a-perfect-deep-equal-in-javascript-b849fe30e54f
-
-
-## Switch Blocks and Case Expressions
-
-	switch predicate {
-
-		let a = true if case 0 else false
-
-		if case 1: put "you're dead!!"
-		else if case(2, 3, 4): put "you survived!"
-		else: put "you defeated the goblin!!"
-
-		let x = 20
-		until case x or x is 0 {
-			put "case is not {x}"
-			x -= 1
-		}
-	}
-
-	let bigLongFunctionName = function 						...
-		a=someLongDefaultArgumentName,						...
-		b=some(long, compounded, expression) + withExtras, 	...
-		c=[a, literal, expressing, some, compound, value] {
-			put(a, b, c)
-	}
-
-	[1 to 10]
-	let pots = [2 ** n for n in [0 to 32 by 2]]
-
-	or			-> ||
-	and			-> &&
-	not			-> !
-
-	OR			-> |
-	XOR			-> ^
-	AND			-> &
-	NOT			-> ~
-	ROR?
-	ROL?
-	ASR?
-	ZSR?
-	ZSL?
-	CLZ
-
-	function classifyWord(token) {
-
-		const value = token.value;
-
-		if (keywords.includes(value)) token.type = "keyword";
-		else if (operators.includes(value)) token.type = "operator";
-		else if (reserved.includes(value)) token.type = "reserved";
-		else token.type = "variable";
-
-		return token;
-	}
-
-	function specialCaseNot(token) {
-
-		/* The `not` keyword can be a prefix or suffix, but cannot appear by itself.
-		This helper throws a syntax error if `not` appears somewhere it shouldn't. */
-
-		if (token.value === "not") throw new SyntaxError("there is no not-operator");
-	}
-
-	while (token = gatherToken()) {
-
-		// only special-case words, which defer full classification to permit this loop
-		// to combine certain pairs of tokens (`is not`, `not in` etc) into a single
-		// token (all other token types are classified as they are tokenized)...
-
-		if (token.type !== "word") { yield token; continue }
-
-		// if this word token cannot be a prefix, it only needs classifying...
-
-		if (not(token.value in prefixes)) { yield classifyWord(token); continue }
-
-		// the word could be a prefix, so we need to gather another token...
-
-		const nextToken = gatherToken();
-
-		// if the next token is not a word, this token cannot prefix it, so classify
-		// this token, then yield both tokens, one by one, in order, then continue...
-
-		if (nextToken.type !== "word") {
-
-			specialCaseNot(token); // `not` is only valid as part of two-word pair
-
-			yield classifyWord(token); yield nextToken; continue;
-		}
-
-		// we now know that both tokens are words (of some type, but importantly, the
-		// values of these tokens are not inside comments or string literals), so if
-		// this token can prefix the next, they need to be combined into a single
-		// token that is then classified and yielded, before continuing...
-
-		if (prefixes[token.value].includes(nextToken.value)) {
-
-			token.value = `${token.value} ${nextToken.value}`;
-
-			yield classifyWord(token); continue;
-		}
-
-		// while both tokens are words, they do not combine to form a single token, so
-		// check that we are not yielding an invalid `not` operator, before classifying
-		// and yielding each token, one by one, in order...
-
-		specialCaseNot(token);
-
-		yield classifyWord(token); yield classifyWord(nextToken);
-	}
-
-### Revised Bitwise Operators
-
-Note: Logic uses `and`, `or` and `not`.
-
-+ `!`       Bitwise NOT                         !x          -> ~x
-+ `?`       Count Leading Zeros                 ?x          -> Math.clz32(x)
-
-+ `&`       Bitwise AND                         x & y       -> x & y
-+ `|`       Bitwise OR                          x | y       -> x | y
-+ `||`      XOR                                 x || y      -> x ^ y
-+ `<<`      Zero Left Shift                     x << y      -> x << y
-+ `>>`      Zero Right Shift                    x >> y      -> x >>> y
-+ `>>>`     Arithmetic Right Shift              x >>> y     -> x >> y
-
-+ `&=`      Bitwise AND Assignment
-+ `|=`      Bitwise OR Assignment
-+ `||=`     XOR Assignment
-+ `<<=`     Zero Shift Left Assignment
-+ `>>=`     Zero Shift Right Assignment
-+ `>>>=`    Arithmetic Shift Right Assignment
+HTML sections would not work, even if they started onside and contained no whitelines, as
+any indented lines would be interpreted as Lark code.
 
 ### Operators
 
 ++ Addition (+)
-+ Addition assignment (+=)
-+ Assignment (=)
-+ await
-+ Bitwise AND (&)
-+ Bitwise AND assignment (&=)
-+ Bitwise NOT (~)
-+ Bitwise OR (|)
-+ Bitwise OR assignment (|=)
-+ Bitwise XOR (^)
-+ Bitwise XOR assignment (^=)
+++ Addition assignment (+=)
+++ Assignment (=)
+++ await
+++ Bitwise AND (&)
+++ Bitwise AND assignment (&=)
+++ Bitwise NOT (~)
+++ Bitwise OR (|)
+++ Bitwise OR assignment (|=)
+++ Bitwise XOR (^)
+++ Bitwise XOR assignment (^=)
 ++ Comma operator (,)
-+ Conditional (if-else) operator
+++ Ternary (when-else) operator
 + Decrement (--)
 + delete operator
 + Destructuring assignment
@@ -1038,11 +625,11 @@ Note: Logic uses `and`, `or` and `not`.
 ++ import.meta
 + import()
 + in operator
-++ JS2-in operator
-+ JS2-of operator
++ of operator
 + Increment (++)
 --- Inequality (!=)
-+ instanceof
++ is       `x is Type     -> x instanceof Type`
++ is not   `x is not Type -> !(x instanceof Type)`
 + Left shift (<<)
 + Left shift assignment (<<=)
 ++ Less than (<)
@@ -1084,11 +671,11 @@ Note: Logic uses `and`, `or` and `not`.
 
 ### Declarations
 
-+ var
-+ let
+++ var
+++ let
 + for
-+ for-in
-+ for-async-in
+++ for-in
+++ for-from
 
 ### Control Flow
 
@@ -1112,18 +699,18 @@ Note: Logic uses `and`, `or` and `not`.
 
 ### Functions
 
-+ lambda
-+ function
-+ generator
-+ async lambda
-+ async function
-+ async generator
-+ do lambda
-+ do function
-+ do generator
-+ do async lambda
-+ do async function
-+ do async generator
+++ lambda
+++ function
+++ generator
+++ async lambda
+++ async function
+++ async generator
+++ do lambda
+++ do function
+++ do generator
+++ do async lambda
+++ do async function
+++ do async generator
 + class
 
 ## Misc
@@ -1132,3 +719,12 @@ Note: Logic uses `and`, `or` and `not`.
 + import
 + export
 + labels
+
+Promotions
+==========
+
++ groupBy         -> Object.groupBy
++ isFinite        -> Number.isFinite
++ isInteger       -> Number.isInteger
++ isNaN           -> Number.isNaN
++ isSafeInteger   -> Number.isSafeInteger
