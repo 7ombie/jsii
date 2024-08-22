@@ -118,7 +118,7 @@ export class Token {
         /* This method (which is often overridden by a subclass) is used by the code generator
         stage to convert the token into the corresponding JavaScript source. */
 
-        return this.value.toString();
+        return this.value;
     }
 
     push(...args) {
@@ -130,6 +130,21 @@ export class Token {
         args.forEach(arg => this.operands.push(arg));
 
         return this;
+    }
+
+    at(index) {
+
+        /* This helper makes indexing operands a little bit easier. */
+
+        return this.operands[index];
+    }
+
+    js(operand) {
+
+        /* This helper takes an index for an operand, generates its JS source, and returns the
+        result as a string. */
+
+        return this.operands[operand].generate();
     }
 }
 
@@ -699,6 +714,11 @@ class InfixOperator extends Operator {
     infix(parser, left) {
 
         return this.push(left, parser.gatherExpression(this.LBP));
+    }
+
+    generate() {
+
+        return `${this.js(0)} ${this.value} ${this.js(1)}`;
     }
 }
 
@@ -1369,7 +1389,7 @@ class InfinityConstant extends Constant {
     /* This concrete class implements the `Infinity` floating-point constant. */
 }
 
-class Is extends InfixOperator {
+class Is extends GeneralOperator {
 
     /* This concrete class implements the `is`, `is not`, `is packed`, `is sealed`,
     `is frozen`, `is not packed`, `is not sealed` and `is not frozen` operators. */
@@ -1384,6 +1404,24 @@ class Is extends InfixOperator {
 
         if (parser.on(Packed, Sealed, Frozen)) return this.push(parser.advance(true));
         else return this.push(parser.gatherExpression(this.LBP));
+    }
+
+    generate() {
+
+        if (this.at(1) instanceof Not) {
+
+            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.js(0)})`;
+            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.js(0)}))`;
+            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.js(0)}))`;
+
+            return `!(${this.js(0)} instanceof ${this.js(2)})`;
+        }
+
+        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.js(0)}))`;
+        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.js(0)})`;
+        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.js(0)})`;
+
+        return `${this.js(0)} instanceof ${this.js(1)}`;
     }
 }
 
@@ -1641,7 +1679,8 @@ class Pack extends PrefixOperator {
 class Packed extends Operator {
 
     /* This concrete class implements the `packed` operator, used by `Is` to implement the
-    `is packed` suffix operation, which compiles to `!Object.isExtensible(R)`. */
+    `is packed` and `id not packed` suffix operators, which compile to expressions using
+    `Object.isExtensible` (which equates to is-not-packed). */
 }
 
 class Pass extends Keyword {
