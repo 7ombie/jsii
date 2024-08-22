@@ -1371,26 +1371,19 @@ class InfinityConstant extends Constant {
 
 class Is extends InfixOperator {
 
-    /* This concrete class implements the `is`, `is not`, `is packed`, `is sealed`
-    and `is frozen` operators. */
+    /* This concrete class implements the `is`, `is not`, `is packed`, `is sealed`,
+    `is frozen`, `is not packed`, `is not sealed` and `is not frozen` operators. */
 
     LBP = 8;
 
     infix(parser, left) {
 
-        const pushCurrent = () => this.push(parser.advance(true));
-
         this.push(left);
 
-        if (parser.on(Packed, Sealed, Frozen)) return pushCurrent();
+        if (parser.on(Not)) { this.push(parser.advance(true)) }
 
-        if (parser.on(Of)) {
-
-            pushCurrent();
-
-        } else if (parser.on(Not)) { pushCurrent() }
-
-        return this.push(parser.gatherExpression(this.LBP));
+        if (parser.on(Packed, Sealed, Frozen)) return this.push(parser.advance(true));
+        else return this.push(parser.gatherExpression(this.LBP));
     }
 }
 

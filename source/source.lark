@@ -1,5 +1,6 @@
 x == freeze 1
 spam != ham
+
 theory is String
 theory is not String
 
@@ -24,10 +25,14 @@ function of x, y { return 1 }
 throw new Foo()
 dev if x { Y }
 dev 1 + 2 * 3 + 3
-o is sealed
-o is frozen
 pack new foo(x, y, z)
 seal new foo
 freeze 1 + 2 when x * y else spam + eggs
+o is packed
+o is sealed
+o is frozen
+o is not packed
+o is not sealed
+o is not frozen
 lambda x, y, args... { return x + y / args }
 
