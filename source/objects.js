@@ -285,7 +285,7 @@ export class StringLiteral extends Terminal {
 
     validate(_) { return true }
 
-    js(generator) {
+    js(gen) {
 
         let result = quote;
 
@@ -293,7 +293,7 @@ export class StringLiteral extends Terminal {
             
             if (chunk instanceof Array) for (const expression of chunk) {
                 
-                result += "${" + expression.js(generator) + "}";
+                result += "${" + expression.js(gen) + "}";
 
             } else result += chunk;
         }
