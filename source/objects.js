@@ -13,6 +13,7 @@ import {
     empty,
     hexadecimal,
     keywords,
+    lowers,
     newline,
     openBrace,
     openBracket,
@@ -76,6 +77,7 @@ export class Token {
 
     LBP = 0;
     RBP = 0;
+    spelt = null;
     operands = [];
     expression = false;
 
@@ -113,12 +115,12 @@ export class Token {
         return false;
     }
 
-    generate() {
+    generate(_) {
 
         /* This method (which is often overridden by a subclass) is used by the code generator
         stage to convert the token into the corresponding JavaScript source. */
 
-        return this.value;
+        return this.spelling;
     }
 
     push(...args) {
@@ -139,12 +141,17 @@ export class Token {
         return this.operands[index];
     }
 
-    js(operand) {
+    js(generator, operand) {
 
-        /* This helper takes an index for an operand, generates its JS source, and returns the
-        result as a string. */
+        /* This helper takes a reference to the Generator API and an index for an operand,
+        and generates the JS source for the operand, and returns the result as a string. */
 
-        return this.operands[operand].generate();
+        return this.operands[operand].generate(generator);
+    }
+
+    get spelling() {
+
+        return this.spelt ?? this.value;
     }
 }
 
@@ -283,6 +290,22 @@ export class StringLiteral extends Terminal {
     }
 
     validate(_) { return true }
+
+    generate(generator) {
+
+        let result = quote;
+
+        for (const chunk of this.value) {
+            
+            if (chunk instanceof Array) for (const expression of chunk) {
+                
+                result += "${" + expression.generate(generator) + "}";
+
+            } else result += chunk;
+        }
+
+        return result + quote;
+    }
 }
 
 export class Delimiter extends Terminal {
@@ -716,13 +739,13 @@ class InfixOperator extends Operator {
         return this.push(left, parser.gatherExpression(this.LBP));
     }
 
-    generate() {
+    generate(generator) {
 
-        return `${this.js(0)} ${this.value} ${this.js(1)}`;
+        return `${this.js(generator, 0)} ${this.spelling} ${this.js(generator, 1)}`;
     }
 }
 
-class DotOperator extends Operator {
+class DotOperator extends InfixOperator {
 
     /* This base class provides functionality for dot-operators, which must have a property
     name (which can be any type of word token) on the rightside. */
@@ -733,9 +756,14 @@ class DotOperator extends Operator {
 
         return this.push(left, parser.gatherProperty());
     }
+
+    generate(generator) {
+
+        return `${this.js(generator, 0)}${this.spelling}${this.js(generator, 1)}`;
+    }
 }
 
-class PrefixDotOperator extends DotOperator {
+class GeneralDotOperator extends DotOperator {
 
     /* This base class extends the dot-operator class with functionality specific to the bang
     and ask operators, which are also bitwise prefix operators. */
@@ -760,6 +788,18 @@ class GeneralOperator extends Operator {
     infix(parser, left) {
 
         return this.push(left, parser.gatherExpression(this.LBP));
+    }
+
+    generate(generator) {
+
+        if (this.operands.length == 1) { // prefix operator...
+
+            let wordOperator = lowers.includes(this.operands[0][0]);
+
+            if (wordOperator) return `${this.spelling} ${this.js(generator, 0)}`;
+            else return `${this.spelling}${this.js(generator, 0)}`;
+
+        } else return `${this.js(generator, 0)} ${this.spelling} ${this.js(generator, 1)}`;
     }
 }
 
@@ -817,6 +857,7 @@ class And extends InfixOperator {
     /* This concrete class implements the logical `and` operator, which compiles to `&&`. */
 
     LBP = 4;
+    spelling = "&&";
 }
 
 class AND extends InfixOperator {
@@ -842,7 +883,9 @@ class As extends InfixOperator {
     LBP = 1;
 }
 
-class Ask extends PrefixDotOperator {
+class Ask extends GeneralDotOperator {
+
+    spelt = "?.";
 
     /* This concrete class implements the `?` operator, which compiles to a `Math.clz32`
     invocation in a prefix context, and `?.` in an infix context. */
@@ -1003,7 +1046,9 @@ class Await extends CommandStatement {
     }
 }
 
-class Bang extends PrefixDotOperator {
+class Bang extends GeneralDotOperator {
+
+    spelt = ".#";
 
     /* This concrete class implements the `!` operator, which compiles to the bitwise `~`
     operator in a prefix context, and `.#` in an infix context. */
@@ -1406,22 +1451,22 @@ class Is extends GeneralOperator {
         else return this.push(parser.gatherExpression(this.LBP));
     }
 
-    generate() {
+    generate(generator) {
 
         if (this.at(1) instanceof Not) {
 
-            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.js(0)})`;
-            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.js(0)}))`;
-            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.js(0)}))`;
+            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.js(generator, 0)})`;
+            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.js(generator, 0)}))`;
+            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.js(generator, 0)}))`;
 
-            return `!(${this.js(0)} instanceof ${this.js(2)})`;
+            return `!(${this.js(generator, 0)} instanceof ${this.js(generator, 2)})`;
         }
 
-        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.js(0)}))`;
-        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.js(0)})`;
-        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.js(0)})`;
+        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.js(generator, 0)}))`;
+        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.js(generator, 0)})`;
+        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.js(generator, 0)})`;
 
-        return `${this.js(0)} instanceof ${this.js(1)}`;
+        return `${this.js(generator, 0)} instanceof ${this.js(generator, 1)}`;
     }
 }
 

@@ -147,8 +147,8 @@ export default function * parse(source, literate=false) {
 
         /* This function gathers a single property token, which can be a variable name or any
         kind of word (keyword, operator name, reserved word etc). If the token is a property,
-        the function advances the parser, then returns the token (which is noted before
-        advancing), complaining otherwise. */
+        the function advances the parser, then returns the token (noting it before advancing),
+        and simply complaining otherwise. */
 
         if (on(Word) || on(Operator) && token.named) return advance(true);
         else throw new ParserError("required a property", token.location);

@@ -1,5 +1,6 @@
 x == freeze 1
-spam != ham
+spam != green.eggs and ham
+xxx?yyy!zzz
 
 theory is String
 theory is not String
