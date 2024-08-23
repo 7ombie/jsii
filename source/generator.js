@@ -4,17 +4,17 @@ import parse from "./parser.js"
 
 export default function * generate(source, literate=false) {
 
-    function * iterate(statements) {
+    function * walk(statements) {
 
         for (const statement of statements) {
 
-            if (statement instanceof Header) yield statement.generate(api);
-            else yield statement.generate(api) + semicolon;
+            if (statement instanceof Header) yield statement.js(api);
+            else yield statement.js(api) + semicolon;
         }
     }
 
-    const api = {iterate};
+    const api = {walk};
 
-    yield * iterate(parse(source, literate));
+    yield * walk(parse(source, literate));
 }
 

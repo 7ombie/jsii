@@ -1,6 +1,7 @@
 x == freeze 1
 spam != green.eggs and ham
-xxx?yyy!zzz
+
+foo!bar?spam.eggs
 
 theory is String
 theory is not String
@@ -12,7 +13,7 @@ async function f { await call() }
 generator foo { yield }
 generator foo { return }
 
-"outer: \(  "inner: \(  "innermost: \( boogie + woogie )"  ) 2"  ) 1"
+"outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"
 
 dance: while x while y {
     function { moves: for thing from otherThing { break moves } }
