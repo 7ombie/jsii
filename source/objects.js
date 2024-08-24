@@ -519,40 +519,29 @@ export class Header extends Keyword {
 
 class PredicatedBlock extends Header {
 
-    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
+    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,                 // TODO: remember `else if`
     `unless` and `until`). */
 
     prefix(parser) {
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(this.constructor.block));
     }
+
+    js(gen) {
+
+        return `${this.value} (${this.at(0).js(gen)}) {${gen.block(this.at(1))}}`;
+    }
 }
 
 class Functional extends Header {
 
-    /* This is the abstract base class for functional blocks, including the `lambda`,
+    /* This is the abstract base class for all functional blocks, including the `lambda`,
     `function` and `generator` blocks, but not including the arrow grammars. This applies
     to function statements/expressions, whether they are asynchronous, IIFEs, neither or
     both. */
 
     LBP = 1;
     expression = true;
-
-    handlePrefix(parser, prefix, doType, asyncType, full) {
-
-        /* This helper method is used to handle qualifiers `do` or `async` (or both). */
-
-        let blockType;
-
-        if (prefix instanceof Do) blockType = doType;
-        else if (prefix instanceof Async) blockType = asyncType;
-        else throw new ParserError("invalid function qualifier", prefix.location);
-
-        this.push(prefix);
-
-        if (full) return this.gatherFullHeader(parser, blockType);
-        else return gatherLambdaHeader(parser, blockType);
-    }
 
     gatherFullHeader(parser, blockType) {
 
@@ -977,38 +966,16 @@ class AssignXOR extends AssignmentOperator {
 class Async extends Keyword {
 
     /* This concrete class implements the `async` qualifier, used to prefix the `lambda`,
-    `function` and `generator` keywords to define asynchronous versions.
+    `function` and `generator` keywords to define asynchronous versions. */
 
-    The left binding power must be (at least) equal to `lambda`, `function` and `generator`,
-    else the `Async` instance will not be passed to the `infix` method of the function that
-    follows it when the `Async` instance is prefixed by a `Do` instance.
-
-    Note; Both `Async` and `Do` are implemented so the qualifier is passed to the function
-    that follows it. The implementation of operators that use qualifiers just gather the
-    qualifier as an operand, but functions need to know if they have an `async` prefix
-    to know which block-type they have (which determines which statements the block
-    can contain). */
-
-    LBP = 1;
     expression = true;
 
     prefix(parser) {
 
-        /* This method checks that the next token is valid, and if so, returns this token,
-        so it can be passed to the next construct as a `left` argument, else complaining. */
+        /* This method checks that the next token is valid, and if so, gathers it as an
+        operand, complaining otherwise. */
 
-        if (parser.on(Functional)) return this;
-        else throw new ParserError("unexpected async qualifier", this.location);
-    }
-
-    infix(parser, left) {
-
-        /* This method allows `async` to be prefixed by `do` (and only `do`), pushing the
-        `Do` instance to the `operands` array, before returning `this`, so it can be passed
-        to the `infix` method of the next token. If the prefix is not `do`, or if the next
-        token is not functional, an exception is raised. */
-
-        if (left instanceof Do && parser.on(Functional)) return this.push(left);
+        if (parser.on(Functional)) return this.push(parser.gather(0, this));
         else throw new ParserError("unexpected async qualifier", this.location);
     }
 }
@@ -1113,7 +1080,7 @@ class CloseParen extends Closer {
     arrow params and function invocations. */
 }
 
-class Label extends InfixOperator {
+export class Label extends InfixOperator {
 
     /* This concrete class implements the `:` pseudo-operator, used for delimiting key-value
     pairs in object expressions, and for labels on blocks. */
@@ -1140,6 +1107,11 @@ class Label extends InfixOperator {
         } else super.infix(parser, prefix); // a key-value pair
 
         return this;
+    }
+
+    js(gen) {
+
+        return `${this.at(0).js(gen)}: ${this.at(1).js(gen)}`;
     }
 }
 
@@ -1214,19 +1186,20 @@ class Do extends Header {
 
     /* This concrete class implements the `do` keyword, which prefixes blocks to create
     block statements, or prefixes `async`, `lambda`, `function` or `generator` to create
-    an IIFE.
-
-    Note: See `Async` for more information on why this is implemented the way it is. */
+    an IIFE. */
 
     prefix(parser) {
 
         /* If the next token is `async` or something functional, make this instance valid
-        as an expression, then return this token, so it can be passed along as a `left`
-        argument to the `infix` method of the next token. Otherwise, gather a control
-        flow block (without becoming a valid expression). */
+        as an expression, then gather whatever follows. Otherwise, gather a control-flow
+        block. */
 
-        if (parser.on(Async, Functional)) this.expression = true;
-        else this.push(parser.gatherBlock(SIMPLEBLOCK));
+        if (parser.on(Async, Functional)) {
+            
+            this.expression = true;
+            this.push(parser.gather());
+
+        } else this.push(parser.gatherBlock(SIMPLEBLOCK));
 
         return this;
     }
@@ -1344,18 +1317,14 @@ class FullFunction extends Functional {
 
     /* This is the concrete class for function statements, which are also expressions. */
 
-    prefix(parser) {
+    prefix(parser, context) {
 
-        /* This method parses functions without any prefix. */
+        /* This method parses full-fat functions, based on the given context (which may
+        be an instance of `Async` or `undefined`). */
 
-        return this.gatherFullHeader(parser, FUNCTIONBLOCK);
-    }
+        let blockType = context instanceof Async ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-    infix(parser, prefix) {
-
-        /* This method allows functions to be prefixed by `do`, `async` or `do async`. */
-
-        return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, true);
+        return this.gatherFullHeader(parser, blockType);
     }
 }
 
@@ -1363,18 +1332,14 @@ class Generator extends Functional {
 
     /* This is the concrete class for generator statements, which are also expressions. */
 
-    prefix(parser) {
+    prefix(parser, context) {
 
-        /* This method parses generators without any prefix. */
+        /* This method parses generators, based on the given context (which may be an
+        instance of `Async` or `undefined`). */
 
-        return this.gatherFullHeader(parser, GENERATORBLOCK);
-    }
+        let blockType = context instanceof Async ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
 
-    infix(parser, prefix) {
-
-        /* This method allows generators to be prefixed by `do`, `async` or `do async`. */
-
-        return this.handlePrefix(parser, prefix, GENERATORBLOCK, ASYNCGENERATORBLOCK, true);
+        return this.gatherFullHeader(parser, blockType);
     }
 }
 
@@ -1468,18 +1433,14 @@ class Lambda extends Functional {
 
     /* This is the concrete class for lambda statements, which are also expressions. */
 
-    prefix(parser) {
+    prefix(parser, context) {
 
-        /* This method parses lambdas without any prefix. */
+        /* This method parses lambdas, based on the given context (which may be an instance
+        of `Async` or `undefined`). */
 
-        return this.gatherLambdaHeader(parser, FUNCTIONBLOCK);
-    }
+        let blockType = context instanceof Async ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-    infix(parser, prefix) {
-
-        /* This method allows lambdas to be prefixed by `do`, `async` or `do async`. */
-
-        return this.handlePrefix(parser, prefix, FUNCTIONBLOCK, ASYNCFUNCTIONBLOCK, false);
+        return this.gatherLambdaHeader(parser, blockType);
     }
 }
 
@@ -1996,5 +1957,4 @@ class Yield extends Keyword {
 
         return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
     }
-
 }

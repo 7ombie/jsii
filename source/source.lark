@@ -1,3 +1,8 @@
+do async function { return await true }
+do async generator { return await yield true }
+do async lambda { return await true }
+
+123
 x == freeze 1
 spam != green.eggs and ham
 
@@ -13,10 +18,18 @@ async function f { await call() }
 generator foo { yield }
 generator foo { return }
 
-"outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"
+# "outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"       # TODO: test again
 
-dance: while x while y {
-    function { moves: for thing from otherThing { break moves } }
+generator {
+    dance: while x while y {
+        o is packed
+        o is sealed
+        o is frozen
+        if o is not packed yield 1
+        o is not sealed
+        o is not frozen
+        function { moves: for thing from otherThing { break moves } }
+    }
 }
 
 for each in range { breakfast() }
@@ -30,11 +43,5 @@ dev 1 + 2 * 3 + 3
 pack new foo(x, y, z)
 seal new foo
 freeze 1 + 2 when x * y else spam + eggs
-o is packed
-o is sealed
-o is frozen
-o is not packed
-o is not sealed
-o is not frozen
 lambda x, y, args... { return x + y / args }
 

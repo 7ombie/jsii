@@ -70,7 +70,7 @@ export default function * parse(source, literate=false) {
         if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
     }
 
-    function gather(RBP=0) { // api function
+    function gather(RBP=0, context=undefined) { // api function
 
         /* This function implements Pratt's Algorithm. It is textbook, except for some extra
         validation that ensures two things:
@@ -87,12 +87,18 @@ export default function * parse(source, literate=false) {
 
         Point 1 eliminates the issue that `function` has in JavaScript, where functions cannot
         also be expressions when the statement begins with the function-keyword (without valid-
-        ating anything that should remain invalid). This also applies to similar keywords like
-        `do`, `async`, `await`, `lambda`, `function`, `generator`, `yield` and `wait`.
+        ating anything that should remain invalid). This also applies to all formal expressions
+        (any statment beginning with `do`, `async`, `await`, `lambda`, `yield` etc).
 
         Note: The distinction between formal and informal statements only applies lexically
         (to blocks without braces). In general, a statement is a statement and an expression
-        is an expression, without exception; they are just not mutually exclusive. */
+        is an expression, without exception; they are just not mutually exclusive.
+    
+        The first (required) argument is the binding power. The second (optional) argument can
+        be anything, as it is simply passed to the `prefix` method of the first token in the
+        expression, as a context. In practice, it is used by `Async` to contextualize the
+        lambda, function and generator statement that follows (`Async.prefix` checks the
+        next token begins a functional statement before it invokes this function). */
 
         function validate(result) {
 
@@ -108,11 +114,14 @@ export default function * parse(source, literate=false) {
 
         current = token;
         token = advance();
-        result = validate(current.prefix(api));
+        result = validate(current.prefix(api, context));
 
         if (result.expression) while (RBP < token.LBP) {
 
             current = token;
+
+            if (current instanceof Keyword) return result; // break on formal expressions
+
             token = advance();
             result = validate(current.infix(api, result));
         }
@@ -120,27 +129,15 @@ export default function * parse(source, literate=false) {
         return result;
     }
 
-    function advance(returnPrevious=false) { // api function
+    function gatherExpression(RBP, context=undefined) { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token`, then
-        return a reference to it, unless the `returnPrevious` argument is truthy. In
-        that case, return the token that was current when the invocation was made. */
+        /* This function wraps the Pratt function to ensure that the result is an expression
+        (not a formal statement), complaining otherwise. */
 
-        [previous, token] = [token, tokens.next().value];
+        const candidate = gather(RBP, context);
 
-        ignoreInsignificantNewlines();
-
-        return returnPrevious ? previous : token;
-    }
-
-    function on(...types) { // api function
-
-        /* Take any number of `Token` subclasses, and return `true` if the current `token` is
-        an instance of a given class (or any subclass), else `false`. */
-
-        for (const type of types) if (token instanceof type) return true;
-
-        return false;
+        if (candidate.expression) return candidate;
+        else throw new ParserError("expected an expression", candidate.location);
     }
 
     function gatherProperty() { // api function
@@ -162,17 +159,6 @@ export default function * parse(source, literate=false) {
 
         if (on(Variable)) return advance(true);
         else throw new ParserError("required a variable", advance().location);
-    }
-
-    function gatherExpression(RBP) { // api function
-
-        /* This function wraps the Pratt function to ensure that the result is an expression
-        (not a formal statement), complaining otherwise. */
-
-        const candidate = gather(RBP);
-
-        if (candidate.expression) return candidate;
-        else throw new ParserError("expected an expression", candidate.location);
     }
 
     function gatherBlock(type) { // api function
@@ -308,6 +294,29 @@ export default function * parse(source, literate=false) {
         throw new ParserError("invalid assignee", token.location);
     }
 
+    function advance(returnPrevious=false) { // api function
+
+        /* Advance the token stream by one token, updating the nonlocal `token`, then
+        return a reference to it, unless the `returnPrevious` argument is truthy. In
+        that case, return the token that was current when the invocation was made. */
+
+        [previous, token] = [token, tokens.next().value];
+
+        ignoreInsignificantNewlines();
+
+        return returnPrevious ? previous : token;
+    }
+
+    function on(...types) { // api function
+
+        /* Take any number of `Token` subclasses, and return `true` if the current `token` is
+        an instance of a given class (or any subclass), else `false`. */
+
+        for (const type of types) if (token instanceof type) return true;
+
+        return false;
+    }
+
     function check(doStop, isValid, fallback=false) { // api function
 
         /* This function allows statements (like `return` and `break`) that can only
@@ -374,7 +383,6 @@ export default function * parse(source, literate=false) {
     }
  
     const api = {
-        on,
         advance,
         check,
         gather,
@@ -386,6 +394,7 @@ export default function * parse(source, literate=false) {
         gatherAssignee,
         gatherBlock,
         label,
+        on,
         parse // the `StringLiteral` class calls `parse` recursively on interpolations
     };
 
