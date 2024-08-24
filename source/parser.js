@@ -1,10 +1,10 @@
 import {
-    ParserError,
     CloseBrace,
     Comma,
     EOF,
     Header,
     Keyword,
+    LarkError,
     OpenBrace,
     OpenBracket,
     Operator,
@@ -14,9 +14,9 @@ import {
     Variable,
 } from "./objects.js"
 
-import lex from "./lexer.js"
+import { lex } from "./lexer.js"
 
-export default function * parse(source, literate=false) {
+export function * parse(source, literate=false) {
 
     /* This generator implements the parser stage, and yields an AST node for each top-level
     statement. Like the lexer stage, the specifics of parsing any given grammar are left to
@@ -56,10 +56,10 @@ export default function * parse(source, literate=false) {
 
                 skip = true; // statements can immediately follow a braced block
 
-            } else throw new ParserError("required a terminator", token.location);
+            } else throw new LarkError("required a terminator", token.location);
         }
 
-        if (nested) throw new ParserError("nested end of file", token.location);
+        if (nested) throw new LarkError("nested end of file", token.location);
     }
 
     function ignoreInsignificantNewlines() { // internal
@@ -107,7 +107,7 @@ export default function * parse(source, literate=false) {
 
             if (result.validate(api)) return result;
 
-            throw new ParserError(`unexpected ${result.value} statement`, result.location);
+            throw new LarkError(`unexpected ${result.value} statement`, result.location);
         }
 
         let current, result;
@@ -137,7 +137,7 @@ export default function * parse(source, literate=false) {
         const candidate = gather(RBP, context);
 
         if (candidate.expression) return candidate;
-        else throw new ParserError("expected an expression", candidate.location);
+        else throw new LarkError("expected an expression", candidate.location);
     }
 
     function gatherProperty() { // api function
@@ -148,7 +148,7 @@ export default function * parse(source, literate=false) {
         and simply complaining otherwise. */
 
         if (on(Word) || on(Operator) && token.named) return advance(true);
-        else throw new ParserError("required a property", token.location);
+        else throw new LarkError("required a property", token.location);
     }
 
     function gatherVariable() { // api function
@@ -158,7 +158,7 @@ export default function * parse(source, literate=false) {
         not a variable. */
 
         if (on(Variable)) return advance(true);
-        else throw new ParserError("required a variable", advance().location);
+        else throw new LarkError("required a variable", advance().location);
     }
 
     function gatherBlock(type) { // api function
@@ -182,12 +182,12 @@ export default function * parse(source, literate=false) {
             const candidate = gather();
 
             if (candidate instanceof Keyword) return candidate;
-            else throw new ParserError("required a formal statement", candidate.location);
+            else throw new LarkError("required a formal statement", candidate.location);
         }
 
         const [functional, braced] = [type > 0, on(OpenBrace)];
 
-        if (functional && !braced) throw new ParserError("required a body", token.location);
+        if (functional && !braced) throw new LarkError("required a body", token.location);
 
         blockTypeStack.push(type);
 
@@ -246,7 +246,7 @@ export default function * parse(source, literate=false) {
             results.push(gatherExpression());
 
             if (on(Comma, closer)) continue;
-            else throw new ParserError("required delimiter", token.location);
+            else throw new LarkError("required delimiter", token.location);
         }
 
         listStateStack.pop();   /// firstly, restore the previous LIST state - then, once the
@@ -274,7 +274,7 @@ export default function * parse(source, literate=false) {
 
             if (on(Comma)) advance();
             else if (on(OpenBrace)) break;
-            else throw new ParserError("required a comma or block", token.location);
+            else throw new LarkError("required a comma or block", token.location);
         }
 
         return results;
@@ -291,7 +291,7 @@ export default function * parse(source, literate=false) {
 
         if (on(OpenBracket) || on(OpenBrace)) return gather();
 
-        throw new ParserError("invalid assignee", token.location);
+        throw new LarkError("invalid assignee", token.location);
     }
 
     function advance(returnPrevious=false) { // api function

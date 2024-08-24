@@ -17,8 +17,8 @@ import {
 } from "./strings.js"
 
 import {
-    ParserError,
     Delimiter,
+    LarkError,
     NumberLiteral,
     Operator,
     StringLiteral,
@@ -26,7 +26,7 @@ import {
     Word,
 } from "./objects.js"
 
-export default function * lex(source, literate=false) {
+export function * lex(source, literate=false) {
 
     /* This function implements the lexer as a collection of helper functions, which
     it shares with the `lex` generator methods of the classes exported by `objects.js`,
@@ -75,7 +75,7 @@ export default function * lex(source, literate=false) {
         const code = character.charCodeAt();
 
         if (code > 31 && code < 127 || code === 10) return character;
-        else throw new ParserError(`illegal character (${code})`, locate());
+        else throw new LarkError(`illegal character (${code})`, locate());
     }
 
     function gatherWhile(characters, token=undefined) { // api function
@@ -188,7 +188,7 @@ export default function * lex(source, literate=false) {
 
                 yield * Delimiter.lex(api, location);
 
-            } else throw new ParserError(`unexpected character (${character})`, location);
+            } else throw new LarkError(`unexpected character (${character})`, location);
         }
 
         yield * Terminator.lex(api, locate());

@@ -33,15 +33,20 @@ const ASYNCGENERATORBLOCK = 3;       // async generator
 const ASYNCFUNCTIONBLOCK = 4;        // async function
 const CLASSBLOCK = 5;                // class
 
-export class ParserError extends SyntaxError {
+export class LarkError extends SyntaxError {
 
-    /* This concrete class is used for all syntax errors across the parser stage. */
+    /* This concrete class is used for all Lark syntax errors (across all of the stages). */
 
     constructor(message, location) {
 
-        /* Take a message string and a location `Number`, unpack the zero-indexed line and
-        column numbers, then increment them, before using them to create a complete error
-        message, deleting the contents of the `stack` and customizing the error name. */
+        /* Take a message string and a location `Number`, unpack the line and column numbers,
+        and use them to create a complete error message, deleting the contents of the `stack`
+        and customizing the error name.
+
+        Note: Line and column numbers are stored as if the `Number` is an unsigned 32-bit
+        integer, with the most significant three bytes storing the line number, and the
+        least significant byte storing the column number (both internally zero-indexed).
+        This just makes it easier to ignore the location data when debugging. */
 
         const line = Math.floor(location / 256) + 1;
         const column = location % 256 + 1;
@@ -57,72 +62,124 @@ export class ParserError extends SyntaxError {
 
 export class Token {
 
-    /* This is the abstract base class for all other token classes.
+    /* This is the abstract base class for all other token classes. Internally, Lark reuses the
+    same classes for the tokens (in the token stream) and the AST nodes (in the abstract syntax
+    tree). This approach makes Pratt parsing a lot easier, and permits a single OOP hierarchy
+    (which makes up the rest of this file).
 
-    Our token classes define (or inherit) *token-wise grammars*. This includes a single token
-    grammar (used for tokenization), as well as a prefix grammar, an infix grammar or both
-    (used for parsing). Therefore, the implementation makes no distinction between its
-    *tokens* and its *AST nodes*. They are the same objects (from instantiation).
+    Everything a token instance needs is defined by this class, with useful defaults, including
+    various properties, five API methods (that are used by the compiler stages), and a couple
+    of helper methods that are only used internally (by the API methods).
 
-    The lexer, parser and writer are relatively small, simple functions that each define some
-    local state and a high-level, declarative API, based around a handful of functions that
-    share that state, and are collected into an object to form an API that can be passed
-    around freely.
+    The compiler stages are relatively simple functions that each maintain some local state, as
+    well as defining a high-level, declarative API, based around a handful of functions that
+    share that state. Those functions (known as *API functions*) are bound to an object to
+    form an API that can be passed around freely.
 
-    This module exports a set of token classes that define the methods that are invoked by the
-    lexer, parser and writer stages. Those methods take a reference to the relevant API object,
-    which they then use to implement the specifics of their respective grammars in a simple,
-    declarative style. This permits a very modular implementation, with textbook OOP token
-    classes, operated on by closure-heavy stages. */
+    The five *API methods* (`token`, `prefix`, `infix`, `validate` and `js`) take a reference
+    to the corresponding API object (`lexer`, `parser` or `writer`) as their first argument,
+    and are individually documented below (within the default implementations), along with
+    the helper methods. */
 
-    LBP = 0;
-    RBP = 0;
-    operands = [];
-    expression = false;
+    LBP = 0;               // the token's left-binding power (a generalization of precedence)
+    RBP = 0;               // an alternative LBP value (sometimes) used for parsing rvalues 
+    operands = [];         // the token's operands (including params, blocks, tokens etc)
+    expression = false;    // specifies whether the token forms a valid expression
+
+    get spelling() { 
+
+        /* This API property specifies the JavaScript spelling for the given token, defaulting
+        to the Lark spelling.
+
+        Note: While `spelling` is a computed (instance) property here, it is often overridden
+        by a simple stored property. */
+
+        return this.value;
+    }
 
     constructor(location, value=empty) {
 
-        /* This constructor takes the parameters that combine with the four defaults defined
-        above to create the complete set of six properties that all instances of every token
-        subclass use (we do not change the shape of the tokens during the parser stage). */
+        /* This constructor takes and initializes the two remaining propertoes (`location` and
+        `value`) that combine with the five properties defined above (`LBP`, `RBP`, `operands`,
+        `expression` and `spelling`) to create the complete set of seven properties that all
+        token instances require.
 
-        this.location = location;
-        this.value = value;
+        Note: While a couple of the subclasses define helper methods for their own use, token
+        instances generally have the same shape (the same properties). This is why we push
+        the various AST nodes to a generic array of operands, instead of letting each
+        subclass define its own properties (`lvalue`, `predicate`, `block` etc). */
+
+        this.location = location;  // see `locate` in `lexer.js` and `LarkError` above
+        this.value = value;        // the value from the source (a string or string array)
+
+        /* Note: The `StringLiteral` class uses an array of strings for its `value` as it has
+        to handle string interpolations (which can be recursively nested to any level). Using
+        a string would not suffice for that case, but every other token uses a single string,
+        so `value` was generalized to be either `String` or `Array<String>`, as required. */
     }
 
-    prefix(_) {
+    static * token(lexer) { // api method
 
-        /* This method allows every token to be parsed in a prefix position, just throwing an
-        exception, unless the token defines (or inherits) something else. */
+        /* This method instantiates tokens, based on the source. It is the only API method that
+        is invoked by the Lexer Stage. It is static as it wraps the constructor method to allow
+        it to yield zero or more tokens (potentially including instances of a subclass) to the
+        token stream. This naturally requires that `token(lexer)` is generator too.
 
-        throw new ParserError("invalid prefix", this.location);
+        This method is invariably redefined by the lower classes, so the default implementation
+        does not yield any tokens or anything. It is just here for consistency. */    
     }
 
-    infix(_) {
+    prefix(parser, context=undefined) { // api method
 
-        /* This method allows every token to be parsed in an infix position, just throwing an
-        exception, unless the token defines (or inherits) something else. */
+        /* This method takes a reference to the Parser API and an optional `context`. By defaut,
+        the method just throws an exception. However, tokens that are valid in the prefix position
+        can define their own implementations that use the Parser API to parse the token stream
+        (pushing results to the `operands` array), before returning the resulting AST node
+        (usually `this`).
+        
+        API methods that invoke `parser.gather` or `parser.gatherExpression` (on subexpressions)
+        can optionally pass a `context` to those API functions (as well as a binding-power) and
+        that context will be passed to the `prefix` method of the following token. This is used
+        by `Async` to let `Lambda`, `Function` and `Generator` know the context (without which,
+        they cannot correctly validate `await` statements). */
 
-        throw new ParserError("invalid infix", this.location);
+        throw new LarkError("invalid token (in prefix position)", this.location);
     }
 
-    validate(_) {
+    infix(parser, prefix) { // api method
 
-        /* This method allows every token to be validated (based on which types of blocks it is
-        nested within), always failing, unless this method is overridden. */
+        /* This method is very similar to `prefix` above, except that it is invoked on tokens in
+        the infix position (with something before them), and takes its left operand (as an AST
+        node) instead of a context. The default implementation just throws an exception. */
+
+        throw new LarkError("invalid token (in infix position)", this.location);
+    }
+
+    validate(parser) { // api method
+
+        /* This method takes a reference to the Parser API (mainly to access the `check` function,
+        which is used to validate the statement, based on the types of blocks it is nested within.
+        This is used by statements like `return`, `break`, `yield` and `await`, which are invalid
+        unless they are nested within specific types of blocks.
+
+        The method returns `true` if the statement is valid, and `false` otherwise. This default
+        implementation makes tokens invalid in any context. */
 
         return false;
     }
 
-    js(_) {
+    js(writer) { // api method
 
-        /* This method (which is often overridden by a subclass) is used by the code generator
-        stage to convert the token into the corresponding JavaScript source. */
+        /* This method takes a reference to the Writer API, and is used to generate the JavaScript
+        output for the token, which it returns as a string, defaulting to the `spelling` property.
+
+        Note: This method does not need to add semi-colons to statements (that require them), as
+        that is handled automatically by the Writer Stage. */
 
         return this.spelling;
     }
 
-    push(...args) {
+    push(...args) { // internal helper
 
         /* This helper is used by `prefix` and `infix` methods to push zero or more operands to
         the operands array for the current instance. The method returns a reference to `this`,
@@ -133,35 +190,30 @@ export class Token {
         return this;
     }
 
-    at(index) {
+    at(index) { // internal helper
 
-        /* This helper makes indexing operands a little bit easier. */
+        /* This helper just makes indexing operands a little bit easier. */
 
         return this.operands[index];
-    }
-
-    get spelling() {
-
-        /* This property specifies the spelling for the token in the generated JavaScript.
-        This default implementation uses the Lark spelling. */
-
-        return this.value;
     }
 }
 
 class Terminal extends Token {
 
-    /* This abstract base class is used by all terminal tokens (including the various words,
-    literals and terminators). */
+    /* This is the base class for all terminal tokens (including the various words, literals and
+    terminators - anything that only uses a single token). */
 }
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement-terminators (line feeds, commas and the
-    implicit End Of File token inserted at the end of every token stream). It is also used by
-    the lexer to tokenize terminators, and by the parser to classify them. */
+    /* This is the base class for the various statement-terminators (linefeeds, commas and the
+    implicit End Of File token inserted at the end of every token stream). It is also imported
+    by the Lexer Stage to tokenize terminators, and by the Parser Stage to classify them. */
 
     static * lex(lexer, location) {
+
+        /* Check which token the Lexer Stage is on, then instantiate and yield an instance of
+        the corresponding type (one of `LineFeed`, `Comma` or `EOF`). */
 
         if (lexer.on(newline)) yield new LineFeed(location, "<LF>");
         else if (lexer.on(comma)) yield new Comma(location, comma);
@@ -171,7 +223,7 @@ export class Terminator extends Terminal {
 
 export class NumberLiteral extends Terminal {
 
-    /* This is the concrete class for all number-literals. It is also used by the lexer for
+    /* This is the concrete class for all number-literals. It is also imported by the lexer for
     number tokenization. */
 
     expression = true;
@@ -180,8 +232,8 @@ export class NumberLiteral extends Terminal {
 
     constructor(lexer, location) {
 
-        /* This constructor tokenizes a number literal, ensuring that dots are only including
-        where they are valid (permitting number literals to be followed by a dot operator). */
+        /* This constructor tokenizes a number literal, ensuring that dots are only included
+        when they are valid (permitting number literals to be followed by a dot operator). */
 
         super(location, lexer.read());
 
@@ -209,9 +261,9 @@ export class NumberLiteral extends Terminal {
         const zeroes = digits === decimal && first === "0" && value !== "0";
         const empty = digits !== decimal && value.length === 2;
 
-        if (zeroes) throw new ParserError("leading zeroes are invalid", location);
+        if (zeroes) throw new LarkError("leading zeroes are invalid", location);
 
-        if (empty) throw new ParserError("incomplete base-prefix", location);
+        if (empty) throw new LarkError("incomplete base-prefix", location);
 
         // now that the value has been validated, if a decimal point is currently `legal`,
         // given the value so far, and `present` in the source, which requires that at
@@ -276,7 +328,7 @@ export class StringLiteral extends Terminal {
 
                 const message = "string interpolations can only contain expressions";
 
-                throw new ParserError(message, subexpression.location);
+                throw new LarkError(message, subexpression.location);
             }
         }
 
@@ -285,7 +337,7 @@ export class StringLiteral extends Terminal {
 
     validate(_) { return true }
 
-    js(gen) {
+    js(writer) {
 
         let result = quote;
 
@@ -293,7 +345,7 @@ export class StringLiteral extends Terminal {
             
             if (chunk instanceof Array) for (const expression of chunk) {
                 
-                result += "${" + expression.js(gen) + "}";
+                result += "${" + expression.js(writer) + "}";
 
             } else result += chunk;
         }
@@ -527,9 +579,9 @@ class PredicatedBlock extends Header {
         return this.push(parser.gatherExpression(), parser.gatherBlock(this.constructor.block));
     }
 
-    js(gen) {
+    js(writer) {
 
-        return `${this.value} (${this.at(0).js(gen)}) {${gen.block(this.at(1))}}`;
+        return `${this.value} (${this.at(0).js(writer)}) {${writer.block(this.at(1))}}`;
     }
 }
 
@@ -601,7 +653,7 @@ export class Operator extends Token {
 
         if (operators.includes(value)) return [value];
 
-        if (offset > value.length) throw new ParserError(`invalid operator (${value})`, location);
+        if (offset > value.length) throw new LarkError(`invalid operator (${value})`, location);
 
         const [start, end] = [value.slice(0, -offset), value.slice(-offset)];
 
@@ -722,9 +774,9 @@ class InfixOperator extends Operator {
         return this.push(left, parser.gatherExpression(this.LBP));
     }
 
-    js(gen) {
+    js(writer) {
 
-        return `${this.at(0).js(gen)} ${this.spelling} ${this.at(1).js(gen)}`;
+        return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
     }
 }
 
@@ -740,9 +792,9 @@ class DotOperator extends InfixOperator {
         return this.push(left, parser.gatherProperty());
     }
 
-    js(gen) {
+    js(writer) {
 
-        return `${this.at(0).js(gen)}${this.spelling}${this.at(1).js(gen)}`;
+        return `${this.at(0).js(writer)}${this.spelling}${this.at(1).js(writer)}`;
     }
 }
 
@@ -773,16 +825,16 @@ class GeneralOperator extends Operator {
         return this.push(left, parser.gatherExpression(this.LBP));
     }
 
-    js(gen) {
+    js(writer) {
 
         if (this.operands.length == 1) { // prefix operator...
 
             let isWord = lowers.includes(this.at(0)[0]);
 
-            if (isWord) return `${this.spelling} ${this.at(0).js(gen)}`;
-            else return `${this.spelling}${this.at(0).js(gen)}`;
+            if (isWord) return `${this.spelling} ${this.at(0).js(writer)}`;
+            else return `${this.spelling}${this.at(0).js(writer)}`;
 
-        } else return `${this.at(0).js(gen)} ${this.spelling} ${this.at(1).js(gen)}`;
+        } else return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
     }
 }
 
@@ -805,7 +857,7 @@ class ArrowOperator extends GeneralOperator {
 
             return this.push(left, parser.gatherExpression(this.RBP));
 
-        } else throw new ParserError(message, left.location);
+        } else throw new LarkError(message, left.location);
     }
 }
 
@@ -976,7 +1028,7 @@ class Async extends Keyword {
         operand, complaining otherwise. */
 
         if (parser.on(Functional)) return this.push(parser.gather(0, this));
-        else throw new ParserError("unexpected async qualifier", this.location);
+        else throw new LarkError("unexpected async qualifier", this.location);
     }
 }
 
@@ -1036,7 +1088,7 @@ class Break extends BranchStatement {
 
             if (parser.label(label) === null) {
 
-                throw new ParserError(`undefined label '${label.value}'`, label.location);
+                throw new LarkError(`undefined label '${label.value}'`, label.location);
             }
 
             return parser.check($ => true, $ => $ < FUNCTIONBLOCK);
@@ -1097,7 +1149,7 @@ export class Label extends InfixOperator {
         if (parser.on(Do, Else, For, If, Unless, Until, While)) { // a label...
 
             if (parser.label(prefix) === null) parser.label(prefix, parser.on(For, Until, While));
-            else throw new ParserError("cannot reassign an active label", prefix.location);
+            else throw new LarkError("cannot reassign an active label", prefix.location);
 
             this.expression = false;
             this.push(prefix, parser.gather());
@@ -1109,9 +1161,9 @@ export class Label extends InfixOperator {
         return this;
     }
 
-    js(gen) {
+    js(writer) {
 
-        return `${this.at(0).js(gen)}: ${this.at(1).js(gen)}`;
+        return `${this.at(0).js(writer)}: ${this.at(1).js(writer)}`;
     }
 }
 
@@ -1139,8 +1191,8 @@ class Continue extends BranchStatement {
             let label = this.operands[0];
             let state = parser.label(label);
 
-            if (state === null) throw new ParserError("undefined label", label.location);
-            else if (state === false) throw new ParserError("must continue a loop", label.location);
+            if (state === null) throw new LarkError("undefined label", label.location);
+            else if (state === false) throw new LarkError("must continue a loop", label.location);
         }
 
         return parser.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
@@ -1287,7 +1339,7 @@ class For extends Header {
         this.push(parser.gatherAssignee());
 
         if (parser.on(In, From)) this.push(parser.advance(parser.on(In) ? In : From));
-        else throw new ParserError("incomplete for-loop", this.location);
+        else throw new LarkError("incomplete for-loop", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
     }
@@ -1410,22 +1462,22 @@ class Is extends GeneralOperator {
         else return this.push(parser.gatherExpression(this.LBP));
     }
 
-    js(gen) {
+    js(writer) {
 
         if (this.at(1) instanceof Not) {
 
-            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.at(0).js(gen)})`;
-            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.at(0).js(gen)}))`;
-            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.at(0).js(gen)}))`;
+            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.at(0).js(writer)})`;
+            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.at(0).js(writer)}))`;
+            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.at(0).js(writer)}))`;
 
-            return `!(${this.at(0).js(gen)} instanceof ${this.at(2).js(gen)})`;
+            return `!(${this.at(0).js(writer)} instanceof ${this.at(2).js(writer)})`;
         }
 
-        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.at(0).js(gen)}))`;
-        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.at(0).js(gen)})`;
-        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.at(0).js(gen)})`;
+        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.at(0).js(writer)}))`;
+        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.at(0).js(writer)})`;
+        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.at(0).js(writer)})`;
 
-        return `${this.at(0).js(gen)} instanceof ${this.at(1).js(gen)}`;
+        return `${this.at(0).js(writer)} instanceof ${this.at(1).js(writer)}`;
     }
 }
 
@@ -1465,12 +1517,12 @@ export class LineFeed extends Terminator {
 
     prefix(parser) {
 
-        throw new ParserError("unexpected newline", this.location);
+        throw new LarkError("unexpected newline", this.location);
     }
 
     infix(parser) {
 
-        throw new ParserError("unexpected newline", this.location);
+        throw new LarkError("unexpected newline", this.location);
     }
 }
 
@@ -1528,7 +1580,7 @@ class Not extends GeneralOperator {
 
             return this.push(left, parser.advance(true), parser.gatherExpression(this.LBP));
 
-        } else throw new ParserError("unexpected not-operator", this.location);
+        } else throw new LarkError("unexpected not-operator", this.location);
     }
 }
 
@@ -1587,7 +1639,7 @@ class Of extends InfixOperator {
     infix(parser, left) {
 
         if (left instanceof Variable) return this.push(left, parser.gatherExpression(8));
-        else throw new ParserError("unexpected of-operator", this.location);
+        else throw new LarkError("unexpected of-operator", this.location);
     }
 }
 
@@ -1706,7 +1758,7 @@ class Private extends ClassDeclaration {
     prefix(parser) {
 
         if (parser.on(Static, Local)) return this.push(parser.gather());
-        else throw new ParserError("incomplete private-declaration", this.location);
+        else throw new LarkError("incomplete private-declaration", this.location);
     }
 }
 
@@ -1736,12 +1788,12 @@ class Reserved extends Word {
 
     prefix(_) {
 
-        throw new ParserError(`reserved word (${this.value})`, this.location);
+        throw new LarkError(`reserved word (${this.value})`, this.location);
     }
 
     infix(_) {
 
-        throw new ParserError(`reserved word (${this.value})`, this.location);
+        throw new LarkError(`reserved word (${this.value})`, this.location);
     }
 }
 
@@ -1839,7 +1891,7 @@ class Subclass extends Header {
 
             return this.push(parser.gatherExpression(), parser.gatherBlock(CLASSBLOCK));
 
-        } else throw new ParserError("incomplete subclass", parser.advance(true).location);
+        } else throw new LarkError("incomplete subclass", parser.advance(true).location);
     }
 }
 
@@ -1910,7 +1962,7 @@ class When extends Operator {
         this.push(left, parser.gatherExpression());
 
         if (parser.on(Else)) parser.advance();
-        else throw new ParserError("incomplete when-operation", this.location);
+        else throw new LarkError("incomplete when-operation", this.location);
 
         return this.push(parser.gatherExpression(this.LBP - 1));
     }
