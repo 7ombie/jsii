@@ -1,3 +1,7 @@
-# JSII: A work-in-progress, nice-JS to real-JS transpiler.
+Lark: A Work in Progress
+========================
 
-JSII (pronounced *Jessie*) is nowhere near ready for anything. Please try again later.
+**Lark is nowhere near ready for anything. Please try again later.**
+
+Note: I know, the repo needs renaming.
+
