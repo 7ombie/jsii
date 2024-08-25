@@ -2,7 +2,7 @@ do async function { return await true }
 do async generator { return await yield true }
 do async lambda { return await true }
 
-0x45
+10011100.11.toFixed(5)
 
 x == freeze 1
 spam != green.eggs and ham

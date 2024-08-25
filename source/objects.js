@@ -223,8 +223,8 @@ export class Terminator extends Terminal {
 
 export class NumberLiteral extends Terminal {
 
-    /* This is the concrete class for all number-literals. It is also imported by the lexer for
-    number tokenization. */
+    /* This is the concrete class for all number-literals. It is also imported by the Lexer Stage
+    for number tokenization. */
 
     expression = true;
 
@@ -232,51 +232,56 @@ export class NumberLiteral extends Terminal {
 
     constructor(lexer, location) {
 
-        /* This constructor tokenizes a number literal, ensuring that dots are only included
-        when they are valid (permitting number literals to be followed by a dot operator). */
+        /* This constructor tokenizes a number literal, ensuring that dots are only included when
+        they are valid (permitting number literals to be followed by a dot operator). */
 
         super(location, lexer.read());
 
-        // establish the base and reference the appropriate digit-set...
-
-        let digits;
+        // establish the base, and create a reference to the appropriate digit-set...
 
         if (lexer.on("0") && lexer.at(bases)) {
 
             this.value += lexer.advance();
-            digits = lexer.on("xX") ? hexadecimal : binary;
 
-        } else digits = decimal;
+            var [digits, isDecimal] = [lexer.on("xX") ? hexadecimal : binary, false];
+        
+        } else var digits = decimal, isDecimal = true;
 
         // gather as many digits as possible from the appropriate set...
 
         lexer.gatherWhile(digits, this);
 
-        // validate the value so far, by requiring that it does not start with `zeroes`,
-        // unless it starts with a base prefix, or it is just a single zero, as well as
-        // checking that it is not `empty` (it is not just a a base prefix without any
-        // significant digits)...
+        // validate the value so far, requiring that it does not start with a zero, unless it is
+        // the start of a base-prefix, or it is just a single zero, as well as checking that it
+        // is not just a a base-prefix without any significant digits...
 
-        const [value, first] = [this.value, this.value[0]];
-        const zeroes = digits === decimal && first === "0" && value !== "0";
-        const empty = digits !== decimal && value.length === 2;
+        if (isDecimal && this.value[0] === "0" && this.value !== "0") { // leading zeros...
 
-        if (zeroes) throw new LarkError("leading zeroes are invalid", location);
+            throw new LarkError("leading zeros are invalid", location);
+        }
 
-        if (empty) throw new LarkError("incomplete base-prefix", location);
+        if (!isDecimal && this.value.length === 2) { // base-prefix without (valid) digits...
 
-        // now that the value has been validated, if a decimal point is currently `legal`,
-        // given the value so far, and `present` in the source, which requires that at
-        // least one decimal digit immediately follows the dot, gather the dot along
-        // with the digits that follow it...
+            if (lexer.at(decimal)) throw new LarkError("invalid digit for notation", location);
+            else throw new LarkError("incomplete base-prefix", location);
+        }
 
-        const legal = digits === decimal && first !== dot;
-        const present = lexer.at(dot) && lexer.peek(+2, decimal);
+        // finally, check for a dot, and handle it if present...
 
-        if (legal && present) {
+        if (lexer.at(dot)) {
 
-            this.value += lexer.advance();
-            lexer.gatherWhile(digits, this);
+            // if a decimal point is currently legal (the literal uses decimal notation and the
+            // literal did not start with a dot), and should be considered part of the literal
+            // (at least one decimal digit immediately follows the dot), then gather the dot
+            // and the digits that follow it, otherwise complain (as only decimals use dots
+            // in javascript)...
+
+            if (isDecimal && this.value[0] !== dot && lexer.peek(+2, decimal)) {
+
+                this.value += lexer.advance();
+                lexer.gatherWhile(digits, this);
+            
+            } else throw new LarkError("fractional numbers must use decimal notation", location);
         }
     }
 
