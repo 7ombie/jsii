@@ -3,11 +3,24 @@ Lark: A Modern JavaScript Dialect
 
 **IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
 
-Lark is an improved grammar for JavaScript, which looks vaguely similar to Swift (but without
-any type annotations). Lark compiles to regular, old JavaScript syntax.
+Lark has two goals:
 
-> I'm open to supporting optional type annotations (that are validated by Lark), but haven't
-> given it much thought yet.
++ Design a nice, modern dialect of JavaScript that still looks, feels and acts like JavaScript.
++ Properly encapsulate the various components of the (self-hosted) implementation behind small,
+  simple and declarative APIs, so anyone can easily design and maintain their own Lark dialect,
+  adding or removing features as required, without needing to dive into the guts of the code.
+
+The ability to define your own dialect (potentially, for each project) exploits the fact that
+Lark is not really a *language*. It's just a better grammar for the JavaScript language. This
+allows Lark code to seamlessly interoperate with code written in Vanilla JS, as well as every
+other dialect (or version) of Lark, TypeScript, CoffeeScript *et cetera*. It's all JavaScript.
+
+Note: Lark doesn't need an ecosystem. Browsers already support source maps, so an LSP, a short
+tutorial, and a wiki should be enough to quickly onboard anyone from the JavaScript community.
+
+Note: Lark doesn't need a community. Lark is used in-house to develop games for the Web, with
+PHANTASM (an in-house language that compiles to WASM) and WGSL (the WebGPU Shader Language).
+You're totally welcome to get involved, but I'm not up for the 'community' thing.
 
 Statement Grammar
 -----------------
@@ -493,26 +506,35 @@ operator for checking the opposite:
 
 ## String Literals
 
-Lark string literals use (double) quotes, with the same syntax as Swift.
-
-Single-line string literals are wrapped in a single pair of quotes:
+Lark string literals are inspired by Swift. They exclusively use quotes as delimiters (you cannot
+use apostrophes or grave accents):
 
     let name = "Lark"
 
-Multiline literals use pairs of three (adjacent) quotes. The lines of the expressed string are
-the lines that fall *between* the opening and closing quotes. It is a syntax error to have any
-characters (except insignificant trailing whitespace) after the opening quotes, or to have any
-characters, except indentation, before the closing quotes.
+Lark also supports triple-quoted literals (that begin and end with `"""`):
 
-The indentation level of the closing quotes is removed from the lines within the literal. For
-example, this string contains one, onside line that reads `spam and eggs`:
+    let name = """Lark"""
+
+Any string literal can span multiple lines, but triple-quoted literals have extra features that
+simplify expressing multiple lines of text. For this reason, Lark uses the term *string literal*
+to describe single-quoted strings, and *text literal* for triple-quoted strings.
+
+Text literals exclude the lines that include the quotes, so the expressed string begins on the
+first line after the opening quotes, and ends on the last line before the closing quotes. The
+indentation level of the closing quotes indicates how much indentation to remove from each of
+the lines within the literal.
+
+Note: It is a syntax error for a text literal to have any characters (ignoring insignificant
+trailing whitespace) after the opening quotes, or to have any characters, except indentation,
+before the closing quotes.
+
+For example, here `string` contains a single, unindented line that reads `spam and eggs`:
 
     let string = """
         spam and eggs
         """
 
-The literal does not have to be indented. For example, this (three-line) string has closing
-quotes at the same level as the opening quotes:
+Indenting the literal (as in the previous example) is entirely optional. For example:
 
     let string = """
     this line is onside
@@ -520,30 +542,49 @@ quotes at the same level as the opening quotes:
     this line is onside again
 		"""
 
-Single escape-characters work like JavaScript. This string literal contains two lines:
+The ability to indicate where the text begins is especially useful when the literal is nested
+inside indented code. Otherwise, you get this kind of thing:
+
+    do {
+        let string = "this line is onside
+      this line is indented by two spaces
+    this line is onside again"
+    }
+
+### Escaping Characters
+
+Simple, single-character escape sequences work exactly like JavaScript. This string literal
+contains two lines:
 
     "Line1\nLine2"
 
-Multi-character escape sequences are not supported. Interpolations are used instead (again,
-using Swift grammar). Lark interpolations use the same escape character as always `\`, and
-the interpolated expression is wrapped in parens (like an expression). These two strings
-are identical:
+None of the other kinds of escape sequence are supported. Interpolations are used instead.
+
+### String Interpolation
+
+Lark uses the same escape character to introduce interpolations (`\`). The interpolation is
+expressed as a tuple of zero or more expressions:
 
     "1 + 2 == 3"
 		"1 + 2 == \(1 + 2)"
 
-Lark goes slightly further than Swift, permitting any number of comma-separated expressions
-in the same interpolation (like an escaped tuple):
+The values of the expressions in the tuple are treated as adjacent interpolations (without
+spaces), so the following string literals are equivalent (and the same would be true for
+the corresponding text literals):
 
 		"\(x, y, z)"
 
-Note: The values of the expressions are treated as adjacent interpolations (without spaces), so
-the previous example is just a nicer way to write this:
-
     "\(x)\(y)\(z)"
 
-## Compound Expressions
+### Tagged Template Literals
 
+In Lark, you can follow an expression with a string or text literal, and it will create a
+tagged literal, just like JavaScript, except that Lark permits whitespace between the
+expression and the literal that follows it:
+
+    foo "bar" -> foo`bar`
+
+## Compound Expressions
 
 Array and object literals are similar to JavaScript, with a few exceptions.
 
@@ -563,7 +604,7 @@ name. This will not do what it would do in JavaScript:
 This limitation is a compromise that Lark makes to permit the introduction of map-literals
 and set-literals. Map literals use colon-separated expressions in square brackets:
 
-    let map = [1: "x", 2: "y"]             -> const data = new Map([[1, "x"], [2, "y"]]);
+    let map = [1: "x", 2: "y"]             -> const map = new Map([[1, "x"], [2, "y"]]);
 
 You can do a similar thing with curly braces to express sets:
 
@@ -574,7 +615,7 @@ To disambiguate between the overloaded characters, empty objects and maps must u
     []     -> empty array
 		{}     -> empty set
 		[:]    -> empty map
-		{:}    -> empty object (with a null prototype)
+		{:}    -> empty object
 
 ## Literate Programming
 
@@ -728,3 +769,17 @@ Promotions
 + isInteger       -> Number.isInteger
 + isNaN           -> Number.isNaN
 + isSafeInteger   -> Number.isSafeInteger
+
+TODOS
+=====
+
+Lambdas, functions and generators, whether defined formally or using the infix arrow-operators,
+as well as `let`, `var` or `for` declarations, should check for and reject parameters with names
+that match the regex `/^\$[0-9][0-9]*$/` (a dollar, followed by one or more digits). These names
+are reserved. Single-digit indices are used for implicit parameters in functions defined using
+the prefix arrow operators, and higher indices are not permitted
+
+Note: None of the above applies to the qualified properties of an object (`foo.$0` is fine).
+
+Note: The reserved names can still be referenced as properties of `js` (as in `js.$0`).
+

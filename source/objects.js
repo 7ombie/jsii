@@ -1,4 +1,5 @@
 import {
+    accent,
     alphas,
     backslash,
     bases,
@@ -9,6 +10,7 @@ import {
     comma,
     constants,
     decimal,
+    dollar,
     dot,
     empty,
     hexadecimal,
@@ -21,6 +23,7 @@ import {
     operators,
     quote,
     reserved,
+    space,
     symbolics,
     wordCharacters,
 } from "./strings.js"
@@ -81,12 +84,12 @@ export class Token {
     and are individually documented below (within the default implementations), along with
     the helper methods. */
 
-    LBP = 0;               // the token's left-binding power (a generalization of precedence)
-    RBP = 0;               // an alternative LBP value (sometimes) used for parsing rvalues 
+    LBP = 0;               // left-binding power (a generalization of precedence, per Pratt)
+    RBP = 0;               // right-binding-power (prefix and infix precedence often differs)
     operands = [];         // the token's operands (including params, blocks, tokens etc)
     expression = false;    // specifies whether the token forms a valid expression
 
-    get spelling() { 
+    get spelling() {
 
         /* This API property specifies the JavaScript spelling for the given token, defaulting
         to the Lark spelling.
@@ -206,7 +209,7 @@ class Terminal extends Token {
 
 export class Terminator extends Terminal {
 
-    /* This is the base class for the various statement-terminators (linefeeds, commas and the
+    /* This is the base class for the various statement-terminators (line-feeds, commas and the
     implicit End Of File token inserted at the end of every token stream). It is also imported
     by the Lexer Stage to tokenize terminators, and by the Parser Stage to classify them. */
 
@@ -292,38 +295,64 @@ export class NumberLiteral extends Terminal {
 
 export class StringLiteral extends Terminal {
 
-    /* This is the concrete class for all string-literals. It is also used by the lexer
-    for (recursively) tokenizing strings and their interpolations. */
+    /* This is the concrete class for all string-literals. It is also imported by the Lexer
+    Stage for (recursively) tokenizing strings and their interpolations.
 
+    Note: String literals can also appear in an infix position (acting like a suffix operator)
+    and have a binding power of `16`. The result compiles to a tagged template literal. */
+
+    LBP = 16;
     expression = true;
 
     static * lex(...args) { yield new StringLiteral(...args) }
 
     constructor(lexer, location) {
 
+        /* This constructor gathers the value of a string literal. That value is stored as an
+        array, containing substrings and token arrays (which may also contain strings, which
+        may also contain token arrays etc). */
+
         super(location, [empty]);
 
         while ((!lexer.at(quote)) && lexer.advance()) {
 
-            if (lexer.on(backslash) && lexer.at(openParen)) {
+            if (lexer.on(backslash) && lexer.at(openParen)) { // an interpolation...
+
+                // note the previous interpolation state (as interpolations nest recursively),
+                // then tell the lexer to interpolate, and advance past the escape character...
 
                 let previousState = lexer.interpolate();
 
-                lexer.advance();
                 lexer.interpolate(true);
+                lexer.advance();
+
+                // gather the tokens that make up the interpolation (a tuple of zero or more
+                // expressions) without checking they are valid expressions (see the `prefix`
+                // method below), then append an empty string to `value`, as there is often
+                // more text after the interpolation that gets concatenated to whatever is
+                // at the end of the `value` array...
 
                 this.value.push([...lexer.gatherStream()]);
                 this.value.push(empty);
 
+                // finally, restore the lexer to its previous state...
+
                 lexer.interpolate(previousState);
 
-            } else this.value[this.value.length - 1] += lexer.read();
+            } else this.value[this.value.length - 1] += lexer.read(); // a regular character
         }
 
-        lexer.advance();
+        lexer.advance(); // ignore the closing quote
     }
 
     prefix(parser) {
+
+        /* The value is an array of strings and interpolations. Each interpolation is stored as
+        an array of tokens, which may recursively contain strings with their own interpolations.
+        This method iterates over each section of the value, and passes any interpolation array
+        back through the parser, which will recusively call this method on interpolated strings.
+        The method also checks that the parser returns a valid expression, complaining if there
+        are any interpolated statements. */
 
         for (const [index, section] of Object.entries(this.value)) if (section instanceof Array) {
 
@@ -340,29 +369,40 @@ export class StringLiteral extends Terminal {
         return this
     }
 
+    infix(parser, prefix) {
+
+        /* String literals can follow an expression (like a suffix operator) to create a tagged
+        template literal. The literal still needs its interpolations parsing (as with `prefix`).
+        The only difference is that the token stores the lvalue as its only operand. */
+
+        this.prefix(parser);
+
+        return this.push(prefix);
+    }
+
     validate(_) { return true }
 
-    js(writer) {
+    js(writer) { // TODO: output tagged template literals
 
-        let result = quote;
+        let result = accent;
 
         for (const chunk of this.value) {
-            
+
             if (chunk instanceof Array) for (const expression of chunk) {
-                
+
                 result += "${" + expression.js(writer) + "}";
 
             } else result += chunk;
         }
 
-        return result + quote;
+        return result + accent;
     }
 }
 
 export class Delimiter extends Terminal {
 
-    /* This is the abstract base class for all delimiters, and the class used by the lexer
-    for tokenizing delimiters. */
+    /* This is the abstract base class for all delimiters. The class is also imported by the
+    Lexer Stage for tokenizing delimiters. */
 
     static * lex(lexer, location) {
 
@@ -384,15 +424,15 @@ export class Delimiter extends Terminal {
 
 export class Closer extends Delimiter {
 
-    /* This is an abstract base class for closing parens, brackets and braces. It is used
-    by the parser to check for closing tokens. */
+    /* This is an abstract base class for closing parens, brackets and braces. It is also imported
+    by the Parser Stage to check for closing tokens. */
 }
 
 class Caller extends Delimiter {
 
-    /* This is an abstract base class for delimiters that also define a infix grammar (as
-    well as starting compound expressions with their prefix grammars). In practice, this
-    implies opening parens and brackets. */
+    /* This is an abstract base class for delimiters that also define a infix grammar (as well as
+    starting compound expressions with their prefix grammars). In practice, this implies opening
+    parens and opening brackets. */
 
     LBP = 17;
     expression = true;
@@ -402,8 +442,8 @@ class Caller extends Delimiter {
 
 export class Word extends Terminal {
 
-    /* This is the abstract base class for every type of word and name. It is also used
-    by the lexer word-tokenization. */
+    /* This is the abstract base class for every type of word and name. It is also imported by the
+    Lexer Stage for word-tokenization. */
 
     static * lex(lexer, location) {
 
@@ -423,16 +463,17 @@ export class Word extends Terminal {
 
 class Constant extends Word {
 
-    /* This is the abstract base class for constant words, used for named numbers (like
-    `Infinity` and `NaN`), as well as magic variables (`this`, `default`, `arguments`,
-    `random`, `void`, `true` etc). It is also used by the `Word` class for sub-
-    classing constants. */
+    /* This is the abstract base class for constant words, used for named numbers (like `Infinity`
+    and `NaN`), as well as magic variables (`this`, `default`, `arguments`, `random`, `void`, and
+    `true` etc). It is also used (internally) by the `Word` class (see `subclass`). */
 
     expression = true;
 
     prefix(_) { return this }
 
     static subclass(location, value) {
+
+        /* Return the appropriate subclass, based on the value. */
 
         switch (value) {
 
@@ -455,10 +496,12 @@ class Constant extends Word {
 
 export class Keyword extends Word {
 
-    /* This abstract base class is used by all of the keyword classes. It is also used by
-    the `Word` class for subclassing keywords. */
+    /* This abstract base class is used by all of the keyword classes. It is also used (internally)
+    by the `Word` class (see `subclass`). */
 
     static subclass(location, value) {
+
+        /* Return the appropriate subclass, based on the value. */
 
         switch (value) {
 
@@ -500,8 +543,8 @@ export class Keyword extends Word {
 
 class BranchStatement extends Keyword {
 
-    /* This is the abstract base class for statements that are used to branch from loops
-    (`break` and `continue`), which accept an optional (`Variable`) label. */
+    /* This is the abstract base class for statements that are used to branch from loops (in
+    practice, `break` and `continue`), which accept an optional (`Variable`) label. */
 
     prefix(parser) {
 
@@ -544,14 +587,15 @@ class Declaration extends Keyword {
     }
 }
 
-class ClassDeclaration extends Declaration {
+class ClassQualifier extends Declaration {
 
-    /* This is the abstract base class for static and public declarations. */
+    /* This is the abstract base class for the `static`, `local` and `private` qualifiers
+    that prefix declarations inside classes. */
 
     prefix(parser) {
 
-        /* This method will (correctly) gather any kind of function when present, and will
-        parse a regular declaration otherwise. */
+        /* When present, gather an optionally asynchronous function, and parse a regular
+        declaration otherwise. */
 
         if (parser.on(Functional, Async)) return this.push(parser.gather());
         else return super.prefix(parser);
@@ -568,10 +612,8 @@ class ClassDeclaration extends Declaration {
 
 export class Header extends Keyword {
 
-    /* This is the abstract base class for statements that have a block. It is used by the
-    parser to implement LIST, which permits a statement to follow another statement on the
-    same line (without a semicolon), if the preceding statement ends with a braced block
-    (not just an expression wrapped in braces). */
+    /* This is the abstract base class for statements that have a block. It is imported by the
+    parser, which uses it to implement LIST correctly.*/
 }
 
 class PredicatedBlock extends Header {
@@ -646,7 +688,6 @@ export class Operator extends Token {
     individual operators (see `slice`), then yield the operators as concrete tokens, one
     at a time. */
 
-    RBP = 0;
     expression = true;
 
     static slice(value, offset, location) {
@@ -832,12 +873,11 @@ class GeneralOperator extends Operator {
 
     js(writer) {
 
-        if (this.operands.length == 1) { // prefix operator...
+        if (this.operands.length === 1) { // prefix operator...
 
-            let isWord = lowers.includes(this.at(0)[0]);
+            let separator = lowers.includes(this.spelling[0]) ? space : empty;
 
-            if (isWord) return `${this.spelling} ${this.at(0).js(writer)}`;
-            else return `${this.spelling}${this.at(0).js(writer)}`;
+            return `${this.spelling}${separator}${this.at(0).js(writer)}`;
 
         } else return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
     }
@@ -856,13 +896,8 @@ class ArrowOperator extends GeneralOperator {
         /* This method overrides the inherited version to ensure that the `left` parameter
         (when present) is wrapped in parens, and that the operator is right-associative. */
 
-        const message = "arrow function parameters must be parenthesized";
-
-        if (left instanceof OpenParen) {
-
-            return this.push(left, parser.gatherExpression(this.RBP));
-
-        } else throw new LarkError(message, left.location);
+        if (left instanceof OpenParen) return this.push(left, parser.gatherExpression(this.RBP));
+        else throw new LarkError("arrow-operator parameters must be parenthesized", left.location);
     }
 }
 
@@ -1264,21 +1299,27 @@ class Do extends Header {
 
 class Dot extends DotOperator {
 
-    /* This concrete class implements the dot operator (`.`), which is used for property
-    access. The points in number literals do not use this class. */
+    /* This concrete class implements the dot operator (`.`), which is used for property access.
+    The points in number literals do not use this class. */
 }
 
 class Else extends PredicatedBlock {
 
-    /* This concrete token class implements `else` and `else if` clauses. */
+    /* This concrete class implements `else` and `else if` clauses. */
 
     prefix(parser) {
 
-        /* This method gathers an else-clause or an else-if clause, with the latter having
-        a predicate before its block. */
+        /* Gather an else-clause (with its block) or an else-if clause (with its predicate before
+        its block). */
 
-        if (parser.on(If)) return this.push(parser.gather());
+        if (parser.on(If)) return this.push(If, parser.gather());
         else return this.push(parser.gatherBlock(SIMPLEBLOCK));
+    }
+
+    js(writer) {
+
+        if (this.at(0) === If) return `else ${this.at(1).js(writer)}`;
+        else return `else {${writer.block(this.at(0))}}`;
     }
 }
 
@@ -1515,9 +1556,9 @@ class Let extends Declaration {
 
 export class LineFeed extends Terminator {
 
-    /* This concrete class implements the line feed characters, used to define newlines,
+    /* This concrete class implements the line-feed characters, used to define newlines,
     which may or may not be significant, depending on the current LIST state, which is
-    maintained by the parser implicitly (removing line feed instances from the token
+    maintained by the parser implicitly (removing line-feed instances from the token
     stream as required). */
 
     prefix(parser) {
@@ -1531,7 +1572,7 @@ export class LineFeed extends Terminator {
     }
 }
 
-class Local extends ClassDeclaration {
+class Local extends ClassQualifier {
 
     /* This contrete class implements local-statements, used inside classes. */
 }
@@ -1578,6 +1619,7 @@ class Not extends GeneralOperator {
 
     LBP = 9;
     RBP = 14;
+    spelling = "!";
 
     infix(parser, left) {
 
@@ -1619,7 +1661,7 @@ class NullConstant extends Constant {
 
 class Nullish extends GeneralOperator {
 
-    /* This concrete class implements the infix nullish operator (`??`). It also handles
+    /* This concrete class implements the infix nullish operator (`??`). It also handles         TODO: huh?
     pairs of clz32-operators (`?`) in a prefix position (as a disambiguation). */
 
     LBP = 3;    // the infix precedence applies to the nullish operator
@@ -1756,7 +1798,7 @@ class Plus extends GeneralOperator {
     RBP = 14;   // this is the precedence of the prefix operator
 }
 
-class Private extends ClassDeclaration {
+class Private extends ClassQualifier {
 
     /* This contrete class implements private-statements, used inside classes. */
 
@@ -1874,7 +1916,7 @@ class Star extends InfixOperator {
     LBP = 12;
 }
 
-class Static extends ClassDeclaration {
+class Static extends ClassQualifier {
 
     /* This contrete class implements static-statements, used inside classes. */
 }

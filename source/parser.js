@@ -5,13 +5,13 @@ import {
     Header,
     Keyword,
     LarkError,
+    LineFeed,
     OpenBrace,
     OpenBracket,
     Operator,
-    LineFeed,
     Terminator,
-    Word,
     Variable,
+    Word,
 } from "./objects.js"
 
 import { lex } from "./lexer.js"

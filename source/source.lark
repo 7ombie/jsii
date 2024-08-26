@@ -1,8 +1,18 @@
+=> $0 * foo + $2 * 19 == $8 + 5 when $1 > $0 else foo.$9
+
+not true
+
+if p0 { foo } else if p1 { bar } else { spam }
+
 do async function { return await true }
 do async generator { return await yield true }
 do async lambda { return await true }
 
-10011100.11.toFixed(5)
+let string = foo + bar "
+    line one: onside
+      line two: indented two spaces    
+    line three: onside again
+    "
 
 x == freeze 1
 spam != green.eggs and ham
@@ -19,7 +29,7 @@ async function f { await call() }
 generator foo { yield }
 generator foo { return }
 
-# "outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"       # TODO: test again
+"outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"
 
 generator {
     dance: while x while y {
