@@ -164,7 +164,7 @@ Note: Only use `unless` or `until` if you would otherwise need to negate the ent
 Note: The logical operators use words (`not`, `and` and `or`), while the bitwise operators have
 been redesigned. They now use different spellings for the operators (for example, the prefix
 operators `!` and `?` are used for bitwise-not and count-leading-zeros). Bitwise operations
-also infer unsigned semantics (twiddling bits in twos-compliment is just confusing).
+also infer unsigned semantics.
 
 The `of` Operator
 -----------------
