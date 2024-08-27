@@ -628,7 +628,7 @@ class PredicatedBlock extends Header {
 
     js(writer) {
 
-        return `${this.value} (${this.at(0).js(writer)}) {${writer.block(this.at(1))}}`;
+        return `${this.value} (${this.at(0).js(writer)}) {${writer.writeBlock(this.at(1))}}`;
     }
 }
 
@@ -692,8 +692,11 @@ export class Operator extends Token {
 
     static slice(value, offset, location) {
 
-        /* Slice an unbroken sequence of symbolic operator characters into an array of
-        individual operators, greedily, from left to right. */
+        /* Take a string (`value`) containing a contiguous sequence of symbolic operator
+        characters, and break it into an array of individual operators, greedily, from
+        left to right, based on a given `offset` (into the string) and `location`.
+        
+        Note: The location is only needed to generate synax errors. */
 
         if (!value) return [];
 
@@ -709,7 +712,7 @@ export class Operator extends Token {
 
     static subclass(location, value) {
 
-        /* Take a value and location, and use them to instantiate and return the appropriate
+        /* Take a value and its location, and use them to instantiate and return an appropriate
         operator instance. */
 
         switch (value) {
@@ -774,7 +777,7 @@ export class Operator extends Token {
 
     static * lex(lexer, location) {
 
-        /* This API method yields as many operators as it can gather. */
+        /* This API method yields as many operators as it can gather, see `Operator.slice`. */
 
         let values = lexer.read();
 
@@ -844,19 +847,6 @@ class DotOperator extends InfixOperator {
     }
 }
 
-class PrefixDotOperator extends DotOperator {
-
-    /* This base class extends the dot-operator class with functionality specific to the bang
-    and ask operators, which are also bitwise prefix operators. */
-
-    RBP = 14;
-
-    prefix(parser) {
-
-        return this.push(parser.gatherExpression(this.RBP));
-    }
-}
-
 class GeneralOperator extends Operator {
 
     /* This is the base class for operators that have prefix and infix forms. */
@@ -914,9 +904,24 @@ class AssignmentOperator extends InfixOperator {
     }
 }
 
+class GeneralDotOperator extends DotOperator {
+
+    /* This base class extends the dot-operator class with functionality specific to the bang
+    and ask operators, which are also bitwise prefix operators. */
+
+    RBP = 14;
+
+    prefix(parser) {
+
+        return this.push(parser.gatherExpression(this.RBP));
+    }
+}
+
 /// THE CONCRETE TOKEN CLASSES...
 
 class AllConstant extends Constant {
+
+    spelling = "*";
 
     /* This concrete class implements the `all` constant, used instead of an asterisk
     in import and export statements. */
@@ -944,21 +949,20 @@ class AND extends InfixOperator {
 
 class ARSHIFT extends InfixOperator {
 
-    /* This concrete class implements the `>>>` infix operator (bitwise arithmetic-
-    shift-right). */
+    /* This concrete class implements the `>>>` infix operator (bitwise arithmetic-shift-right). */
 
     LBP = 10;
 }
 
 class As extends InfixOperator {
 
-    /* This concrete class implements the `as` operator, used in import and export statements
-    for assignments and reassignments (like in JavaScript). */
+    /* This concrete class implements the `as` operator, used in import and export statements for
+    assignments and reassignments (like in JavaScript). */
 
     LBP = 1;
 }
 
-class Ask extends PrefixDotOperator {
+class Ask extends GeneralDotOperator {
 
     spelling = "?.";
 
@@ -1099,7 +1103,7 @@ class Await extends CommandStatement {
     }
 }
 
-class Bang extends PrefixDotOperator {
+class Bang extends GeneralDotOperator {
 
     spelling = ".#";
 
@@ -1243,6 +1247,8 @@ class Debug extends Keyword {
 
     /* This concrete class implements the `debug` statement, which compiles to `debugger`. */
 
+    spelling = "debugger";
+
     prefix(_) { return this }
 }
 
@@ -1264,11 +1270,9 @@ class Dev extends Keyword {
 
     /* This concrete class implements the `dev` qualifier, which can prefix any statement,
     formal or informal, ensuring it will only be included in the compiled output when the
-    parser is in `devmode`. */
+    parser is in `devmode`. */// TODO: add a `devmode` parameter to each stage
 
     prefix(parser) {
-
-        /* This method gathers anything valid as a single operand. */
 
         return this.push(parser.gather());
     }
@@ -1319,7 +1323,7 @@ class Else extends PredicatedBlock {
     js(writer) {
 
         if (this.at(0) === If) return `else ${this.at(1).js(writer)}`;
-        else return `else {${writer.block(this.at(0))}}`;
+        else return `else {${writer.writeBlock(this.at(0))}}`;
     }
 }
 
@@ -1328,6 +1332,11 @@ class Equal extends InfixOperator {
     /* This concrete class implements the `==` operator, which compiles to `Object.is`. */
 
     LBP = 8;
+
+    js(writer) {
+
+        return `Object.is(${this.at(0).js(writer)}, ${this.at(1).js(writer)})`;
+    }
 }
 
 export class EOF extends Terminator {
@@ -1370,6 +1379,11 @@ class Floor extends InfixOperator {
     /* This concrete class implements the floor division operator (`//`). */
 
     LBP = 12;
+
+    js(writer) {
+
+        return `Math.floor(${this.at(0).js(writer)} / ${this.at(1).js(writer)})`;
+    }
 }
 
 class For extends Header {
@@ -1636,6 +1650,11 @@ class NotEqual extends InfixOperator {
     /* This concrete class implements the `!=` operator, which compiles to `!Object.is`. */
 
     LBP = 8;
+
+    js(writer) {
+
+        return `!Object.is(${this.at(0).js(writer)}, ${this.at(1).js(writer)})`;
+    }
 }
 
 class NotGreater extends InfixOperator {
@@ -1661,8 +1680,9 @@ class NullConstant extends Constant {
 
 class Nullish extends GeneralOperator {
 
-    /* This concrete class implements the infix nullish operator (`??`). It also handles         TODO: huh?
-    pairs of clz32-operators (`?`) in a prefix position (as a disambiguation). */
+    /* This concrete class implements the infix nullish operator (`??`). It also handles
+    pairs of clz32-operators (`?`) in a prefix position (this is an edgecase, where the
+    Operator. disambiguation). */
 
     LBP = 3;    // the infix precedence applies to the nullish operator
     RBP = 14;   // the prefix precedence applies to clz32 (and equals bitwise-not)

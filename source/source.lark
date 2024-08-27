@@ -1,6 +1,5 @@
-=> $0 * foo + $2 * 19 == $8 + 5 when $1 > $0 else foo.$9
-
-not true
+x == 4
+y != z
 
 if p0 { foo } else if p1 { bar } else { spam }
 
