@@ -73,7 +73,7 @@ Parens around predicates are always optional, so this kind of thing is always ac
 
     while x > 0 { console.log(x -= 1) }
 
-Blocks & Bodies
+Bodies & Blocks
 ---------------
 
 Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
@@ -126,7 +126,7 @@ way access JavaScript's `var` semantics. Everything is block-scoped, and is eith
 declared with `let`, or a variable, declared with `var`.
 
     let pi = 3.141
-		var xp = 0
+    var xp = 0
 
 The grammar for unpacking is copied directly from JS:
 
@@ -157,8 +157,7 @@ Lark also supports unless-branches and until-loops (the inverse of if-blocks and
 respectively), though unless-blocks do not (and will never) support else-clauses:
 
     until game.over { animate() }
-
-		unless result.error return
+    unless result.error return
 
 Note: Only use `unless` or `until` if you would otherwise need to negate the entire predicate.
 
@@ -237,9 +236,9 @@ The `of` operator supports a range of builtin operations. The list is not finali
 include stuff like this (as well as the stuff above):
 
     type of x                      -> typeof x
-		prototype of x                 -> Object.getPrototypeOf(x)
-		names of x                     -> Object.getOwnPropertyNames(x)
-		symbols of x                   -> Object.getOwnPropertySymbols(x)
+    prototype of x                 -> Object.getPrototypeOf(x)
+    names of x                     -> Object.getOwnPropertyNames(x)
+    symbols of x                   -> Object.getOwnPropertySymbols(x)
 
 JSON Operators
 --------------
@@ -340,8 +339,8 @@ return-statements.
 The grammar for functions and generators is the same, except for the respective keywords, and is
 similar to the grammar for lambdas, while also permitting the function to be (directly) named:
 
-	function [<identifier>] [of <params>] <body>
-	generator [<identifier>] [of <params>] <body>
+    function [<identifier>] [of <params>] <body>
+    generator [<identifier>] [of <params>] <body>
 
 The identifier is optional. When present, it immediately follows the keyword.
 
@@ -473,7 +472,7 @@ use a double-quoted string literal. For example:
 
 Note: Lark uses `//` for floor-division:
 
-    x // y			-> Math.floor(x / y)
+    x // x           -> Math.floor(x / y)
 
 Dot Operators
 -------------
@@ -489,11 +488,11 @@ coalescing operator is spelt `?` (replacing `?.`):
     this!foo        -> this.#foo
     this?foo        -> this?.foo
 
-    foo?()	        -> foo?.()
-    foo?[x]	        -> foo?.[x]
+    foo?()          -> foo?.()
+    foo?[x]         -> foo?.[x]
 
-    this.foo?()		  -> this.foo?.()
-    this.foo?[x]		-> this.foo?.[x]
+    this.foo?()     -> this.foo?.()
+    this.foo?[x]    -> this.foo?.[x]
 
 Note: The `?!` operator has been reserved (to replace `?.#`), pending a usecase. I'd prefer
 to only use a single-character at any point in the chain (preserving the single-dot-per-step
@@ -521,7 +520,7 @@ Lark uses the `is` operator instead of JavaScript's `instanceof`, and includes a
 operator for checking the opposite:
 
     message is String        -> message instanceof String
-		message is not String    -> !(message instanceof String)
+    message is not String    -> !(message instanceof String)
 
 String & Text Literals
 ----------------------
@@ -586,13 +585,13 @@ Lark uses the same escape character to introduce interpolations (`\`). The inter
 expressed as a tuple of zero or more expressions:
 
     "1 + 2 == 3"
-		"1 + 2 == \(1 + 2)"
+    "1 + 2 == \(1 + 2)"
 
 The values of the expressions in the tuple are treated as adjacent interpolations (without
 spaces), so the following string literals are equivalent (and the same would be true for
 the corresponding text literals):
 
-		"\(x, y, z)"
+    "\(x, y, z)"
 
     "\(x)\(y)\(z)"
 
@@ -634,9 +633,9 @@ You can do a similar thing with curly braces to express sets:
 To disambiguate between the overloaded characters, empty objects and maps must use a colon:
 
     []     -> empty array
-		{}     -> empty set
-		[:]    -> empty map
-		{:}    -> empty object
+    {}     -> empty set
+    [:]    -> empty map
+    {:}    -> empty object
 
 Literate Programming
 --------------------
