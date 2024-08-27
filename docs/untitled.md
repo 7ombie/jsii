@@ -540,7 +540,7 @@ Indenting the literal (as in the previous example) is entirely optional. For exa
     this line is onside
       this line is indented by two spaces
     this line is onside again
-		"""
+    """
 
 The ability to indicate where the text begins is especially useful when the literal is nested
 inside indented code. Otherwise, you get this kind of thing:
