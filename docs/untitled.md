@@ -22,22 +22,23 @@ Note: Lark doesn't need a community. Lark is used in-house to develop games for 
 PHANTASM (an in-house language that compiles to WASM) and WGSL (the WebGPU Shader Language).
 You're totally welcome to get involved, but I'm not up for the 'community' thing.
 
-Statement Grammar
------------------
+The Lark Grammar
+================
 
 Lark has a simple, statement grammar with curly braces. Newlines are significant (generally
 terminating the current statement). Indentation is insignificant.
 
-### Significant Whitespace
-
 Lark replaces Automatic Semicolon Insertion (ASI) with Linewise Implicit Statement Termination
-(LIST). The logic is explained later, but it is basically the same as Python: Newlines outside
-of parens, brackets or braces (that are part of the current statement) terminate the statement.
+(LIST). The logic is similar to languages like Python and Swift: Newlines terminate the current
+statement, unless the newline is nested within parens, brackets or braces.
 
-Note: Lark does not provide a continuation symbol for explicitly continuing logical lines (like
-the `\` symbol in Python). In practice, there's always a better way to do it.
+Note: LIST only considers parens, brackets or braces that are part of the current statement. The
+braces around control-flow blocks and function bodies are obviously not relevant here.
 
-Note: Enforcing (less than) 120 columns (instead of 80) in source files is recommended.
+Note: Lark does not provide a continuation symbol for escaping newlines (like the `\` symbol in
+Python). In practice, there are just always better options.
+
+Note: Using 100-column source files is recommended.
 
 Lark does not use semicolons. However, it is still possible to have more than one statement on
 the same line. You just use commas between the statements instead. This works especially well
@@ -45,7 +46,8 @@ with inline blocks:
 
     if valid(candidate) { count += 1, yield candidate }
 
-### Keywords
+Keywords
+--------
 
 Every proper statement (every statement aside from expression statements) starts with a keyword.
 Block-statements use `do` (like `do { ... }`), and empty statements use `pass`. This avoids any
@@ -59,7 +61,8 @@ so there are exceptions. For example, `yield` is a keyword and a valid expressio
 normally important, but is worth noting before considering the way Lark sugars its blocks and
 predicates...
 
-### Blocks & Predicates
+Paren-Free Predicates
+---------------------
 
 Lark implements something similar to Eich's *paren-free mode*. However, while Lark drops the parens
 from around predicates, it does not require braces around every block.
@@ -70,7 +73,8 @@ Parens around predicates are always optional, so this kind of thing is always ac
 
     while x > 0 { console.log(x -= 1) }
 
-Braces around blocks are optional is some contexts and required in others...
+Blocks & Bodies
+---------------
 
 Code is structured into *function bodies* and *control flow blocks* (*bodies* and *blocks*). Bodies
 always require braces, but braces around blocks become optional when the block contains a single
@@ -101,7 +105,8 @@ The braces are still required here, as the block does not begin with a keyword:
 
     if x > y { console.log(x) }
 
-### Compound Statements
+Compound Statements
+-------------------
 
 Compound statements (those that contain blocks of other statements, like `if`, `while`, `for` etc)
 are all proper statements (which are always formal). Therefore, when we have a block that only
@@ -162,7 +167,8 @@ been redesigned. They now use different spellings for the operators (for example
 operators `!` and `?` are used for bitwise-not and count-leading-zeros). Bitwise operations
 also infer unsigned semantics (twiddling bits in twos-compliment is just confusing).
 
-## The `of` Operator
+The `of` Operator
+-----------------
 
 Lark has an `of` operator with the following grammar:
 
@@ -235,7 +241,8 @@ include stuff like this (as well as the stuff above):
 		names of x                     -> Object.getOwnPropertyNames(x)
 		symbols of x                   -> Object.getOwnPropertySymbols(x)
 
-## JSON Operators
+JSON Operators
+--------------
 
 Lark provides two prefix operators for doing JSON, one named `serialize` and another named
 `deserialize`.
@@ -246,7 +253,8 @@ The `serialize` operator compiles to `JSON.stringify`, while `deserialize` compi
     deserialize serialize o        -> JSON.parse(JSON.stringify(o))
     serialize x in serialize y     -> JSON.stringify(y).includes(JSON.stringify(x))
 
-## Mutablity Operators
+Mutablity Operators
+-------------------
 
 Lark provides prefix operators for *packing*, *sealing* and *freezing* objects, with a
 corresponding set for checking whether an object is *packed*, *sealed* or *frozen*.
@@ -267,7 +275,12 @@ immutable state:
     o is sealed                    -> Object.isSealed(o)
     o is frozen                    -> Object.isFrozen(o)
 
-## The JS Namespace
+    o is not packed                -> Object.isExtensible(o)
+    o is not sealed                -> !Object.isSealed(o)
+    o is not frozen                -> !Object.isFrozen(o)
+
+The JS Namespace
+----------------
 
 You have seen that Lark uses names for operators (and other things) that are valid variable
 names in JavaScript. If this is ever an issue, you can access any varaiable in the underlying
@@ -279,7 +292,8 @@ Naturally, this works for the name of the namespace too:
 
     js.js = js.js.js               -> js = js.js
 
-## Function Grammar
+Functions
+---------
 
 The function grammar has been revised to decouple the convenience of the arrow-grammar from the
 semantics of JavaScript's various function types (so you can declare an arrow-function with a
@@ -415,7 +429,8 @@ Note: Other potential arrow operators have been reserved for other function type
 usecase. However, given that the body can only ever contain a single expression, arrow operators
 for the other function types seem redundant in practice.
 
-### The `await` Operator and Asynchronous For-Loops
+The `await` Operator and Asynchronous For-Loops
+-----------------------------------------------
 
 In Lark, `await` works exactly like it does JavaScript:
 
@@ -429,7 +444,8 @@ When we want to iterate over the values yielded by an async-generator, Lark has 
 Note: Lark does not use the asterisk for generators. It has a `generator` keyword, and copies the
 `yield from <expression>` grammar (described below) from Python.
 
-## Yielding from Generators
+Yielding from Generators
+------------------------
 
 In Lark, `yield *` is spelled `yield from`:
 
@@ -438,7 +454,8 @@ In Lark, `yield *` is spelled `yield from`:
     yield from stream               -> yield * stream;
     item = yield item               -> item = yield item;
 
-### Comments
+Commentary
+----------
 
 Line comments start on a hash character (`#`), then run to end of the line.
 
@@ -458,7 +475,8 @@ Note: Lark uses `//` for floor-division:
 
     x // y			-> Math.floor(x / y)
 
-### Dot Operators
+Dot Operators
+-------------
 
 Lark has three dot operators, `.`, `!` and `?` (using `not` for boolean inversion, and
 `x when predicate else y` for ternaries).
@@ -487,7 +505,8 @@ Note: JavaScript's binary infix nullish operator (`??`) is supported (directly):
 
     a ?? b          -> a ?? b
 
-## Equality
+Equality Operators
+------------------
 
 Lark redid JavaScript's equality operations to use `==` and `!=`, but using the `Object.is`
 function:
@@ -504,7 +523,8 @@ operator for checking the opposite:
     message is String        -> message instanceof String
 		message is not String    -> !(message instanceof String)
 
-## String Literals
+String & Text Literals
+----------------------
 
 Lark string literals are inspired by Swift. They exclusively use quotes as delimiters (you cannot
 use apostrophes or grave accents):
@@ -551,7 +571,7 @@ inside indented code. Otherwise, you get this kind of thing:
     this line is onside again"
     }
 
-### Escaping Characters
+### Escaping
 
 Simple, single-character escape sequences work exactly like JavaScript. This string literal
 contains two lines:
@@ -560,7 +580,7 @@ contains two lines:
 
 None of the other kinds of escape sequence are supported. Interpolations are used instead.
 
-### String Interpolation
+### Interpolation
 
 Lark uses the same escape character to introduce interpolations (`\`). The interpolation is
 expressed as a tuple of zero or more expressions:
@@ -576,7 +596,7 @@ the corresponding text literals):
 
     "\(x)\(y)\(z)"
 
-### Tagged Template Literals
+### Tagged Literals
 
 In Lark, you can follow an expression with a string or text literal, and it will create a
 tagged literal, just like JavaScript, except that Lark permits whitespace between the
@@ -584,7 +604,8 @@ expression and the literal that follows it:
 
     foo "bar" -> foo`bar`
 
-## Compound Expressions
+Compound Expressions
+--------------------
 
 Array and object literals are similar to JavaScript, with a few exceptions.
 
@@ -617,7 +638,8 @@ To disambiguate between the overloaded characters, empty objects and maps must u
 		[:]    -> empty map
 		{:}    -> empty object
 
-## Literate Programming
+Literate Programming
+--------------------
 
 Literate programming allows you to separate all of your commentry and docstrings from your
 code, generally improving the readability of both.
@@ -769,17 +791,4 @@ Promotions
 + isInteger       -> Number.isInteger
 + isNaN           -> Number.isNaN
 + isSafeInteger   -> Number.isSafeInteger
-
-TODOS
-=====
-
-Lambdas, functions and generators, whether defined formally or using the infix arrow-operators,
-as well as `let`, `var` or `for` declarations, should check for and reject parameters with names
-that match the regex `/^\$[0-9][0-9]*$/` (a dollar, followed by one or more digits). These names
-are reserved. Single-digit indices are used for implicit parameters in functions defined using
-the prefix arrow operators, and higher indices are not permitted
-
-Note: None of the above applies to the qualified properties of an object (`foo.$0` is fine).
-
-Note: The reserved names can still be referenced as properties of `js` (as in `js.$0`).
 
