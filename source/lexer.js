@@ -33,30 +33,6 @@ export function * lex(source, literate=false) {
     so they can handle the specifics of parsing the given token type, yielding one or
     more tokens of that type. */
 
-    function registerPotentialNewline() {
-
-        /* This helper is used internally to update `lastNewline` to note the index
-        of the most recent newline, before updating the line number. As new logical
-        lines can be created by commas, we need to check for a proper newline. */
-
-        if (!on(newline)) return;
-
-        lastNewline = index;
-        line++;
-    }
-
-    function locate() {
-
-        /* This helper is used internally to generate a location value that encodes
-        the current line and column numbers within a single `Number`, by multipling
-        the line number by 256, then adding the column number to the result.
-
-        Note: The numbers are zero-indexed, limiting source files to 256 columns,
-        and a few trillion lines. */
-
-        return line * 256 + (index - lastNewline - 1);
-    }
-
     function advance() { // api function
 
         /* This function takes no arguments, and advances the state of the lexer by one
@@ -135,6 +111,30 @@ export function * lex(source, literate=false) {
         else interpolating = mode;
     }
 
+    function terminate() { // api function
+
+        /* Update `lastNewline` to track the index of the most recent newline, before
+        updating the line number. Note: As new logical lines can be created by commas,
+        the function must also check for a proper newline. */
+
+        if (!on(newline)) return;
+
+        lastNewline = index;
+        line++;
+    }
+
+    function locate() { // api function
+
+        /* Generate a location value that encodes the current line and column numbers within a
+        single `Number`, by multipling the line number by 256, then adding the column number
+        to the result.
+
+        Note: The numbers are zero-indexed, limiting source files to 256 columns, and a few
+        trillion lines. */
+
+        return line * 256 + (index - lastNewline - 1);
+    }
+
     function * gatherStream() { // api function
 
         /* This generator function contains the main loop and branches that tokenize
@@ -157,7 +157,7 @@ export function * lex(source, literate=false) {
 
                 yield * Terminator.lex(api, location);
 
-                do { registerPotentialNewline() } while (at(comma + whitespace) && advance())
+                do { terminate() } while (at(comma + whitespace) && advance())
 
             } else if (on(quote)) {
 
@@ -207,15 +207,10 @@ export function * lex(source, literate=false) {
     // assuming the lexer was passed a string, initialize and run the lexer normally...
 
     const api = {
-        advance,
-        at,
-        gatherStream,
-        gatherUntil,
-        gatherWhile,
-        interpolate,
-        on,
-        peek,
-        read
+        on, at, advance,
+        gatherWhile, gatherUntil, gatherStream,
+        interpolate, locate, terminate,
+        peek, read
     };
 
     let [character, interpolating] = [empty, false];

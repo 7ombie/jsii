@@ -128,120 +128,109 @@ declared with `let`, or a variable, declared with `var`.
     let pi = 3.141
     var xp = 0
 
-The grammar for unpacking is copied directly from JS:
+The grammar for unpacking is copied directly from JS (`<assignees>` is pure JavaScript):
 
+    let|var <assignees> = <expression>
+
+For example:
+
+    let {sin, cos} = Math
     var [x, y, z] = [0, 0, 0]
+
+Assignment expressions use the exact same `<assignees>` grammar:
+
+    <assignees> = <expression>
+
+Note: As mentioned already, you do not need to wrap Lark assignments in parenthesis, even when
+the expression would otherwise cause a statement to begin with an opening brace.
+
+The `<assigness>` grammar is also used by for-in, for-of and for-from loops (see below).
 
 Control Flow
 ------------
 
-You've already seen that Lark treats parens around predicates as optional, and you're familiar with
-rules for bodies and blocks. You've also seen examples of if-statements, while-statements etc, so
-you know how that works.
+You have already seen `if` and `while`, so for-loops are the obvious feature to look at next.
+As mentioned, Lark has three (for-in, for-of and for-from).
 
-For-in loops in Lark have the same semantics as for-of loops in JS, with a slightly nicer grammar:
-
-    for <assignees> in <expression> <block>
-
-Note that `for` is a declarator that declares one or more constants *for* each iteration. This
+Lark treats `for` as a declarator that declares one or more constants *for* each iteration. This
 compliments the two principle declarators, `let` and `var`.
 
-The grammar of `<assignees>` is exactly the same (unpacking) grammar that is used by declarations
-and assignments (`let <assignees> = <expression>`).
+Below is the abstract grammar for the three kinds of loop, with Lark code on top and the equivalent
+JavaScript (directly) below:
+
+    for <assignees> in <expression> <block>
+    for (const <assignees> of <expression>.ƥvalues()) <block>
+
+    for <assignees> of <expression> <block>
+    for (const <assignees> of <expression>.ƥkeys()) <block>
+
+    for <assignees> from <expression> <block>
+    for await (const <assignees> of <expression>) <block>
+
+The `ƥkeys` and `ƥvalues` methods begin with the *Lark Character* (`ƥ`), which is really just a
+lowercase Latin **P** with a hook, but it looks a bit like a lark (in the right font). Names that
+begin with a Lark Character are called *Lark names*, and are pronounced *lark-keys*, *lark-values*
+*et cetera*. They are mainly used to modify native prototypes (without clobbering stuff that is
+bound to create problems later).
+
+Note: Lark for-in and for-of loops can iterate over the keys or values of arrays, objects, maps
+and sets (though sets reuse their values as their keys, so it's the same values either way). This
+would not be possible without introducing our own namespace to update the native prototypes.
+
+Note: Lark reserves names that begin with two Lark characters (`ƥƥ`) for use by custom dialects.
 
 Note: There is currently no support for declaring a loop variable as anything other than a
 block-scoped, per-iteration constant (pending usecases for the wackier stuff that JavaScript
 permits).
 
-Lark also supports unless-branches and until-loops (the inverse of if-blocks and while-loops,
-respectively), though unless-blocks do not (and will never) support else-clauses:
+In & Of
+-------
 
-    until game.over { animate() }
-    unless result.error return
+IMPORTANT: Note how for-in uses `ƥvalues` and for-of uses `ƥkeys`. Lark uses `in` and `of` for the
+same stuff JavaScript uses them for, except in Lark *the semantics are reversed*. In JavaScript,
+`in` refers to the keys or indices *in* an object or array, while `of` refers to the values
+*of* that container. Lark does the exact opposite.
 
-Note: Only use `unless` or `until` if you would otherwise need to negate the entire predicate.
+Note: While JavaScript is technically correct, especially in a language where everything is passed
+by reference (the keys are *in* the container, while the values are just floating around in memory),
+that technicality is normally left implicit.
+
+In practice, we generally speak about *the values in a collection*, and *the keys of an object* or
+*the indices of an array*.
+
+In any case, Lark consistently uses `in` to refer to the *values in a collection*, and uses `of` to
+refer to the *properties of an object*, *the keys of a map* or the *indices of an array*.
+
+Lark further overloads `in` and `of` as Boolean infix operators, where `in` checks if the lvalue is
+in the rvalue (as in `value in array` or `value in object`), and `of` checks if the lvalue is one of
+the rvalue's *own* keys (as in `key of object` or `index of array`):
+
+    x in y                             -> Object.values(y).includes(x)
+    x of y                             -> Object.hasOwn(y, x)
+
+### Unless & Until
+
+Lark also supports unless-branches and until-loops, though unless-blocks do not support else-clauses
+(or anything like that):
+
+    unless <expression> <block>        -> if (!(<expression>)) <block>
+
+    until <expression> <block>         -> while (!(<expression>)) <block>
+
+Note: Only use `unless` or `until` with compounded predicates, and only if you would need to negate
+the entire predicate otherwise:
+
+    unless result.error || amount < 0 return
+
+    until window.closed || game.over { animate() }
 
 Note: The logical operators use words (`not`, `and` and `or`), while the bitwise operators have
 been redesigned. They now use different spellings for the operators (for example, the prefix
 operators `!` and `?` are used for bitwise-not and count-leading-zeros). Bitwise operations
 also infer unsigned semantics.
 
-The `of` Operator
------------------
-
-Lark has an `of` operator with the following grammar:
-
-    <identifier> of <expression>
-
-This applies a simple (always inlined) *functional operator* (defined by Lark, and specified by
-the identifier) to the expression on the right (as in *f of x*). This is used to sugar common
-operations on single expressions. For example:
-
-    keys of object          -> Object.keys(object)
-    descriptors of object   -> Object.getOwnPropertyDescriptors(object)
-
-This can be especially useful inside for-in loops. For example:
-
-    for key in keys of object { console.log(key) }
-    for value in values of object { console.log(value) }
-    for [key, value] in entries of object { console.log(key, value) }
-
-The of-operator is also useful for performing membership tests on the keys or values of an object:
-
-    key in keys of object
-    index in keys of array
-    value in values of object
-    value in values of array
-
-Note: The `in` operator is an infix operator that calls the `includes` method of the rvalue,
-passing the lvalue as the only argument (`x in y` translates to `y.includes(x)`).
-
-While it may not be immediately obvious, the above code has some performance implications that are
-more obvious when we consider what it would compile to. Having seen that `a in b` compiles to
-`b.includes(a)`, and that `keys of o` compiles to `Object.keys(o)`, then we should expect
-the previous example to compile to this:
-
-    Object.keys(object).includes(key)
-    Object.keys(array).includes(index)
-    Object.values(object).includes(value)
-    Object.values(array).includes(value)
-
-We can now see that we need to create a new array, containing the keys or values of the operand
-object (or array), to call its `includes` method, before immediately throwing away the array
-we just created, and only keeping the boolean we needed.
-
-Creating an extra array is currently unavoidable for the third and fourth cases (which check the
-values), as that's just how it's done in JavaScript, but the first two cases (checking the keys)
-could be replaced with a more optimal call to `Object.hasOwn`. Fortunately, this is the kind of
-thing we can reliably detect and optimize automatically:
-
-    key in keys of object          -> Object.hasOwn(object, key)
-    index in keys of array         -> Object.hasOwn(array, index)
-
-Note: Using something like `object?key` will often be a better choice still (see the section
-on *Dot Operators* below).
-
-For performance reasons, and to provide an escape hatch, the optimizer will never compile two
-or more adjacent operations into a single operation, if they are explicitly separated by
-(otherwise redundant) parenthesis:
-
-    key in (keys of object)        -> Object.keys(object).includes(key)
-
-This only applies to the operators actually being optimized away. Wrapping the overall expression,
-or any of its sub-expressions, in parenthesis has no effect on optimization:
-
-    ((key) in keys of (object))    -> Object.hasOwn(object, key)
-
-The `of` operator supports a range of builtin operations. The list is not finalized, but will
-include stuff like this (as well as the stuff above):
-
-    type of x                      -> typeof x
-    prototype of x                 -> Object.getPrototypeOf(x)
-    names of x                     -> Object.getOwnPropertyNames(x)
-    symbols of x                   -> Object.getOwnPropertySymbols(x)
-
-JSON Operators
---------------
+JSON Serialization
+------------------
 
 Lark provides two prefix operators for doing JSON, one named `serialize` and another named
 `deserialize`.
@@ -259,16 +248,20 @@ Lark provides prefix operators for *packing*, *sealing* and *freezing* objects, 
 corresponding set for checking whether an object is *packed*, *sealed* or *frozen*.
 
 While the terms *seal* and *freeze* should be familiar to any JS dev, the term *pack* was
-introduced by Lark to refer to `Object.preventExtensions` and `Object.isExtensible`, fixing
-an inconsistency in JavaScript, where `isExtensible` returns `true` if we *can* mutate the
-object, while `isSealed` and `isFrozen` return `true` if we *cannot* mutate the object.
+introduced by Lark to refer to `Object.preventExtensions` and `Object.isExtensible`. This
+addresses an inconsistency in JavaScript, where `isExtensible` returns `true` if we *can*
+mutate the object, while `isSealed` and `isFrozen` return `true` if we *cannot* mutate
+the object.
 
-In Lark, pack, seal and freeze (consistently) define three levels of progressively more
-immutable state:
+In Lark, `pack`, `seal` and `freeze` define three levels of progressively more immutable
+state:
 
     pack o                         -> Object.preventExtensions(o)
     seal o                         -> Object.seal(o)
     freeze o                       -> Object.freeze(o)
+
+Lark also provides a corresponding set of three prefix operators for checking whether an
+object is packed, sealed or frozen, as well as the inverse set:
 
     o is packed                    -> !Object.isExtensible(o)
     o is sealed                    -> Object.isSealed(o)
@@ -330,9 +323,11 @@ As always, bodies must be wrapped in braces. For example:
 
     let sum = lambda x, y { return x + y }
 
-Note: In Lark, we generally use the arrow-operators (covered below) for lambdas/functions/etc
-that return a single expression, so the header-block statement-grammars require explicit
-return-statements.
+    const sum = (x, y) => x + y;
+
+Note: Lark generally uses arrow-operators (covered below) for lambdas and functions that return a
+single expression (like the previous example). For that reason, the grammars that use an explicit
+block (wrapped in curly braces) always require explicit return-statements.
 
 ### Function Expressions and Generator Expressions
 
@@ -340,6 +335,7 @@ The grammar for functions and generators is the same, except for the respective 
 similar to the grammar for lambdas, while also permitting the function to be (directly) named:
 
     function [<identifier>] [of <params>] <body>
+
     generator [<identifier>] [of <params>] <body>
 
 The identifier is optional. When present, it immediately follows the keyword.
@@ -351,17 +347,63 @@ function):
 
     let sum = function of x, y { return x + y }
 
+    -> const sum = function(x, y) { return x + y };
+
 We can also *define* a function, naming it directly:
 
     function sum of x, y { return x + y }
 
-We generally recommend using the first syntax to declare top-level functions, and the latter to
-define named methods inside class blocks. However, we also recommend using a lambda (over a
-function) wherever a lambda would suffice, so in practice, most top-level functions are
-actually declared as lambdas.
+    -> const sum = function sum(x, y) { return x + y };
 
-Note: The compiler ensures that all function definitions are valid expressions (any extra parens
-are omitted from the examples in these docs).
+The first syntax to is primarily used for declaring top-level functions (so declarations look
+consistent with declarations of other datatypes), and the latter is primarily used to define
+methods inside class blocks. However, Lark always uses a lambda (rather than a function) if
+a lambda will do, so in practice, top-level functions are normally declared as lambdas.
+
+Note: Function definitions are always valid expressions (the extra code that's added to functions
+at the beginning of a statement is omitted from the example code).
+
+As declaring lambdas is so commonplace, there is sugar for lambda declarations:
+
+    let|var <name> [of <args>] <block>
+
+This allows you to write stuff like this:
+
+    let sum of x, y { return x + y }
+
+The args can also be omitted, both when the function doesn't take any arguments, and when the
+function is simple enough that you can refer to the arguments positionally (see below):
+
+    let sum { return @0 + @1 }
+
+Note: Again, in practice, the arrow grammar would be a better choice for the above examples.
+
+### Contextual Parameters & Indices
+
+Lark supports names and indices that begin with an `@` character, which qualifies the name or
+index based on the *functional context*, which refers to the current value of `this` and the
+values in the `arguments` array (which are implicitly defined for functions and generators,
+and enclosed by lambdas):
+
+    console.log(@)                     -> console.log(this);
+    console.log(@foo)                  -> console.log(this.foo);
+    console.log(@3)                    -> console.log(arguments[3]);
+
+A function can also define a contextual parameter name, which causes the argument to be assigned
+to `this` automatically:
+
+    class SpaceInvader {
+        constructor(@x, @y) { }
+    }
+
+That Lark code would compile to this JavaScript:
+
+    class SpaceInvader{
+        constructor(ƥx, ƥy) {
+            this.x = ƥx;
+            this.y = ƥy;
+        }
+    }
 
 ### The `do` Qualifier
 
@@ -525,35 +567,45 @@ operator for checking the opposite:
 String & Text Literals
 ----------------------
 
-Lark string literals are inspired by Swift. They exclusively use quotes as delimiters (you cannot
-use apostrophes or grave accents):
+Lark string literals use quotes (`"`) exclusively (you cannot delimit strings with apostrophes or
+grave accents):
 
     let name = "Lark"
 
-Lark also supports triple-quoted literals (that begin and end with `"""`):
+Lark also supports *text literals*, which have extra features that simplify expressing text that
+spans multiple lines. Text literals begin with three or more (contiguous) quotes, and end on the
+exact same number of quotes that opened that particular literal:
 
-    let name = """Lark"""
+    let doc = """
+    The Lark Programming Language
+    =============================
 
-Any string literal can span multiple lines, but triple-quoted literals have extra features that
-simplify expressing multiple lines of text. For this reason, Lark uses the term *string literal*
-to describe single-quoted strings, and *text literal* for triple-quoted strings.
+    Lark implements a better grammar for JavaScript that you can edit and
+    extend to create your own dialects which are fully interoperable with
+    Vanilla JS, TypeScript, other Lark dialects *et cetera*.
+    """
 
 Text literals exclude the lines that include the quotes, so the expressed string begins on the
 first line after the opening quotes, and ends on the last line before the closing quotes. The
 indentation level of the closing quotes indicates how much indentation to remove from each of
-the lines within the literal.
+the lines within the literal. For example, the following statements are equivalent:
 
-Note: It is a syntax error for a text literal to have any characters (ignoring insignificant
-trailing whitespace) after the opening quotes, or to have any characters, except indentation,
-before the closing quotes.
+    let string = "this line is onside"
 
-For example, here `string` contains a single, unindented line that reads `spam and eggs`:
+    let string = """"""""
+        this line is onside
+        """"""""
 
-    let string = """
-        spam and eggs
-        """
+Note: Having eight quotes is redudant in that example (as it doesn't contain a string of seven
+quotes), but it demonstrates how the text literal grammar applies when there are at least three,
+and how the indentation of the group that closes the literal controls how much indentation to
+remove from each line within the literal.
 
-Indenting the literal (as in the previous example) is entirely optional. For example:
+Note: Naturally, two quotes expresses an empty string literal, so anything that follows it would
+be interpreted as regular code. Hence, the requirement of at least three.
+
+Indenting the literal in the previous example was only done to demonstrate the gramar. I would
+personally recommend keeping everything at the same level (for what it's worth):
 
     let string = """
     this line is onside
@@ -561,7 +613,7 @@ Indenting the literal (as in the previous example) is entirely optional. For exa
     this line is onside again
     """
 
-The ability to indicate where the text begins is especially useful when the literal is nested
+The ability to indicate where the lines begin is especially useful when the literal is nested
 inside indented code. Otherwise, you get this kind of thing:
 
     do {
@@ -569,6 +621,10 @@ inside indented code. Otherwise, you get this kind of thing:
       this line is indented by two spaces
     this line is onside again"
     }
+
+Note: Ignoring whitespace, it is a syntax error for a text literal to have any characters after
+the opening quotes (on the same line, obviously), before the closing quotes, or inside the
+indentation that gets removed from the start of each line (when there is any).
 
 ### Escaping
 
@@ -791,3 +847,47 @@ Promotions
 + isNaN           -> Number.isNaN
 + isSafeInteger   -> Number.isSafeInteger
 
+Inline WebAssembly
+==================
+
+Once Lark is up and runnnig, I might integrate PHANTASM into Lark, as a form of inline assembly.
+
+I like both languages, but the PHANTASM implementation needs redoing. They have enough similarities
+with each other that it'd be relative simple to reimplement something similar to PHANTASM directly
+inside Lark.
+
+WASM is useless without at least *some* JS, so you always need some Lark to use PHANTASM now. In
+the future, a Lark source file would always equate to exactly one JS module, and optionaly one
+WASM module that would be automatically loaded and integrated into the JS module, so Lark
+would be able to invoke PHANTASM functions, read and write to the memory *et cetera*.
+
+You could prefix imports and exports with a new `wasm` qualifier, and they'll then require a type,
+and be added to the WASM module instead:
+
+    wasm import { sum } from "./lib/helpers.wasm" as $sum of i32, i32 -> i32
+
+We could make `subroutine` a keyword that works like `function` and `generator`, and require types
+on the parameters (using labels) *et cetera*, and add support for PHANTASM type-expressions:
+
+    subroutine $sum of x: i32, y: i32 -> i32 {
+        get 0, get 1, add i32
+    }
+
+    subroutine $sum of type $binop { get 0, get 1, add i32 }
+
+Note: Lark and PHANTASM both use a comma or a newline to terminate a statement/instruction/command.
+PHANTASM also uses significant indentation, but that would need to be replaced with curly brackets,
+if it was integrated into Lark (which ignores indentation outside of text literals).
+
+Note: The type (`$binop`) would be referencing the PHANTASM indexspace, while the function name
+(`$sum`) would exist in the PHANTASM and Lark namespaces, so you could then do this:
+
+    console.log($sum(1, 2))
+
+Functions could be prefixed with `private` to make them internal to the WASM module, or we could
+make things internal by default, and then have a `public` keyword (or something). I only thought
+of doing this twenty minutes ago...
+
+Should we reserve dollar names for this (as we can use `js.$name` as an escape hatch)??
+
+each.𝓁keys()

@@ -3,7 +3,7 @@
 export const [empty, space, newline, tab, carriage] = ["", " ", "\n", "\t", "\r"];
 export const [bang, atsign, pound, dollar, modulo] = ["!", "@", "#", "$", "%"];
 export const [caret, ampersand, asterisk, tilde] = ["^", "&", "*", "~"];
-export const [accent, apostrophe, quote, equals] = ["`", "'", "\"", "="];
+export const [backtick, apostrophe, quote, equals] = ["`", "'", "\"", "="];
 export const [lesser, greater, comma, dot] = ["<", ">", ",", "."];
 export const [semicolon, colon, slash, backslash] = [";", ":", "/", "\\"];
 export const [plus, minus, underscore, questionmark] = ["+", "-", "_", "?"];

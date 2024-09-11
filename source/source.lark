@@ -1,3 +1,9 @@
+spam.com """
+    line 1
+        `line 2` ${ foo }
+    line 3 (indented a bit) \(1, 2, 3)
+    """
+
 x == 4
 y != z
 
@@ -7,11 +13,11 @@ do async function { return await true }
 do async generator { return await yield true }
 do async lambda { return await true }
 
-let string = foo + bar "
-    line one: onside
-      line two: indented two spaces    
-    line three: onside again
-    "
+html.tag "
+line one: onside
+  line two: indented \(1, 2, 3) spaces    
+line three: onside again
+"
 
 x == freeze 1
 spam != green.eggs and ham
@@ -28,7 +34,7 @@ async function f { await call() }
 generator foo { yield }
 generator foo { return }
 
-"outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  ) 1"
+"outer: \(  "inner: \(  "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  )"
 
 generator {
     dance: while x while y {

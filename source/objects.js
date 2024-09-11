@@ -1,7 +1,7 @@
 import {
-    accent,
     alphas,
     backslash,
+    backtick,
     bases,
     binary,
     closeBrace,
@@ -113,12 +113,7 @@ export class Token {
         subclass define its own properties (`lvalue`, `predicate`, `block` etc). */
 
         this.location = location;  // see `locate` in `lexer.js` and `LarkError` above
-        this.value = value;        // the value from the source (a string or string array)
-
-        /* Note: The `StringLiteral` class uses an array of strings for its `value` as it has
-        to handle string interpolations (which can be recursively nested to any level). Using
-        a string would not suffice for that case, but every other token uses a single string,
-        so `value` was generalized to be either `String` or `Array<String>`, as required. */
+        this.value = value;        // the value of the token (taken from the source)
     }
 
     static * token(lexer) { // api method
@@ -197,7 +192,7 @@ export class Token {
 
         /* This helper just makes indexing operands a little bit easier. */
 
-        return this.operands[index];
+        return this.operands.at(index);
     }
 }
 
@@ -295,11 +290,31 @@ export class NumberLiteral extends Terminal {
 
 export class StringLiteral extends Terminal {
 
-    /* This is the concrete class for all string-literals. It is also imported by the Lexer
-    Stage for (recursively) tokenizing strings and their interpolations.
+    /* This is the concrete class for string-literals and text-literals. It is also imported by the
+    Lexer Stage for tokenizing strings and their interpolations.
 
-    Note: String literals can also appear in an infix position (acting like a suffix operator)
-    and have a binding power of `16`. The result compiles to a tagged template literal. */
+    Lark always compiles its literals to the equivalent JS template-literals (using backticks).
+
+    Note: Lark string and text literals can appear in an infix position (following some arbitrary
+    expression). In that case, they have a binding power of `16`, and the result compiles to the
+    equivalent tagged-template-literal. However, unlike JavaScript, Lark accepts spaces between
+    the expression and the literal that follows it (and recommeds using one space).
+
+    The `value` string is used to store the opening quotes, which will always contain one quote or
+    at least three (distinguishing string-literals from text-literals). The `operands` array stores
+    the string contents, which are broken into strings and arrays of tokens. The arrays contain the
+    interpolations, which are lexed into token arrays, and later replaced by their corresponding
+    AST nodes by the parser stage.
+
+    Characters that need escaping (grave accents, dollars followed by opening braces etc) are all
+    escaped by the lexer stage (prepending backslashes to the strings in the `operands` array).
+
+    The ignored parts of text-literals (the leading line, the trailing line and any indentation)
+    are all removed from the `operands` array during the parser stage.
+
+    The writer stage only needs to concatenate the strings in the `operands` array together, with
+    recursive calls to `write` on interpolations to interpolate their JS strings (using a dollar
+    and a pair of curly braces). */
 
     LBP = 16;
     expression = true;
@@ -308,72 +323,148 @@ export class StringLiteral extends Terminal {
 
     constructor(lexer, location) {
 
-        /* This constructor gathers the value of a string literal. That value is stored as an
-        array, containing substrings and token arrays (which may also contain strings, which
-        may also contain token arrays etc). */
+        /* This constructor gathers the value of a string literal, writing the characters and any
+        interpolations (as arrays of tokens) to the `operands` array. */
 
-        super(location, [empty]);
+        function gather(character, value=empty) {
 
-        while ((!lexer.at(quote)) && lexer.advance()) {
+            /* Take a character, and an optional value string (defaulting to empty), and gather up any number of contiguous instances of the given character, concatenating them to the
+            value, then return the result. */
 
-            if (lexer.on(backslash) && lexer.at(openParen)) { // an interpolation...
+            while (lexer.at(character) && lexer.advance()) value += lexer.read();
 
-                // note the previous interpolation state (as interpolations nest recursively),
-                // then tell the lexer to interpolate, and advance past the escape character...
+            return value;
+        }
+
+        super(location, gather(quote, quote)); // store the opening quote[s] in `value`
+
+        while (lexer.advance()) {
+
+            if (lexer.on(quote)) {
+
+                // this block handles one or more quotes, which may close the literal, may be
+                // part of the literal, or may just be too many quotes for the literal...
+
+                const candidate = gather(quote, quote); // potential closing quotes
+                const headCount = this.value.length;    // number of opening quotes
+                const tailCount = candidate.length;     // number of potential closing quotes
+
+                if (tailCount > headCount) {            // too many closing quotes...
+
+                    let message = `${headCount} opening quotes with ${tailCount} closing quotes`;
+
+                    throw new LarkError(message, this.location);
+                }
+
+                if (candidate === this.value) break;    // the required amount of closing quotes
+                else this.push(candidate);              // too few closing quotes to close on
+
+            } else if (lexer.on(newline)) {
+
+                // this block handles newlines, followed by zero or more spaces...
+
+                this.push(lexer.read() + gather(space));
+
+            } else if (lexer.on(backslash) && lexer.at(openParen)) {
+
+                // this block notes the previous state of the lexer (normal or interpolating),
+                // then sets it to interpolating, gathers a stream of tokens into the `operands`
+                // array, before restoring the previous state...
 
                 let previousState = lexer.interpolate();
 
-                lexer.interpolate(true);
                 lexer.advance();
+                lexer.interpolate(true);
+                this.push([...lexer.gatherStream()]);
+                lexer.interpolate(previousState);    
 
-                // gather the tokens that make up the interpolation (a tuple of zero or more
-                // expressions) without checking they are valid expressions (see the `prefix`
-                // method below), then append an empty string to `value`, as there is often
-                // more text after the interpolation that gets concatenated to whatever is
-                // at the end of the `value` array...
+            } else if (lexer.on(backtick) || (lexer.on(dollar) && lexer.at(openBrace))) {
 
-                this.value.push([...lexer.gatherStream()]);
-                this.value.push(empty);
+                // this block handles characters that are meaningful in a js template-literal, but
+                // have no special meaning in a lark string or text literal...
 
-                // finally, restore the lexer to its previous state...
+                this.push(backslash, lexer.read());
 
-                lexer.interpolate(previousState);
-
-            } else this.value[this.value.length - 1] += lexer.read(); // a regular character
+            } else this.push(lexer.read()); // a regular character
         }
-
-        lexer.advance(); // ignore the closing quote
     }
 
     prefix(parser) {
 
-        /* The value is an array of strings and interpolations. Each interpolation is stored as
-        an array of tokens, which may recursively contain strings with their own interpolations.
-        This method iterates over each section of the value, and passes any interpolation array
-        back through the parser, which will recusively call this method on interpolated strings.
-        The method also checks that the parser returns a valid expression, complaining if there
-        are any interpolated statements. */
+        /* Due to the way string literals are tokenized, the `operands` array already contains the
+        strings and interpolations that comprise the literal. Each interpolation is an array of
+        tokens (which may recursively contain strings with their own interpolations). This
+        method parses the interpolations, replacing them with corresponding AST nodes.
 
-        for (const [index, section] of Object.entries(this.value)) if (section instanceof Array) {
+        The method also checks that interpolations are valid expressions, complaining if there are
+        any interpolated statements.
+        
+        When the instance is a text literal, this method will also validate the special rules for
+        text literals, before removing the first and last lines, as well as any indentation. */
 
-            const expression = this.value[index] = [...parser.parse(section)];
+        for (const [index, operand] of Object.entries(this.operands)) {
 
-            for (const subexpression of expression) if (!subexpression.expression) {
+            if (typeof operand === "string") continue;
+
+            // parse and expand the tuple (assigning it back to the `operands` array)...
+
+            const tuple = this.operands[index] = [...parser.parse(operand)];
+
+            // check that `tuple` only contains expressions (not statements)...
+
+            for (const interpolation of tuple) if (!interpolation.expression) {
 
                 const message = "string interpolations can only contain expressions";
 
-                throw new LarkError(message, subexpression.location);
+                throw new LarkError(message, interpolation.location);
             }
         }
 
-        return this
+        if (this.value === quote) return this;
+
+        // the rest of this method only applies to text literals...
+
+        const messages = {
+            closer: "text literal is improperly closed",
+            indent: "text literal cannot be less indented than its closing quotes"
+        };
+
+        const lastOperand = this.operands.pop();  // the closing indentation of the text literal
+        const indentation = /^\n\x20*$/;          // matches a newline, then zero or more spaces
+
+        if (!indentation.test(lastOperand)) throw new LarkError(messages.closer, this.location);
+
+        this.operands = this.operands.slice(1);   // remove the opening line from the literal
+
+        for (const [index, operand] of Object.entries(this.operands)) {
+
+            // skip this operand, unless it's an indentation string...
+
+            if (!indentation.test(operand)) continue;
+
+            // if the current operand is at least as indented as the last operand, strip out the
+            // appropriate number of space characters, and update the `operand` array, otherwise
+            // complain there is not enough indentation...
+
+            if (operand.startsWith(lastOperand)) {
+
+                this.operands[index] = newline + operand.slice(lastOperand.length);
+
+            } else throw new LarkError(messages.indent, this.location);
+        }
+
+        return this;
     }
 
     infix(parser, prefix) {
 
         /* String literals can follow an expression (like a suffix operator) to create a tagged
-        template literal. The literal still needs its interpolations parsing (as with `prefix`).
-        The only difference is that the token stores the lvalue as its only operand. */
+        template literal. The literal still gets parsed as normal. The only difference is that
+        the prefix expression is appended to the operands array.
+        
+        Note: The `operands` array always ends with a `String` or `Array`, unless it is tagged.
+        Tagged literals end with `Token`, so `js(writer)` uses the type of the last operand to
+        know whether a literal is tagged or not. */
 
         this.prefix(parser);
 
@@ -382,20 +473,27 @@ export class StringLiteral extends Terminal {
 
     validate(_) { return true }
 
-    js(writer) { // TODO: output tagged template literals
+    js(writer) {
 
-        let result = accent;
+        /* Generate a template literal from the various parts of the string literal, reproducing
+        the interpolations, and possibly including a tag expression. */
 
-        for (const chunk of this.value) {
+        if (this.operands.at(-1) instanceof Token) { // tagged literal...
 
-            if (chunk instanceof Array) for (const expression of chunk) {
+            var output = this.operands.pop().js(writer) + backtick;
 
-                result += "${" + expression.js(writer) + "}";
+        } else var output = backtick; // plain string literal
 
-            } else result += chunk;
+        for (const operand of this.operands) {
+
+            if (operand instanceof Array) for (const interpolation of operand) {
+
+                output += "${" + interpolation.js(writer) + "}";
+
+            } else output += operand;
         }
 
-        return result + accent;
+        return output + backtick;
     }
 }
 
