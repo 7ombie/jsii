@@ -520,13 +520,84 @@ export class Delimiter extends Terminal {
     }
 }
 
+class Opener extends Delimiter {
+
+    /* This is an abstract base class for opening parens, brackets and braces. */
+
+    check(rules) {
+
+        /* This helper is used to traverse, validate and modify compound expressions. It takes a
+        hash of arguments that specify which rules to check, and which parameters to use:
+
+            + `stringifyProto Bool`: Wraps `__proto__` keys in quotes, so they act like regular
+               keys (Lark uses `as Proto` instead of `__proto__: Type`). Defaults to `false`.
+            + `startFrom Token`: Causes the check to start from the first token after the first
+               instance of the given token-type (defaults to the first operand's token-type).
+            + `singular Bool`: Requirement that the expression contains exactly one operand (after
+               the `startFrom` token, when provided). Defaults to `false`.
+            + `requireLabels Bool`: Requirement that the all of the operands use labels.
+            + `forbidLabels Bool`: Requirement that the none of the operands use labels.
+
+        Note: Only top-level operands are checked (children are handled by their own instances). */
+
+        const {stringifyProto, startFrom, singular, requireLabels, forbidLabels} = rules;
+
+        function shouldStringifyProto(operand) {
+
+            /* This helper checks whether the given operand is a `__proto__` key that should be
+            wrapped in quotes, returning the result as a bool. */
+    
+            return stringifyProto && operand instanceof Variable && operand.value === "__proto__"
+        }
+
+        // start by slicing the `operands` array, keeping everything after the starting token...
+
+        let startingIndex = 0;
+
+        if (startFrom) for (const operand in this.operands) {
+
+            // this block stops with `startingIndex` as the index of the start token...
+
+            if (operand instanceof startFrom) { break } else startingIndex++;
+        }
+
+        const checklist = this.operands.slice(startingIndex);
+
+        // next, if the `singular` rule is truthy, check there is only one relevant operand...
+
+        if (singular) switch (checklist.length) {
+            case 1: break; // there must be a singular operand after the starting token
+            case 0: throw new LarkError("expected an expression", this.location);
+            default: throw new LarkError("unexpected expression", this.operands[i + 2].location);
+        }
+
+        // finally, valdiate the labels (or lack of labels) in the checklist, while also checking
+        // and fixing `__proto__` keys where required...
+
+        if (requireLabels || forbidLabels || stringifyProto) for (const operand of checklist) {
+
+            if (operand instanceof Label) {
+
+                if (rules.forbidLabels) throw new LarkError("unexpected label", operand.location);
+
+                const label = operand.operands[0];
+
+                if (shouldStringifyProto(label)) label.value = quote + label.value + quote;
+
+            } else if (rules.requireLabels) throw new LarkError("expected label", operand.location);
+        }
+
+        return this;
+    }
+}
+
 export class Closer extends Delimiter {
 
     /* This is an abstract base class for closing parens, brackets and braces. It is also imported
     by the Parser Stage to check for closing tokens. */
 }
 
-class Caller extends Delimiter {
+class Caller extends Opener {
 
     /* This is an abstract base class for delimiters that also define a infix grammar (as well as
     starting compound expressions with their prefix grammars). In practice, this implies opening
@@ -624,6 +695,7 @@ export class Keyword extends Word {
             case "lambda": return new Lambda(location, value);
             case "let": return new Let(location, value);
             case "local": return new Local(location, value);
+            case "oo": return new OO(location, value);
             case "pass": return new Pass(location, value);
             case "private": return new Private(location, value);
             case "return": return new Return(location, value);
@@ -1593,7 +1665,7 @@ class Import extends Keyword {
 
 class In extends InfixOperator {
 
-    /* This concrete class implements the in-operator (`in`). */
+    /* This concrete class implements the infix in-operator. */
 
     LBP = 8;
 }
@@ -1788,41 +1860,49 @@ class Nullish extends GeneralOperator {
 
 class Of extends InfixOperator {
 
-    /* This concrete class implements the `of` infix operator. This operator must be pre-
-    fixed by a variable name (which it binds to unconditionally). Semantically, it compiles
-    to a function invocation (as in *f of x*), using a function defined by the language. In
-    practice however, the functions are always inlined to an expression denoted by the name
-    on the left, applied to the (arbitrary) expression on the right.
+    /* This concrete class implements the infix of-operator, which is also used by functions
+    and generators to prefix their (optional) arguments, as well as `for-of` loops. */
 
-    Note: The language does not include any kind of runtime or preamble, so having a way to
-    effectively include some degree of runtime functionality is very valuable. This is why
-    the of-operator was included, despite having no obvious, direct, JavaScript analog
-    (it also compliments our in-operator and for-in-loops very naturally). */
+    LBP = 8;
+}
 
-    LBP = Infinity;
+class OO extends Keyword {
 
-    infix(parser, left) {
+    /* This concrete class implements the `oo` object-literal-qualifier. It is used to express
+    objects with `Object` prototypes (suppressing null-protoype-inference). */
 
-        if (left instanceof Variable) return this.push(left, parser.gatherExpression(8));
-        else throw new LarkError("unexpected of-operator", this.location);
+    expression = true;
+
+    prefix(parser) {
+
+        if (parser.on(OpenBrace)) return this.push(parser.gather());
+        else throw new LarkError(messages.typeError, this.location);
+    }
+
+    js(writer) {
+
+        const operands = this.operands[0].operands.map(operand => operand.js(writer));
+
+        return openBrace + operands.join(comma + space) + closeBrace;
     }
 }
 
 class Or extends InfixOperator {
 
-    /* This concrete class implements the logical `or` operator, which compiles to `||`. */
+    /* This concrete class implements the logical-or operator, which compiles from `or` to `||`. */
 
     LBP = 3;
+    spelling = "||";
 }
 
 class OR extends InfixOperator {
 
-    /* This concrete class implements the `|` infix operator (bitwise OR). */
+    /* This concrete class implements the bitwise-or operator, which uses `|`, like JavaScript. */
 
     LBP = 5;
 }
 
-export class OpenBrace extends Delimiter {
+export class OpenBrace extends Opener {
 
     /* This concrete class implements the open-brace delimiter, which is used for blocks
     and object expressions. */
@@ -1831,14 +1911,24 @@ export class OpenBrace extends Delimiter {
 
     prefix(parser) {
 
-        /* This method gathers an object expression, which will be validated later. */
+        /* This method gathers an object expression. */
 
         this.operands = parser.gatherCompoundExpression(CloseBrace);
+        this.check({stringifyProto: true});
 
         return this;
     }
 
     validate(_) { return true }
+
+    js(writer) {
+
+        /* Output a JS object literal with a null prototype. */
+
+        const operands = this.operands.map(operand => operand.js(writer));
+
+        return "{__proto__: null, " + operands.join(comma + space) + closeBrace;
+    }
 }
 
 export class OpenBracket extends Caller {
@@ -1848,40 +1938,57 @@ export class OpenBracket extends Caller {
 
     prefix(parser) {
 
-        /* This method gathers an array expression, which will be validated later. */
+        /* This method gathers an array expression. */
 
         this.operands = parser.gatherCompoundExpression(CloseBracket);
+        this.check({forbidLabels: true});
 
         return this;
     }
 
     infix(parser, left) {
 
-        /* This method gathers bracket-notation, which will be validated later. */
+        /* This method gathers bracket-notation. */
 
-        return this.push(left, this, ...parser.gatherCompoundExpression(CloseBracket));
+        this.push(left, this, ...parser.gatherCompoundExpression(CloseBracket));
+        this.check({startFrom: OpenBracket, singular: true, forbidLabels: true});
+
+        return this;
+    }
+
+    js(writer) {
+
+        /* Output a JS array literal or bracket notation. */
+
+        const operands = this.operands.map(operand => operand.js(writer));
+
+        return openBracket + operands.join(comma + space) + closeBracket;
     }
 }
 
 class OpenParen extends Caller {
 
-    /* This concrete class implements the open-paren delimiter, which is used for group
+    /* This concrete class implements the open-paren delimiter, which is used for grouped
     expressions and invocations. */
 
     prefix(parser) {
 
-        /* This method gathers a group expression, which will be validated later. */
+        /* This method gathers a grouped expression. */
 
         this.operands = parser.gatherCompoundExpression(CloseParen);
+        this.check({forbidLabels: true});
 
         return this;
     }
 
     infix(parser, left) {
 
-        /* This method gathers a function call, which will be validated later. */
+        /* This method gathers an invocation, which will be validated later. */
 
-        return this.push(left, this, ...parser.gatherCompoundExpression(CloseParen));
+        this.push(left, this, ...parser.gatherCompoundExpression(CloseParen));
+        this.check({startFrom: OpenParen, forbidLabels: true});
+
+        return this;
     }
 }
 

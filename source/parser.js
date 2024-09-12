@@ -225,23 +225,27 @@ export function * parse(source, literate=false) {
         is wrapped in parens, brackets or braces, and the function will implicitly update
         the LIST state on the way in and out.
 
-        Note: The (minimum-precedence) pair-operator (`:`) is used to map one expression to
-        another, and allows object expressions to be parsed like other compound expressions.
+        Note: The label-pseudo-operator (`:`) may be used to map one expression to another.
 
         Note: This function is also used for bracketed notation, computed properties etc. */
 
-        listStateStack.push(false);         //| firstly, disable significant newlines, then
-        ignoreInsignificantNewlines();      //| ensure that the first `token` is significant
+        listStateStack.push(false);     /// firstly, disable significant newlines, then
+        ignoreInsignificantNewlines();  /// ensure that the first `token` is significant
 
         const results = on(Comma) ? [null] : []; // account for a leading empty assignee
 
         while (!on(closer)) if (on(Comma)) {
 
+             // this block handles an empty assignee...
+
             advance();
 
-            if (on(Comma, closer)) results.push(null); // an empty assignee
+            if (on(Comma, closer)) results.push(null);
 
-        } else { // push an actual expression, then require it is terminated properly...
+        } else {
+
+            // this block pushes an actual expression, then requires that it's terminated
+            // properly, complaining otherwise...
 
             results.push(gatherExpression());
 
