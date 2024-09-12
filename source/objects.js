@@ -554,21 +554,21 @@ class Opener extends Delimiter {
 
         let startingIndex = 0;
 
-        if (startFrom) for (const operand in this.operands) {
+        if (startFrom) for (const operand of this.operands) {
 
             // this block stops with `startingIndex` as the index of the start token...
 
-            if (operand instanceof startFrom) { break } else startingIndex++;
+            if (operand === startFrom) { break } else startingIndex++;
         }
 
-        const checklist = this.operands.slice(startingIndex);
+        const checklist = this.operands.slice(startingIndex + 1);
 
         // next, if the `singular` rule is truthy, check there is only one relevant operand...
 
         if (singular) switch (checklist.length) {
-            case 1: break; // there must be a singular operand after the starting token
+            case 1: break;
             case 0: throw new LarkError("expected an expression", this.location);
-            default: throw new LarkError("unexpected expression", this.operands[i + 2].location);
+            default: throw new LarkError("unexpected expression", checklist[1].location);
         }
 
         // finally, valdiate the labels (or lack of labels) in the checklist, while also checking
@@ -588,6 +588,24 @@ class Opener extends Delimiter {
         }
 
         return this;
+    }
+
+    js(writer, opener, closer) {
+
+        /* Take a reference to the writer stage API, an opening string and a closing string, and use
+        them to output a compound expression, optionally prefixed by an expression. This is used by
+        the `OpenParen` and `OpenBracket` classes to write grouped expressions, invocations, array
+        literals and bracketed notation. */
+
+        const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
+
+        if (this.at(1)?.prototype instanceof Opener) {
+
+            const prefix = this.at(0).js(writer);
+
+            return prefix + opener + join(this.operands.slice(2)) + closer;
+
+        } else return opener + join(this.operands) + closer;
     }
 }
 
@@ -695,7 +713,6 @@ export class Keyword extends Word {
             case "lambda": return new Lambda(location, value);
             case "let": return new Let(location, value);
             case "local": return new Local(location, value);
-            case "oo": return new OO(location, value);
             case "pass": return new Pass(location, value);
             case "private": return new Private(location, value);
             case "return": return new Return(location, value);
@@ -1866,27 +1883,6 @@ class Of extends InfixOperator {
     LBP = 8;
 }
 
-class OO extends Keyword {
-
-    /* This concrete class implements the `oo` object-literal-qualifier. It is used to express
-    objects with `Object` prototypes (suppressing null-protoype-inference). */
-
-    expression = true;
-
-    prefix(parser) {
-
-        if (parser.on(OpenBrace)) return this.push(parser.gather());
-        else throw new LarkError(messages.typeError, this.location);
-    }
-
-    js(writer) {
-
-        const operands = this.operands[0].operands.map(operand => operand.js(writer));
-
-        return openBrace + operands.join(comma + space) + closeBrace;
-    }
-}
-
 class Or extends InfixOperator {
 
     /* This concrete class implements the logical-or operator, which compiles from `or` to `||`. */
@@ -1950,7 +1946,7 @@ export class OpenBracket extends Caller {
 
         /* This method gathers bracket-notation. */
 
-        this.push(left, this, ...parser.gatherCompoundExpression(CloseBracket));
+        this.push(left, OpenBracket, ...parser.gatherCompoundExpression(CloseBracket));
         this.check({startFrom: OpenBracket, singular: true, forbidLabels: true});
 
         return this;
@@ -1960,9 +1956,7 @@ export class OpenBracket extends Caller {
 
         /* Output a JS array literal or bracket notation. */
 
-        const operands = this.operands.map(operand => operand.js(writer));
-
-        return openBracket + operands.join(comma + space) + closeBracket;
+        return super.js(writer, openBracket, closeBracket);
     }
 }
 
@@ -1985,10 +1979,17 @@ class OpenParen extends Caller {
 
         /* This method gathers an invocation, which will be validated later. */
 
-        this.push(left, this, ...parser.gatherCompoundExpression(CloseParen));
+        this.push(left, OpenParen, ...parser.gatherCompoundExpression(CloseParen));
         this.check({startFrom: OpenParen, forbidLabels: true});
 
         return this;
+    }
+
+    js(writer) {
+
+        /* Output a JS grouped expression or an invocation. */
+
+        return super.js(writer, openParen, closeParen);
     }
 }
 

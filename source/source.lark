@@ -1,7 +1,10 @@
-[1, 2, 3]
-
-oo {__proto__: Foo, x: 1, y: 2, z: 3}
+foo[1 + 2]
+bar(1, 2, 3 + 3)
+(1 + 2) * (2, 3, 4)
 {x: 4, y: 5, z, __proto__: Bar}
+
+{(Object), name: "Bob", salary: 20000}
+
 spam.com """
     line 1
         `line 2` ${ foo }

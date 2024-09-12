@@ -138,7 +138,6 @@ export const keywords = [
     "lambda",
     "let",
     "local",
-    "oo",
     "pass",
     "private",
     "return",
