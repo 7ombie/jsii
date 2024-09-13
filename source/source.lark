@@ -1,9 +1,10 @@
+
+    {x: 4, y: 5, z, __proto__: Bar}
+    {__proto__: Array, (Object), name: "Bob", salary: 20000}
+
 foo[1 + 2]
 bar(1, 2, 3 + 3)
 (1 + 2) * (2, 3, 4)
-{x: 4, y: 5, z, __proto__: Bar}
-
-{(Object), name: "Bob", salary: 20000}
 
 spam.com """
     line 1

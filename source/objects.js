@@ -7,6 +7,7 @@ import {
     closeBrace,
     closeBracket,
     closeParen,
+    colon,
     comma,
     constants,
     decimal,
@@ -193,6 +194,13 @@ export class Token {
         /* This helper just makes indexing operands a little bit easier. */
 
         return this.operands.at(index);
+    }
+
+    is(Type) { // internal helper
+
+        /* This helper just makes checking instance types a little bit easier. */
+
+        return this instanceof Type;
     }
 }
 
@@ -522,48 +530,44 @@ export class Delimiter extends Terminal {
 
 class Opener extends Delimiter {
 
-    /* This is an abstract base class for opening parens, brackets and braces. */
+    /* This is an abstract base class for opening parens, brackets and braces. Subclasses implement
+    grouped expressions, invocations, array literals, object literals and bracket notation. */
 
     check(rules) {
 
-        /* This helper is used to traverse, validate and modify compound expressions. It takes a
-        hash of arguments that specify which rules to check, and which parameters to use:
+        /* This helper is used to traverse, validate and modify the operands that represent the
+        items inside the compound-expressions that are implemented by its subclasses. It takes a
+        hash of arguments that specify which rules to check, and which parameters to use, before
+        returning a hash of results, currently only containing `{prototyped: Bool}`:
 
-            + `stringifyProto Bool`: Wraps `__proto__` keys in quotes, so they act like regular
-               keys (Lark uses `as Proto` instead of `__proto__: Type`). Defaults to `false`.
-            + `startFrom Token`: Causes the check to start from the first token after the first
-               instance of the given token-type (defaults to the first operand's token-type).
-            + `singular Bool`: Requirement that the expression contains exactly one operand (after
-               the `startFrom` token, when provided). Defaults to `false`.
-            + `requireLabels Bool`: Requirement that the all of the operands use labels.
-            + `forbidLabels Bool`: Requirement that the none of the operands use labels.
+            + `proto bool`: When enabled, `__proto__` keys get converted to regular strings, so they
+               have no special meaning, and `(Prototype)` expressions are noted (and later expanded
+               to JavaScript `__proto__: Prototype` pairs in their `js(writer)` methods). If exactly
+               one such expression is noted, the `prototyped` boolean result is set to `true`. If
+               more than one expression gets expanded, the helper complains instead. The value of
+               `proto` defaults to `false` (so none of the above applies by default).
+            + `prefixed Token`: When present, the check starts from the operand following the first
+               operand of the given token-type, and starts from the first token otherwise.
+            + `plain bool`: When truthy, the helper checks that all of the relevant operands are
+               plain expressions (without labels), complaining otherwise. Defaults to `false`.
+            + `singular bool`: When truthy, the helper ensures that the `checklist` containing all
+               of the relevant operands (having accounted for `prefixed`, when present) contains
+               exactly one operand. Defaults to `false`.
 
-        Note: Only top-level operands are checked (children are handled by their own instances). */
+        Note: Only top-level operands are checked (as children handle their own operands). */
 
-        const {stringifyProto, startFrom, singular, requireLabels, forbidLabels} = rules;
+        const {proto, prefixed, singular, plain} = rules;
 
-        function shouldStringifyProto(operand) {
-
-            /* This helper checks whether the given operand is a `__proto__` key that should be
-            wrapped in quotes, returning the result as a bool. */
-    
-            return stringifyProto && operand instanceof Variable && operand.value === "__proto__"
-        }
-
-        // start by slicing the `operands` array, keeping everything after the starting token...
+        // start by slicing the `operands` array, keeping everything after the starting token, or
+        // the entire array, if `prefixed` was not defined...
 
         let startingIndex = 0;
 
-        if (startFrom) for (const operand of this.operands) {
+        if (prefixed) for ( ; this.operands[startingIndex - 1] !== prefixed; startingIndex++);
 
-            // this block stops with `startingIndex` as the index of the start token...
+        const checklist = this.operands.slice(startingIndex);
 
-            if (operand === startFrom) { break } else startingIndex++;
-        }
-
-        const checklist = this.operands.slice(startingIndex + 1);
-
-        // next, if the `singular` rule is truthy, check there is only one relevant operand...
+        // next, if the `singular` rule is truthy, check that there is only one relevant operand...
 
         if (singular) switch (checklist.length) {
             case 1: break;
@@ -571,23 +575,35 @@ class Opener extends Delimiter {
             default: throw new LarkError("unexpected expression", checklist[1].location);
         }
 
-        // finally, valdiate the labels (or lack of labels) in the checklist, while also checking
-        // and fixing `__proto__` keys where required...
+        // next, if either of the `plain` or `proto` rules needs checking, traverse the `checklist`
+        // array; if `plain` is truthy, simply ensure that there are no labels; while if `proto` is
+        // truthy, ensure that `__proto__` keys are wrapped in quotes and that any `(Prototype)`
+        // expressions are expanded into `__proto__` keys, while also ensuring that there is
+        // at most one `(Prototype)` expression in the `checklist` array, else complain...
 
-        if (requireLabels || forbidLabels || stringifyProto) for (const operand of checklist) {
+        let prototyped = false;
+
+        if (plain || proto) for (const operand of checklist) {
 
             if (operand instanceof Label) {
 
-                if (rules.forbidLabels) throw new LarkError("unexpected label", operand.location);
+                if (plain) throw new LarkError("unexpected label", operand.location);
 
-                const label = operand.operands[0];
+                if (proto && operand.at(0).is(Variable) && operand.at(0).value === "__proto__") {
 
-                if (shouldStringifyProto(label)) label.value = quote + label.value + quote;
+                    operand.at(0).value = quote + operand.at(0).value + quote;
+                }
 
-            } else if (rules.requireLabels) throw new LarkError("expected label", operand.location);
+            } else if (proto && operand.is(OpenParen)) {
+
+                if (prototyped) throw new LarkError("superfluous prototype", operand.location);
+                else { prototyped = true; operand.value = "__proto__" }
+            }
         }
 
-        return this;
+        // finally, instantiate and return the results hash...
+
+        return {__proto__: null, prototyped};
     }
 
     js(writer, opener, closer) {
@@ -599,13 +615,13 @@ class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.at(1)?.prototype instanceof Opener) {
+        if (this.at(1)?.prototype instanceof Opener) { // infix...
 
             const prefix = this.at(0).js(writer);
 
             return prefix + opener + join(this.operands.slice(2)) + closer;
 
-        } else return opener + join(this.operands) + closer;
+        } else return opener + join(this.operands) + closer; // prefix
     }
 }
 
@@ -1900,17 +1916,19 @@ class OR extends InfixOperator {
 
 export class OpenBrace extends Opener {
 
-    /* This concrete class implements the open-brace delimiter, which is used for blocks
-    and object expressions. */
+    /* This concrete class implements the open-brace delimiter, which is used for blocks and object
+    expressions. */
 
     expression = true;
 
     prefix(parser) {
 
-        /* This method gathers an object expression. */
+        /* This method gathers an object expression, noting if it specifies a prototype by setting
+        the `value` string to "__proto__". */
 
         this.operands = parser.gatherCompoundExpression(CloseBrace);
-        this.check({stringifyProto: true});
+
+        if (this.check({proto: true}).prototyped) this.value = "__proto__";
 
         return this;
     }
@@ -1919,11 +1937,13 @@ export class OpenBrace extends Opener {
 
     js(writer) {
 
-        /* Output a JS object literal with a null prototype. */
+        /* Output a JS object literal. Infer a `null` prototype, unless it contains a
+        `(Prototype)` expression (indicated by having a `value` of "__proto__"). */
 
-        const operands = this.operands.map(operand => operand.js(writer));
+        const head = this.value === "__proto__" ? openBrace : "{__proto__: null, ";
+        const body = this.operands.map(operand => operand.js(writer)).join(comma + space);
 
-        return "{__proto__: null, " + operands.join(comma + space) + closeBrace;
+        return head + body + closeBrace;
     }
 }
 
@@ -1937,7 +1957,7 @@ export class OpenBracket extends Caller {
         /* This method gathers an array expression. */
 
         this.operands = parser.gatherCompoundExpression(CloseBracket);
-        this.check({forbidLabels: true});
+        this.check({plain: true});
 
         return this;
     }
@@ -1947,7 +1967,7 @@ export class OpenBracket extends Caller {
         /* This method gathers bracket-notation. */
 
         this.push(left, OpenBracket, ...parser.gatherCompoundExpression(CloseBracket));
-        this.check({startFrom: OpenBracket, singular: true, forbidLabels: true});
+        this.check({prefixed: OpenBracket, singular: true, plain: true});
 
         return this;
     }
@@ -1970,7 +1990,7 @@ class OpenParen extends Caller {
         /* This method gathers a grouped expression. */
 
         this.operands = parser.gatherCompoundExpression(CloseParen);
-        this.check({forbidLabels: true});
+        this.check({plain: true});
 
         return this;
     }
@@ -1980,16 +2000,21 @@ class OpenParen extends Caller {
         /* This method gathers an invocation, which will be validated later. */
 
         this.push(left, OpenParen, ...parser.gatherCompoundExpression(CloseParen));
-        this.check({startFrom: OpenParen, forbidLabels: true});
+        this.check({prefixed: OpenParen, plain: true});
 
         return this;
     }
 
     js(writer) {
 
-        /* Output a JS grouped expression or an invocation. */
+        /* Output a grouped expression or an invocation (using the `js` method inherited from
+        the `Opener` base class, unless the `value` string is "__proto__". In which case, the
+        first operand gets expanded to a prototype declaration.
+        
+        Note: It is a syntax error to have more than one expression in a prototype expression. */
 
-        return super.js(writer, openParen, closeParen);
+        if (this.value === "__proto__") return this.value + colon + space + this.at(0).js(writer);
+        else return super.js(writer, openParen, closeParen);
     }
 }
 
