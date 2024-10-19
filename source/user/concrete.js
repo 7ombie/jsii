@@ -838,51 +838,36 @@ export class Floor extends InfixOperator {
 
 export class For extends Header {
 
-    /* This concrete class implements for-in loops (old school for-loops have not been
-    designed yet, but will be added in some form. */
+    /* This concrete class implements for-loops (old school for-loops have not been
+    designed yet, but will be added in some form). */
 
     prefix(parser) {
 
-        /* This method parses a for-in-loop. It uses `parser.gatherAssignee` to avoid
-        parsing the second keyword (`in`, `of`, `on` or `from`) as an infix operator. */
+        /* This method parses all four for-loops. It uses `parser.gatherAssignee` to
+        avoid parsing the operator (`in`, `of`, `on` or `from`) as an infix. */
 
         this.push(parser.gatherAssignee());
 
         if (parser.on(In, Of, On, From)) this.push(parser.advance(true).constructor);
-        else throw new LarkError("incomplete for-loop", this.location);
+        else throw new LarkError("incomplete for-statement", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
     }
 
     js(writer) {
 
-        const assignees = this.at(0);
-        const operator  = this.at(1);
-        const iterable  = this.at(2);
-
-        const keyword = operator === From ? "for await" : "for";
-        const subword = operator === On ? "in" : "of";
-
-        const names = assignees.js(writer);
+        const kind = this.at(1);
+        const assignees = this.at(0).js(writer);
+        const keyword = kind === From ? "for await" : "for";
+        const operator = kind === On ? "in" : "of";
         const block = writer.writeBlock(this.at(3));
 
-        if (iterable instanceof Variable || operator === On || operator === From) {
+        let expression = writer.register(this.at(2));
 
-            var register = iterable.js(writer);
-            var preamble = empty;
+        if (kind === In) expression = `${expression}?.ƥvalues?.() ?? Object.values(${expression} ?? [])`;
+        if (kind === Of) expression = `${expression}?.ƥkeys?.() ?? Object.keys(${expression} ?? {})`;
 
-        } else {
-
-            var register = writer.register();
-            var preamble = `const ${register} = ${iterable.js(writer)}; `;
-        }
-
-        let expression = register;
-
-        if (operator === In) expression = `${register}.ƥvalues?.() ?? Object.values(${register})`;
-        else if (operator === Of) expression = `${register}.ƥkeys?.() ?? Object.keys(${register})`;
-
-        return `${preamble}${keyword} (const ${names} ${subword} ${expression}) ${block}`;
+        return `${keyword} (const ${assignees} ${operator} ${expression}) ${block}`;
     }
 }
 
@@ -912,10 +897,10 @@ export class FullFunction extends Functional {
 
     prefix(parser, context) {
 
-        /* This method parses full-fat functions, based on the given context (which may
-        be an instance of `Async` or `undefined`). */
+        /* This method parses functions, based on the given context (either an instance of
+        `Async` or `undefined`). */
 
-        let blockType = context instanceof Async ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
+        let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
         return this.gatherFullHeader(parser, blockType);
     }
@@ -930,7 +915,7 @@ export class Generator extends Functional {
         /* This method parses generators, based on the given context (which may be an
         instance of `Async` or `undefined`). */
 
-        let blockType = context instanceof Async ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
+        let blockType = context?.is(Async) ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
 
         return this.gatherFullHeader(parser, blockType);
     }
@@ -1006,18 +991,18 @@ export class Is extends GeneralOperator {
 
     js(writer) {
 
-        if (this.at(1) instanceof Not) {
+        if (this.at(1).is(Not)) {
 
-            if (this.at(2) instanceof Packed) return `Object.isExtensible(${this.at(0).js(writer)})`;
-            if (this.at(2) instanceof Sealed) return `!(Object.isSealed(${this.at(0).js(writer)}))`;
-            if (this.at(2) instanceof Frozen) return `!(Object.isFrozen(${this.at(0).js(writer)}))`;
+            if (this.at(2).is(Packed)) return `Object.isExtensible(${this.at(0).js(writer)})`;
+            if (this.at(2).is(Sealed)) return `!(Object.isSealed(${this.at(0).js(writer)}))`;
+            if (this.at(2).is(Frozen)) return `!(Object.isFrozen(${this.at(0).js(writer)}))`;
 
             return `!(${this.at(0).js(writer)} instanceof ${this.at(2).js(writer)})`;
         }
 
-        if (this.at(1) instanceof Packed) return `!(Object.isExtensible(${this.at(0).js(writer)}))`;
-        if (this.at(1) instanceof Sealed) return `Object.isSealed(${this.at(0).js(writer)})`;
-        if (this.at(1) instanceof Frozen) return `Object.isFrozen(${this.at(0).js(writer)})`;
+        if (this.at(1).is(Packed)) return `!(Object.isExtensible(${this.at(0).js(writer)}))`;
+        if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(writer)})`;
+        if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(writer)})`;
 
         return `${this.at(0).js(writer)} instanceof ${this.at(1).js(writer)}`;
     }
@@ -1032,7 +1017,7 @@ export class Lambda extends Functional {
         /* This method parses lambdas, based on the given context (which may be an instance
         of `Async` or `undefined`). */
 
-        let blockType = context instanceof Async ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
+        let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
         return this.gatherLambdaHeader(parser, blockType);
     }

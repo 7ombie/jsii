@@ -276,16 +276,19 @@ export class Token {
 
     at(index) { // internal helper
 
-        /* This helper just makes indexing operands a little bit easier. */
+        /* Expose the `at` method of the `operands` array directly. */
 
         return this.operands.at(index);
     }
 
-    is(Type) { // internal helper
+    is(...Classes) { // internal helper
 
-        /* This helper just makes checking instance types a little bit easier. */
+        /* Take any number of token classes, and return `true` if `this` is an instance of one
+        of the classes (or one of their subclasses), and return `false` otherwise. */
 
-        return this instanceof Type;
+        for (const Class of Classes) if (this instanceof Class) return true;
+
+        return false;
     }
 }
 
@@ -386,7 +389,7 @@ export class Opener extends Delimiter {
 
         if (plain || proto) for (const operand of checklist) {
 
-            if (operand instanceof Label) { // key-value pairs...
+            if (operand.is(Label)) { // key-value pairs...
 
                 // do not permit key-value pairs when the `plain` rule applies...
 
@@ -899,7 +902,7 @@ export class ArrowOperator extends GeneralOperator {
         /* This method overrides the inherited version to ensure that the `left` parameter
         (when present) is wrapped in parens, and that the operator is right-associative. */
 
-        if (left instanceof OpenParen) return this.push(left, parser.gatherExpression(this.RBP));
+        if (left.is(OpenParen)) return this.push(left, parser.gatherExpression(this.RBP));
         else throw new LarkError("arrow-operator parameters must be parenthesized", left.location);
     }
 }
