@@ -2,7 +2,7 @@ import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core
 import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
 import { parse } from "../core/parser.js"
 
-export function * write(source, literate=false) {
+export function * write(source) {
 
     /* This function implements the Writer Stage. It is new, and just being sketched out. */
 
@@ -80,6 +80,6 @@ export function * write(source, literate=false) {
     let registerCounter = 0;
     let preambles = [];
 
-    yield * walk(parse(source, literate));
+    yield * walk(parse(source));
 }
 

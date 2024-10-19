@@ -200,7 +200,8 @@ export class StringLiteral extends Terminal {
 
         function gather(character, value=empty) {
 
-            /* Take a character, and an optional value string (defaulting to empty), and gather up any number of contiguous instances of the given character, concatenating them to the
+            /* Take a character, and an optional value string (defaulting to empty), and gather up
+            any number of contiguous instances of the given character, concatenating them to the
             value, then return the result. */
 
             while (lexer.at(character) && lexer.advance()) value += lexer.read();
@@ -235,6 +236,7 @@ export class StringLiteral extends Terminal {
 
                 // this block handles newlines, followed by zero or more spaces...
 
+                lexer.terminate();
                 this.push(lexer.read() + gather(space));
 
             } else if (lexer.on(backslash) && lexer.at(openParen)) {
@@ -1009,21 +1011,6 @@ export class Is extends GeneralOperator {
         const [value, type] = [writer.register(this.at(0)), writer.register(this.at(1))];
 
         return `(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type})`;
-    }
-}
-
-export class Lambda extends Functional {
-
-    /* This is the concrete class for lambda statements, which are also expressions. */
-
-    prefix(parser, context) {
-
-        /* This method parses lambdas, based on the given context (which may be an instance
-        of `Async` or `undefined`). */
-
-        let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
-
-        return this.gatherLambdaHeader(parser, blockType);
     }
 }
 

@@ -4,7 +4,7 @@ import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
 import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
 import { lex } from "../core/lexer.js"
 
-export function * parse(source, literate=false) {
+export function * parse(source) {
 
     /* This generator implements the parser stage, and yields an AST node for each top-level
     statement. Like the lexer stage, the specifics of parsing any given grammar are left to
@@ -393,7 +393,7 @@ export function * parse(source, literate=false) {
     const blockTypeStack = [];
     const labelHashStack = [{}];
     const listStateStack = [true];
-    const tokens = lex(source, literate);
+    const tokens = lex(source);
 
     let token, previous;
 

@@ -92,7 +92,6 @@ import {
     In,
     InfinityConstant,
     Is,
-    Lambda,
     Lesser,
     Let,
     LineFeed,
@@ -538,7 +537,6 @@ export class Keyword extends Word {
             case "generator": return new Generator(location, value);
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
-            case "lambda": return new Lambda(location, value);
             case "let": return new Let(location, value);
             case "local": return new Local(location, value);
             case "pass": return new Pass(location, value);
@@ -682,17 +680,9 @@ export class Functional extends Header {
 
             parser.advance();
 
-            return this.gatherLambdaHeader(parser, blockType);
+            return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
 
         } else return this.push([], parser.gatherBlock(blockType));
-    }
-
-    gatherLambdaHeader(parser, blockType) {
-
-        /* This helper method is used by various functional parsing methods to gather their
-        optional parameters and required bodies. */
-
-        return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
     }
 }
 

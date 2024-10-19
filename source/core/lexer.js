@@ -20,7 +20,7 @@ import { LarkError } from "../core/error.js"
 import { Operator, Terminator, Delimiter, Word } from "../user/concrete.js"
 import { NumberLiteral, StringLiteral } from "../user/concrete.js"
 
-export function * lex(source, literate=false) {
+export function * lex(source) {
 
     /* This function implements the lexer as a collection of helper functions, which
     it shares with the `lex` generator methods of the classes exported by `objects.js`,
@@ -136,18 +136,12 @@ export function * lex(source, literate=false) {
         The actual tokenization is handled by the respective `Token` subclasses. */
 
         while (advance()) {
-
+            
+            if (on(space)) continue;
+            
             const location = locate();
 
-            if (literate && (index - 1 === lastNewline) && (!on(whitespace))) {
-
-                gatherUntil(newline);
-
-            } else if (on(space)) {
-
-                continue;
-
-            } else if (on(terminators)) {
+            if (on(terminators)) {
 
                 yield * Terminator.lex(api, location);
 
