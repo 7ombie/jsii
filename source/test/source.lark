@@ -3,6 +3,8 @@ for each of (range) { breakfast() }
 for each on foo.bar { breakfast() }
 for each from spam() { breakfast() }
 
+while x > y { console.log(dude) }
+
 puss in boots
 puss of boots
 puss on boots

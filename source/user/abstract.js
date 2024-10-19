@@ -633,7 +633,7 @@ export class Header extends Keyword {
 
 export class PredicatedBlock extends Header {
 
-    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,                 // TODO: remember `else if`
+    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
     `unless` and `until`). */
 
     prefix(parser) {
@@ -643,7 +643,7 @@ export class PredicatedBlock extends Header {
 
     js(writer) {
 
-        return `${this.value} (${this.at(0).js(writer)}) {${writer.writeBlock(this.at(1))}}`;
+        return `${this.value} (${this.at(0).js(writer)}) ${writer.writeBlock(this.at(1))}`;
     }
 }
 

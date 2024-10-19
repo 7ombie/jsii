@@ -997,14 +997,18 @@ export class Is extends GeneralOperator {
             if (this.at(2).is(Sealed)) return `!(Object.isSealed(${this.at(0).js(writer)}))`;
             if (this.at(2).is(Frozen)) return `!(Object.isFrozen(${this.at(0).js(writer)}))`;
 
-            return `!(${this.at(0).js(writer)} instanceof ${this.at(2).js(writer)})`;
+            const [value, type] = [writer.register(this.at(0)), writer.register(this.at(2))];
+
+            return `!(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type})`;
         }
 
         if (this.at(1).is(Packed)) return `!(Object.isExtensible(${this.at(0).js(writer)}))`;
         if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(writer)})`;
         if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(writer)})`;
 
-        return `${this.at(0).js(writer)} instanceof ${this.at(1).js(writer)}`;
+        const [value, type] = [writer.register(this.at(0)), writer.register(this.at(1))];
+
+        return `(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type})`;
     }
 }
 
