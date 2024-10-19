@@ -848,7 +848,7 @@ export class For extends Header {
 
         this.push(parser.gatherAssignee());
 
-        if (parser.on(In, Of, On, From)) this.push(parser.advance(true));
+        if (parser.on(In, Of, On, From)) this.push(parser.advance(true).constructor);
         else throw new LarkError("incomplete for-loop", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
@@ -856,23 +856,33 @@ export class For extends Header {
 
     js(writer) {
 
-        const assignees = this.at(0).js(writer);
+        const assignees = this.at(0);
+        const operator  = this.at(1);
+        const iterable  = this.at(2);
+
+        const keyword = operator === From ? "for await" : "for";
+        const subword = operator === On ? "in" : "of";
+
+        const names = assignees.js(writer);
         const block = writer.writeBlock(this.at(3));
 
-        if (this.at(2) instanceof Variable) {
+        if (iterable instanceof Variable || operator === On || operator === From) {
 
-            var register = this.at(2).js(writer);
+            var register = iterable.js(writer);
             var preamble = empty;
 
         } else {
 
             var register = writer.register();
-            var preamble = `const ${register} = ${this.at(2).js(writer)};\n`;
+            var preamble = `const ${register} = ${iterable.js(writer)}; `;
         }
 
-        const iterable = `${register}.ƥkeys?.() ?? Object.keys(${register})`;
+        let expression = register;
 
-        return `${preamble}for (const ${assignees} of ${iterable}) ${block}`;
+        if (operator === In) expression = `${register}.ƥvalues?.() ?? Object.values(${register})`;
+        else if (operator === Of) expression = `${register}.ƥkeys?.() ?? Object.keys(${register})`;
+
+        return `${preamble}${keyword} (const ${names} ${subword} ${expression}) ${block}`;
     }
 }
 
@@ -966,7 +976,8 @@ export class Import extends Keyword {
 
 export class In extends InfixOperator {
 
-    /* This concrete class implements the infix in-operator. */
+    /* This concrete class implements the `in` infix-operator, which is used for membership
+    tests on collections of any type. */
 
     LBP = 8;
 }
