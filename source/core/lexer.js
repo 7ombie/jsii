@@ -14,17 +14,11 @@ import {
     terminators,
     whitespace,
     wordInitials,
-} from "./strings.js"
+} from "../core/ascii.js"
 
-import {
-    Delimiter,
-    LarkError,
-    NumberLiteral,
-    Operator,
-    StringLiteral,
-    Terminator,
-    Word,
-} from "./objects.js"
+import { LarkError } from "../core/error.js"
+import { Operator, Terminator, Delimiter, Word } from "../user/concrete.js"
+import { NumberLiteral, StringLiteral } from "../user/concrete.js"
 
 export function * lex(source, literate=false) {
 

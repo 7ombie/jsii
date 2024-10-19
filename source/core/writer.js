@@ -1,6 +1,7 @@
-import { empty, space, semicolon, newline } from "./strings.js"
-import { Token, Header, Label } from "./objects.js"
-import { parse } from "./parser.js"
+import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core/ascii.js"
+import { Token, Header } from "../user/concrete.js"
+import { Label } from "../user/concrete.js"
+import { parse } from "../core/parser.js"
 
 export function * write(source, literate=false) {
 
@@ -38,15 +39,23 @@ export function * write(source, literate=false) {
 
         indentation = oldIndentation;
 
-        return newline + code + newline;
+        return openBrace + newline + code + newline + closeBrace;
+    }
+
+    function register() { // api function
+
+        /* Take no args, and return a globally unique lark register name as a string. */
+
+        return `ƥ${registerCounter++}`;
     }
 
     // gather the api functions, initialize the internal state, and walk the parse tree, yielding
     // the results (as strings), one top-level statement at a time...
 
-    const api = {write, writeBlock};
+    const api = {write, writeBlock, register};
 
     let indentation = empty;
+    let registerCounter = 0;
 
     yield * walk(parse(source, literate));
 }

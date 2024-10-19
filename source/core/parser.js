@@ -1,20 +1,8 @@
-import {
-    CloseBrace,
-    Comma,
-    EOF,
-    Header,
-    Keyword,
-    LarkError,
-    LineFeed,
-    OpenBrace,
-    OpenBracket,
-    Operator,
-    Terminator,
-    Variable,
-    Word,
-} from "./objects.js"
-
-import { lex } from "./lexer.js"
+import { LarkError } from "../core/error.js"
+import { Header, Keyword, Operator, Terminator, Word } from "../user/concrete.js"
+import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
+import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
+import { lex } from "../core/lexer.js"
 
 export function * parse(source, literate=false) {
 
@@ -311,12 +299,12 @@ export function * parse(source, literate=false) {
         return returnPrevious ? previous : token;
     }
 
-    function on(...types) { // api function
+    function on(...Classes) { // api function
 
-        /* Take any number of `Token` subclasses, and return `true` if the current `token` is
-        an instance of a given class (or any subclass), else `false`. */
+        /* Take any number of `Token` subclasses, and return the (truthy) subclass of the
+        current `token` if it is included amongst the arguments, else return `false`. */
 
-        for (const type of types) if (token instanceof type) return true;
+        for (const Class of Classes) if (token instanceof Class) return Class;
 
         return false;
     }
@@ -385,7 +373,7 @@ export function * parse(source, literate=false) {
         else if (value === null) delete labelHashStack[lastIndex][name.value];
         else labelHashStack[lastIndex][name.value] = value;
     }
- 
+
     const api = {
         advance,
         check,
@@ -399,7 +387,7 @@ export function * parse(source, literate=false) {
         gatherBlock,
         label,
         on,
-        parse // the `StringLiteral` class calls `parse` recursively on interpolations
+        parse // this is part of the api so `StringLiteral` can parse interpolations
     };
 
     const blockTypeStack = [];

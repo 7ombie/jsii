@@ -1,6 +1,6 @@
-import { lex } from "./lexer.js"
-import { parse } from "./parser.js"
-import { write } from "./writer.js"
+import { lex } from "../core/lexer.js"
+import { parse } from "../core/parser.js"
+import { write } from "../core/writer.js"
 
 window.lex = lex;
 window.parse = parse;
