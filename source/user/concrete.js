@@ -241,16 +241,10 @@ export class StringLiteral extends Terminal {
 
             } else if (lexer.on(backslash) && lexer.at(openParen)) {
 
-                // this block notes the previous state of the lexer (normal or interpolating),
-                // then sets it to interpolating, gathers a stream of tokens into the `operands`
-                // array, before restoring the previous state...
-
-                let previousState = lexer.interpolate();
+                // this block gathers a stream of interpolated tokens to the `operands` array...
 
                 lexer.advance();
-                lexer.interpolate(true);
-                this.push([...lexer.gatherStream()]);
-                lexer.interpolate(previousState);    
+                this.push([...lexer.gather(true)]);
 
             } else if (lexer.on(backtick) || (lexer.on(dollar) && lexer.at(openBrace))) {
 

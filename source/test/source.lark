@@ -1,5 +1,19 @@
 "outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  )"
 
+spam.com """
+    line 1
+        `line 2` ${ foo }
+    line 3 (indented a bit) \(1, 2, 3)
+    """
+
+html.tag "
+line one: onside
+  line two: indented \(1, 2, 3) spaces    
+line three: onside again
+"
+
+"outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  )"
+
 for each in range { breakfast() }
 for each of (range) { breakfast() }
 for each on foo.bar { breakfast() }
@@ -74,4 +88,3 @@ dev 1 + 2 * 3 + 3
 pack new foo(x, y, z)
 seal new foo
 freeze 1 + 2 when x * y else spam + eggs
-

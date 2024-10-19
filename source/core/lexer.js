@@ -36,7 +36,7 @@ export function * lex(source) {
         index += 1;
         character = source[index];
 
-        if (interpolating) {
+        if (interpolationStack.at(-1)) {
 
             if (on(closeParen) && nesting === 0) return undefined;
 
@@ -94,17 +94,6 @@ export function * lex(source) {
         return characters.includes(source[index + offset]);
     }
 
-    function interpolate(mode=undefined) { // api function
-
-        /* This function acts as a getter and setter, allowing the caller to set and
-        query the value of `interpolating` via the API. When passed a bool, it acts
-        as a setter (and returns nothing), while a call with no arguments queries
-        the API (without changing the value). */
-
-        if (mode === undefined) return interpolating;
-        else interpolating = mode;
-    }
-
     function terminate() { // api function
 
         /* Update `lastNewline` to track the index of the most recent newline, before
@@ -129,16 +118,18 @@ export function * lex(source) {
         return line * 256 + (index - lastNewline - 1);
     }
 
-    function * gatherStream() { // api function
+    function * gather(state=false) { // api function
 
         /* This generator function contains the main loop and branches that tokenize
         the source (recuring to parse token streams inside of string interpolations).
         The actual tokenization is handled by the respective `Token` subclasses. */
 
+        interpolationStack.push(state);
+
         while (advance()) {
-            
+
             if (on(space)) continue;
-            
+
             const location = locate();
 
             if (on(terminators)) {
@@ -169,7 +160,7 @@ export function * lex(source) {
 
             } else if (on(delimiters)) {
 
-                if (interpolating) {
+                if (interpolationStack.at(-1)) {
 
                     if (on(openParen)) { nesting++ } else if (on(closeParen)) { nesting-- }
                 }
@@ -180,6 +171,8 @@ export function * lex(source) {
         }
 
         yield * Terminator.lex(api, locate());
+
+        interpolationStack.pop();
     }
 
     if (source instanceof Array) {
@@ -196,13 +189,13 @@ export function * lex(source) {
 
     const api = {
         on, at, advance,
-        gatherWhile, gatherUntil, gatherStream,
-        interpolate, locate, terminate,
+        gather, gatherWhile, gatherUntil,
+        locate, terminate,
         peek, read
     };
 
-    let [character, interpolating] = [empty, false];
+    let [character, interpolationStack] = [empty, []];
     let [index, line, lastNewline, nesting] = [-1, 0, -1, 0];
 
-    yield * gatherStream();
+    yield * gather();
 }
