@@ -16,9 +16,9 @@ export function * parse(source) {
 
     function * LIST(nested=true) { // internal
 
-        /* This is the (often) recursive, block-level parsing function that wraps the Pratt
-        parser to implement a statement grammar that replaces ASI with LIST (Linewise Implicit
-        Statement Termination). */
+        /* This is the (often) recursive, block-level parsing function that wraps the Pratt parser
+        to implement a statement grammar that replaces ASI with LIST (Linewise Implicit Statement
+        Termination). */
 
         let statement, skip = false;
 
@@ -50,10 +50,11 @@ export function * parse(source) {
 
     function ignoreInsignificantNewlines() { // internal
 
-        /* Advance the parser state until the current `token` is significant, if it is not
-        significant already. */
+        /* Advance the parser state until the current token is significant. When newlines are
+        significant, all tokens are significant, so this is a noop. Otherwise, it skips over
+        any newlines, stopping on the first non-newline token. */
 
-        if (!listStateStack.at(-1)) while (on(LineFeed)) advance();
+        if (newlineSignificanceStack.at(-1) === false) while (on(LineFeed)) advance();
     }
 
     function gather(RBP=0, context=undefined) { // api function
@@ -154,11 +155,11 @@ export function * parse(source) {
         number and kind). Once the block has been parsed, the block type is popped from
         the stack, and the parsed block is returned.
 
-        If the block type is functional (including a class), the LIST state `true` is also
-        pushed on to the list stack, and popped when the function body has been parsed.
-
-        Furthermore, if the block type is functional, this function requires that the body
-        is wrapped in braces (it cannot be a naked formal statement). */
+        If the block type is functional (including a class), this function pushes the LIST
+        state `true` to the list stack and an empty hash to the label hash stack, which are
+        both then popped when the function body has been parsed. Furthermore, this function
+        requires that the body is wrapped in braces (only control-flow statements can have
+        unbraced blocks). */
 
         function gatherFormalStatement() {
 
@@ -175,24 +176,24 @@ export function * parse(source) {
 
         if (functional && !braced) throw new LarkError("required a body", token.location);
 
-        blockTypeStack.push(type);
+        blocktypeStack.push(type);
 
         if (functional) {
             
-            listStateStack.push(true);
-            labelHashStack.push({});
+            labelspaceStack.push({});
+            newlineSignificanceStack.push(true);
         }
 
         let result = braced ? [...LIST()] : gatherFormalStatement();
 
         if (functional) {
-            
-            listStateStack.pop();
-            labelHashStack.pop();
+
+            labelspaceStack.pop();
+            newlineSignificanceStack.pop();
             ignoreInsignificantNewlines();
         }
 
-        blockTypeStack.pop();
+        blocktypeStack.pop();
 
         return result;
     }
@@ -215,10 +216,17 @@ export function * parse(source) {
 
         Note: This function is also used for bracketed notation, computed properties etc. */
 
-        listStateStack.push(false);     /// firstly, disable significant newlines, then
-        ignoreInsignificantNewlines();  /// ensure that the first `token` is significant
+        newlineSignificanceStack.push(false); /// firstly, disable significant newlines, then
+        ignoreInsignificantNewlines();        /// ensure that the first token is significant
 
-        const results = on(Comma) ? [null] : []; // account for a leading empty assignee
+        // initialize the `results` array, accounting for the possibility of a leading empty
+        // expression (which is legal in destructuring assignments)...
+
+        const results = on(Comma) ? [null] : [];
+
+        // now, loop until we find the closer, gathering the list of comma-separated, optionally
+        // labelled expressions that comprise the compound expression, while allowing for empty
+        // expressions to permit empty assignees in destructuring assignments...
 
         while (!on(Closer)) if (on(Comma)) {
 
@@ -239,9 +247,12 @@ export function * parse(source) {
             else throw new LarkError("required delimiter", token.location);
         }
 
-        listStateStack.pop();   /// firstly, restore the previous LIST state - then, once the
-        advance();              /// state is restored, drop the `Closer` instance, leaving it
-                                /// to `advance` to drop any insignificant newlines
+        // restore the previous significance of newlines *before* advancing to drop both the
+        // the `Closer` instance and any insignificant newlines, then return the results...
+
+        newlineSignificanceStack.pop();
+        advance();
+
         return results;
     }
 
@@ -312,7 +323,7 @@ export function * parse(source) {
         /* This function allows statements (like `return` and `break`) that can only
         appear in specific contexts to establish whether they are in a valid context.
 
-        The process walks the nonlocal `blockTypeStack` backwards (from innermost to
+        The process walks the nonlocal `blocktypeStack` backwards (from innermost to
         outermost), and calls the `doStop` callback on each type to establish when
         to stop (it should return `true` to stop, and `false` otherwise).
 
@@ -339,7 +350,7 @@ export function * parse(source) {
         Note: Reaching the top would always result in `false`, except top-level-await
         is valid (in modules), so the fallback must be `true` in that case. */
 
-        const stack = blockTypeStack;
+        const stack = blocktypeStack;
         const top = stack.length - 1;
 
         for (let i = top; i >= 0; i--) if (doStop(stack[i])) return isValid(stack[i]);
@@ -365,11 +376,11 @@ export function * parse(source) {
         automatically (by `gatherBlock`) whenever entering or leaving a function body.
         The hashes on the stack map label names (as strings) to their ternary state. */
 
-        let lastIndex = labelHashStack.length - 1;
+        let lastIndex = labelspaceStack.length - 1;
 
-        if (value === undefined) return labelHashStack[lastIndex][name.value] ?? null;
-        else if (value === null) delete labelHashStack[lastIndex][name.value];
-        else labelHashStack[lastIndex][name.value] = value;
+        if (value === undefined) return labelspaceStack[lastIndex][name.value] ?? null;
+        else if (value === null) delete labelspaceStack[lastIndex][name.value];
+        else labelspaceStack[lastIndex][name.value] = value;
     }
 
     const api = {
@@ -387,9 +398,10 @@ export function * parse(source) {
         on
     };
 
-    const blockTypeStack = [];
-    const labelHashStack = [{}];
-    const listStateStack = [true];
+    const blocktypeStack = [];                  // the blocktypes of the blocks in scope
+    const labelspaceStack = [{}];               // the labelspaces for the blocks in scope
+    const newlineSignificanceStack = [true];    // the significance of newlines by scope
+
     const tokens = lex(source);
 
     let token, previous;
