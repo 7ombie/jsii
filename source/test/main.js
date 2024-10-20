@@ -10,6 +10,6 @@ window.source = await result.text();
 
 console.log("SOURCE...\n---------\n\n" + source);
 
-// for (const token of lex(source)) console.log("token:", token);
+for (const token of lex(source)) console.log("token:", token);
 for (const statement of parse(source)) console.log("statement:", statement);
 for (const string of write(source)) console.log(string);

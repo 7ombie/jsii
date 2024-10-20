@@ -1,21 +1,25 @@
-"outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  )"
+"foobar \("()")"
+
+"outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)^^^"  ) 2"  )"
 
 spam.com """
     line 1
-        `line 2` ${ foo }
-    line 3 (indented a bit) \(1, 2, 3)
+        `line 2` ${ foo } (indented four spaces)
+    \(1, 2, 3)
+    line 4
     """
 
 html.tag "
 line one: onside
-  line two: indented \(1, 2, 3) spaces    
-line three: onside again
+  line two: indented \(1, 2) spaces    
+line three: onside \(3, 4, 5) again
 "
 
-"outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)"  ) 2"  )"
-
-for each in range { breakfast() }
-for each of (range) { breakfast() }
+for each in range { breakfast(), while x > y { console.log(dude) }, while x > y { console.log(dude) } }
+for each of (range) {
+    breakfast()
+    while x > y { console.log(dude) }
+}
 for each on foo.bar { breakfast() }
 for each from spam() { breakfast() }
 
@@ -31,12 +35,6 @@ puss on boots
 foo[1 + 2]
 bar(1, 2, 3 + 3)
 (1 on 2) * (2, 3, 4)
-
-spam.com """
-    line 1
-        `line 2` ${ foo }
-    line 3 (indented a bit) \(1, 2, 3)
-    """
 
 x == 4
 y != z

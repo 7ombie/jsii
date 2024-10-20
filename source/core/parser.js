@@ -12,9 +12,7 @@ export function * parse(source) {
 
     The parser API object collects references to a subset of the functions defined below, and
     every token has `prefix` and `infix` methods that take a reference to the parser API object.
-    The `infix` methods also take a reference to the lefthand production as a second argument.
-
-    The `source` string and `literate` flag are passed along to the lexer stage. */
+    The `infix` methods also take a reference to the lefthand production as a second argument. */
 
     function * LIST(nested=true) { // internal
 
@@ -199,7 +197,7 @@ export function * parse(source) {
         return result;
     }
 
-    function gatherCompoundExpression(closer) {
+    function gatherCompoundExpression(Closer) {
 
         /* This function takes a `Token` subclass which indicates which closing character to
         use to gather a compound statement (a sequence of zero or more comma-separated expr-
@@ -222,13 +220,13 @@ export function * parse(source) {
 
         const results = on(Comma) ? [null] : []; // account for a leading empty assignee
 
-        while (!on(closer)) if (on(Comma)) {
+        while (!on(Closer)) if (on(Comma)) {
 
              // this block handles an empty assignee...
 
             advance();
 
-            if (on(Comma, closer)) results.push(null);
+            if (on(Comma, Closer)) results.push(null);
 
         } else {
 
@@ -237,12 +235,12 @@ export function * parse(source) {
 
             results.push(gatherExpression());
 
-            if (on(Comma, closer)) continue;
+            if (on(Comma, Closer)) continue;
             else throw new LarkError("required delimiter", token.location);
         }
 
         listStateStack.pop();   /// firstly, restore the previous LIST state - then, once the
-        advance();              /// state is restored, drop the `closer` instance, leaving it
+        advance();              /// state is restored, drop the `Closer` instance, leaving it
                                 /// to `advance` to drop any insignificant newlines
         return results;
     }
@@ -386,8 +384,7 @@ export function * parse(source) {
         gatherAssignee,
         gatherBlock,
         label,
-        on,
-        parse // this is part of the api so `StringLiteral` can parse interpolations
+        on
     };
 
     const blockTypeStack = [];

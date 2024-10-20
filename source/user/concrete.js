@@ -172,33 +172,44 @@ export class StringLiteral extends Terminal {
     equivalent tagged-template-literal. However, unlike JavaScript, Lark accepts spaces between
     the expression and the literal that follows it (and recommeds using one space).
 
-    The `value` string is used to store the opening quotes, which will always contain one quote or
-    at least three (distinguishing string-literals from text-literals). The `operands` array stores
-    the string contents, which are broken into strings and arrays of tokens. The arrays contain the
-    interpolations, which are lexed into token arrays, and later replaced by their corresponding
-    AST nodes by the parser stage.
-
     Characters that need escaping (grave accents, dollars followed by opening braces etc) are all
-    escaped by the lexer stage (prepending backslashes to the strings in the `operands` array).
+    escaped by the lexer stage (see `static * lex` below).
 
-    The ignored parts of text-literals (the leading line, the trailing line and any indentation)
-    are all removed from the `operands` array during the parser stage.
-
-    The writer stage only needs to concatenate the strings in the `operands` array together, with
-    recursive calls to `write` on interpolations to interpolate their JS strings (using a dollar
-    and a pair of curly braces). */
+    TODO: Text literals do not currently remove their insignificant whitespace. This is a regression,
+    but was required to permit an overhaul of how string literals are handled (simplifying the lexer
+    and parser in the process). */
 
     LBP = 16;
     expression = true;
 
-    static * lex(...args) { yield new StringLiteral(...args) }
+    constructor(location, value, head) {
 
-    constructor(lexer, location) {
+        /* Take the usual values, plus the `head` of the literal (the single quote or three or more
+        quotes that opened the literal). Pass the regular arguments to `super`, then push the `head`
+        to the `operands` array. */
 
-        /* This constructor gathers the value of a string literal, writing the characters and any
-        interpolations (as arrays of tokens) to the `operands` array. */
+        super(location, value);
+        this.push(head);
+    }
 
-        function gather(character, value=empty) {
+    static * lex(lexer, location) {
+
+        /* Lex and yield a string literal as a token stream that contains a `StringLiteral`, plus
+        for every interpolation, an `OpenInterpolation` token, followed by each token with the
+        interpolation, then a `CloseInterpolation` token, followed by another `StringLiteral`.
+
+        Note: While a `StringLiteral` may or may not be followed by an interpolation-sequence, any
+        such sequence will always be followed by a `StringLiteral` (even if it's empty), as every
+        interpolation is considered to be preceded and followed by a substring.
+
+        Note: While interpolations can be nested (like any other compound expression), that will not
+        affect the pattern outlined above: The initial substring will always be followed by zero or
+        more pairs that each contain an interpolation sequence followed by a substring.
+
+        This approach allows string-interpolations to be parsed like any other compound expression,
+        which is important for consistency (with whitespace rules etc). */
+
+        function match(character, value=empty) {
 
             /* Take a character, and an optional value string (defaulting to empty), and gather up
             any number of contiguous instances of the given character, concatenating them to the
@@ -209,116 +220,81 @@ export class StringLiteral extends Terminal {
             return value;
         }
 
-        super(location, gather(quote, quote)); // store the opening quote[s] in `value`
+        const [head, characters] = [match(quote, quote), []];
 
-        while (lexer.advance()) {
+        lexer.advance();
 
-            if (lexer.on(quote)) {
+        while (lexer.read()) {
+
+            // this loop can yield any number of tokens, as it yields every token within each
+            // interpolation, plus one or more substrings...
+
+            if (lexer.on(backslash) && lexer.at(openParen)) {
+
+                // this block handles streams of interpolated tokens...
+
+                yield new StringLiteral(location, characters.join(empty), head);
+
+                lexer.advance();
+                lexer.advance();
+                characters.length = 0;
+
+                yield new OpenInterpolation(lexer.locate());
+                yield * lexer.gather(true);
+                yield new CloseInterpolation(lexer.locate());
+
+            } else if (lexer.on(quote)) {
 
                 // this block handles one or more quotes, which may close the literal, may be
                 // part of the literal, or may just be too many quotes for the literal...
 
-                const candidate = gather(quote, quote); // potential closing quotes
-                const headCount = this.value.length;    // number of opening quotes
+                const candidate = match(quote, quote);  // potential closing quotes
+                const headCount = head.length;          // number of opening quotes
                 const tailCount = candidate.length;     // number of potential closing quotes
 
                 if (tailCount > headCount) {            // too many closing quotes...
 
                     let message = `${headCount} opening quotes with ${tailCount} closing quotes`;
 
-                    throw new LarkError(message, this.location);
+                    throw new LarkError(message, location);
                 }
 
-                if (candidate === this.value) break;    // the required amount of closing quotes
-                else this.push(candidate);              // too few closing quotes to close on
+                if (tailCount === headCount) {          // exactly the right number of quotes...
+
+                    yield new StringLiteral(location, characters.join(empty), head);
+                    return;
+
+                } else characters.push(candidate);      // not enough quotes to close the string
 
             } else if (lexer.on(newline)) {
 
                 // this block handles newlines, followed by zero or more spaces...
 
                 lexer.terminate();
-                this.push(lexer.read() + gather(space));
-
-            } else if (lexer.on(backslash) && lexer.at(openParen)) {
-
-                // this block gathers a stream of interpolated tokens to the `operands` array...
-
-                lexer.advance();
-                this.push([...lexer.gather(true)]);
+                characters.push(lexer.read() + match(space));
 
             } else if (lexer.on(backtick) || (lexer.on(dollar) && lexer.at(openBrace))) {
 
                 // this block handles characters that are meaningful in a js template-literal, but
                 // have no special meaning in a lark string or text literal...
 
-                this.push(backslash, lexer.read());
+                characters.push(backslash, lexer.read());
 
-            } else this.push(lexer.read()); // a regular character
+            } else characters.push(lexer.read()); // this block handles a regular character
+
+            lexer.advance();
         }
     }
 
     prefix(parser) {
 
-        /* Due to the way string literals are tokenized, the `operands` array already contains the
-        strings and interpolations that comprise the literal. Each interpolation is an array of
-        tokens (which may recursively contain strings with their own interpolations). This
-        method parses the interpolations, replacing them with corresponding AST nodes.
+        /* Gather one or more pairs of operands, each containing an interpolation array, followed
+        by a (required) `StringLiteral` substring (that the lexer ensures will be there). */
 
-        The method also checks that interpolations are valid expressions, complaining if there are
-        any interpolated statements.
-        
-        When the instance is a text literal, this method will also validate the special rules for
-        text literals, before removing the first and last lines, as well as any indentation. */
+        while (parser.on(OpenInterpolation)) {
 
-        for (const [index, operand] of Object.entries(this.operands)) {
-
-            if (typeof operand === "string") continue;
-
-            // parse and expand the tuple (assigning it back to the `operands` array)...
-
-            const tuple = this.operands[index] = [...parser.parse(operand)];
-
-            // check that `tuple` only contains expressions (not statements)...
-
-            for (const interpolation of tuple) if (!interpolation.expression) {
-
-                const message = "string interpolations can only contain expressions";
-
-                throw new LarkError(message, interpolation.location);
-            }
-        }
-
-        if (this.value === quote) return this;
-
-        // the rest of this method only applies to text literals...
-
-        const messages = {
-            closer: "text literal is improperly closed",
-            indent: "text literal cannot be less indented than its closing quotes"
-        };
-
-        const lastOperand = this.operands.pop();  // the closing indentation of the text literal
-        const indentation = /^\n\x20*$/;          // matches a newline, then zero or more spaces
-
-        if (!indentation.test(lastOperand)) throw new LarkError(messages.closer, this.location);
-
-        this.operands = this.operands.slice(1);   // remove the opening line from the literal
-
-        for (const [index, operand] of Object.entries(this.operands)) {
-
-            // skip this operand, unless it's an indentation string...
-
-            if (!indentation.test(operand)) continue;
-
-            // if the current operand is at least as indented as the last operand, strip out the
-            // appropriate number of space characters, and update the `operand` array, otherwise
-            // complain there is not enough indentation...
-
-            if (operand.startsWith(lastOperand)) {
-
-                this.operands[index] = newline + operand.slice(lastOperand.length);
-
-            } else throw new LarkError(messages.indent, this.location);
+            parser.advance();
+            this.push(parser.gatherCompoundExpression(CloseInterpolation), parser.advance(true));
         }
 
         return this;
@@ -326,42 +302,56 @@ export class StringLiteral extends Terminal {
 
     infix(parser, prefix) {
 
-        /* String literals can follow an expression (like a suffix operator) to create a tagged
-        template literal. The literal still gets parsed as normal. The only difference is that
-        the prefix expression is appended to the operands array.
-        
-        Note: The `operands` array always ends with a `String` or `Array`, unless it is tagged.
-        Tagged literals end with `Token`, so `js(writer)` uses the type of the last operand to
-        know whether a literal is tagged or not. */
+        /* Take a prefix expression, push it to the `operands` array, then call `prefix(parser)`
+        to parse the actual string literal. This exists to support tagged-literals. */
 
-        this.prefix(parser);
+        this.push(prefix, null);
 
-        return this.push(prefix);
+        return this.prefix(parser);
     }
 
     validate(_) { return true }
 
-    js(writer) {
+    js(writer, delimit=true) {
 
         /* Generate a template literal from the various parts of the string literal, reproducing
-        the interpolations, and possibly including a tag expression. */
+        the interpolations, and possibly including a tag-expression. If the `delimit` argument
+        is truthy, the string is wrapped in backticks. Recursive invocations pass `false` to
+        this method, so only the topmost string is wrapped in backticks.
+        
+        TODO: Refer to the end of the `StringLiteral` docstring. */
 
-        if (this.operands.at(-1) instanceof Token) { // tagged literal...
+        const delimiter = delimit ? backtick : empty;
 
-            var output = this.operands.pop().js(writer) + backtick;
+        // first, prepare the initial `result` string (that the rest of the tokens will be
+        // concatented to), as well as the appropriate slice of the `operands` array...
 
-        } else var output = backtick; // plain string literal
+        if (this.at(2) === null) { // tagged literal...
+
+            var result = this.at(1).js(writer) + delimiter + this.value;
+
+            this.operands = this.operands.slice(3);
+
+        } else { // plain string literal...
+
+            var result = delimiter + this.value;
+
+            this.operands = this.operands.slice(1);
+        }
+
+        // now iterate over the (remaining) operands, convert them to js and concatenate
+        // the results to `result`...
 
         for (const operand of this.operands) {
 
             if (operand instanceof Array) for (const interpolation of operand) {
 
-                output += "${" + interpolation.js(writer) + "}";
+                result += "${" + interpolation.js(writer) + "}";
 
-            } else output += operand;
+            } else result += operand.js(writer, false);
         }
 
-        return output + backtick;
+        return result + delimiter;
     }
 }
 
@@ -614,6 +604,12 @@ export class CloseBracket extends Closer {
 
     /* This concrete class implements the `]` delimiter, used for closing array expressions
     and destructured assignees. */
+}
+
+export class CloseInterpolation extends Opener {
+    
+    /* This concrete class implements the `)` delimiter within string interpolations, and is
+    used by `StringLiteral` (allowing interpolations to be parsed as compound expressions). */
 }
 
 export class CloseParen extends Closer {
@@ -1232,6 +1228,12 @@ export class OpenBracket extends Caller {
     }
 }
 
+export class OpenInterpolation extends Opener {
+    
+    /* This token type is used by `StringLiteral` for delimiting the tokens within string
+    interpolations (allowing them to be parsed as compound expressions). */
+}
+
 export class OpenParen extends Caller {
 
     /* This concrete class implements the open-paren delimiter, which is used for grouped
@@ -1249,7 +1251,7 @@ export class OpenParen extends Caller {
 
     infix(parser, left) {
 
-        /* This method gathers an invocation, which will be validated later. */
+        /* This method gathers and validates an invocation. */
 
         this.push(left, OpenParen, ...parser.gatherCompoundExpression(CloseParen));
         this.check({prefixed: OpenParen, plain: true});

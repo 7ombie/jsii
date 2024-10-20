@@ -30,17 +30,14 @@ export function * lex(source) {
     function advance() { // api function
 
         /* This function takes no arguments, and advances the state of the lexer by one
-        character, checking the character is legal, before returning it, or `undefined`
-        if the source has been exhausted (or the interpolation, when inside a string). */
+        character. If the new character exists and is is legal, it gets returned. If it
+        is `undefined` (the source has been exhausted), `undefined` is returned. If the
+        character is illegal, and exception is raised. */
 
         index += 1;
         character = source[index];
 
-        if (interpolationStack.at(-1)) {
-
-            if (on(closeParen) && nesting === 0) return undefined;
-
-        } else if (character === undefined) return undefined;
+        if (character === undefined) return undefined;
 
         const code = character.charCodeAt();
 
@@ -118,21 +115,23 @@ export function * lex(source) {
         return line * 256 + (index - lastNewline - 1);
     }
 
-    function * gather(state=false) { // api function
+    function * gather(interpolating=false) { // api function
 
-        /* This generator function contains the main loop and branches that tokenize
-        the source (recuring to parse token streams inside of string interpolations).
-        The actual tokenization is handled by the respective `Token` subclasses. */
+        /* This generator function contains the main loop and branches that tokenize the source
+        (recuring to parse token streams inside of string interpolations). The actual tokenization
+        is handled by the respective `Token` subclasses. The function takes an optional bool that
+        defaults to `false`. If `true`, the function lexes an interpolation (which continues up
+        to the next closing paren). By default, it lexes a source file (the entire string). */
 
-        interpolationStack.push(state);
-
-        while (advance()) {
-
-            if (on(space)) continue;
+        while (character) {
 
             const location = locate();
 
-            if (on(terminators)) {
+            branches: if (on(space)) {
+
+                break branches;
+
+            } else if (on(terminators)) {
 
                 yield * Terminator.lex(api, location);
 
@@ -160,32 +159,16 @@ export function * lex(source) {
 
             } else if (on(delimiters)) {
 
-                if (interpolationStack.at(-1)) {
-
-                    if (on(openParen)) { nesting++ } else if (on(closeParen)) { nesting-- }
-                }
-
-                yield * Delimiter.lex(api, location);
+                if (interpolating && on(closeParen)) return;    // exit point for interpolations
+                else yield * Delimiter.lex(api, location);
 
             } else throw new LarkError(`unexpected character (${character})`, location);
+
+            advance();
         }
 
-        yield * Terminator.lex(api, locate());
-
-        interpolationStack.pop();
+        yield * Terminator.lex(api, locate());                  // exit-point for source files
     }
-
-    if (source instanceof Array) {
-
-        // this block intervenes when an array of tokens is passed to the lexer (in practice,
-        // via `parse`, which is called (recursively) by `StringLiteral.prefix` to parse the
-        // tokens in string interpolations) as the `source` argument, allowing the parser to
-        // parse tokens without change (as if they were just another source string)...
-
-        yield * source; return;
-    }
-
-    // assuming the lexer was passed a string, initialize and run the lexer normally...
 
     const api = {
         on, at, advance,
@@ -194,8 +177,7 @@ export function * lex(source) {
         peek, read
     };
 
-    let [character, interpolationStack] = [empty, []];
-    let [index, line, lastNewline, nesting] = [-1, 0, -1, 0];
+    let [character, index, line, lastNewline] = [empty, -1, 0, -1];
 
-    yield * gather();
+    advance(); yield * gather(); // initialize the state, then yield the tokens, one by one
 }

@@ -42,7 +42,7 @@ export function * write(source) {
 
         indentation = oldIndentation;
 
-        return openBrace + newline + code + newline + closeBrace;
+        return openBrace + newline + code + newline + indentation + closeBrace;
     }
 
     function prefix(name) { // internal helper
