@@ -173,11 +173,7 @@ export class StringLiteral extends Terminal {
     the expression and the literal that follows it (and recommeds using one space).
 
     Characters that need escaping (grave accents, dollars followed by opening braces etc) are all
-    escaped by the lexer stage (see `static * lex` below).
-
-    TODO: Text literals do not currently remove their insignificant whitespace. This is a regression,
-    but was required to permit an overhaul of how string literals are handled (simplifying the lexer
-    and parser in the process). */
+    escaped by the lexer stage (see `static * lex` below). */
 
     LBP = 16;
     expression = true;
@@ -312,46 +308,72 @@ export class StringLiteral extends Terminal {
 
     validate(_) { return true }
 
-    js(writer, delimit=true) {
+    js(writer) {
 
         /* Generate a template literal from the various parts of the string literal, reproducing
-        the interpolations, and possibly including a tag-expression. If the `delimit` argument
-        is truthy, the string is wrapped in backticks. Recursive invocations pass `false` to
-        this method, so only the topmost string is wrapped in backticks.
-        
-        TODO: Refer to the end of the `StringLiteral` docstring. */
+        the interpolations, and possibly including a tag-expression. */
 
-        const delimiter = delimit ? backtick : empty;
+        const strip = string => textLiteral ? string.replaceAll(indentation, newline) : string;
 
-        // first, prepare the initial `result` string (that the rest of the tokens will be
-        // concatented to), as well as the appropriate slice of the `operands` array...
+        const [textLiteral, indentation] = function(self) {
+
+            /* Get the value of the last string operand, assuming there is one, and get the index
+            of the last newline in that string, assuming there is one. Use the results to return 
+            a bool that indicates whether to strip indentation from the start of every string
+            operand (which is `true` for text literals and `false` otherwise), as well as
+            the indentation to remove (a newline, followed by zero or more spaces).
+
+            Note: The results are only valid when the literal is a text literal, but `strip` will
+            return its argument unchanged otherwise, so that's ok. */
+
+            const value = self.at(-1)?.value;
+            const index = value?.lastIndexOf(newline);
+
+            return [self.at(0).length > 1, value?.slice(index)];
+
+        }(this); // iffe
+
+        // first, prepare the `prefix` string (either a tag-expression or an empty string) and the
+        // `string` that the rest of the tokens will be concatented to, as well as the appropriate
+        // slice of the `operands` array (which depends on whether the literal is tagged or not)...
 
         if (this.at(2) === null) { // tagged literal...
 
-            var result = this.at(1).js(writer) + delimiter + this.value;
+            var prefix = this.at(1).js(writer)
+            var string = strip(this.value);
 
             this.operands = this.operands.slice(3);
 
         } else { // plain string literal...
 
-            var result = delimiter + this.value;
+            var prefix = empty;
+            var string = strip(this.value);
 
             this.operands = this.operands.slice(1);
         }
 
-        // now iterate over the (remaining) operands, convert them to js and concatenate
-        // the results to `result`...
+        // remove superfluous leading newline from text literals...
+
+        if (textLiteral) { string = string.slice(1) }
+
+        // now, iterate over the (remaining) operands, convert them to js, wrapping
+        // any interpolations appropriately, and concatenate the results to `string`...
 
         for (const operand of this.operands) {
 
             if (operand instanceof Array) for (const interpolation of operand) {
 
-                result += "${" + interpolation.js(writer) + "}";
+                string += "${" + interpolation.js(writer) + "}";
 
-            } else result += operand.js(writer, false);
+            } else string += strip(operand.value);
         }
 
-        return result + delimiter;
+        // remove the superfluous trailing newline from text literals, then concatenate
+        // everything together, and return the result...
+
+        if (textLiteral) { string = string.slice(0, -1) }
+
+        return prefix + backtick + string + backtick;
     }
 }
 

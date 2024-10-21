@@ -301,7 +301,7 @@ export function * parse(source) {
         return a reference to it, unless the `returnPrevious` argument is truthy. In
         that case, return the token that was current when the invocation was made. */
 
-        [previous, token] = [token, tokens.next().value];
+        [previous, token] = [token, tokens.next(newlineSignificanceStack.at(-1)).value];
 
         ignoreInsignificantNewlines();
 
