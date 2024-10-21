@@ -333,6 +333,8 @@ export class StringLiteral extends Terminal {
 
 export class TextLiteral extends StringLiteral {
 
+    /* This concrete class implements text literals, inheriting a lot from `StringLiteral`. */
+
     js(writer) {
 
         /* Generate a template literal from the various parts of the text literal, reproducing
