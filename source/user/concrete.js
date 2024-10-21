@@ -162,8 +162,8 @@ export class NumberLiteral extends Terminal {
 
 export class StringLiteral extends Terminal {
 
-    /* This is the concrete class for string-literals and text-literals. It is also imported by the
-    Lexer Stage for tokenizing strings and their interpolations.
+    /* This is the concrete class for string-literals and ther base class for text-literals. It is
+    also imported by the Lexer Stage for tokenizing string and text literals.
 
     Lark always compiles its literals to the equivalent JS template-literals (using backticks).
 
@@ -177,16 +177,6 @@ export class StringLiteral extends Terminal {
 
     LBP = 16;
     expression = true;
-
-    constructor(location, value, head) {
-
-        /* Take the usual values, plus the `head` of the literal (the single quote or three or more
-        quotes that opened the literal). Pass the regular arguments to `super`, then push the `head`
-        to the `operands` array. */
-
-        super(location, value);
-        this.push(head);
-    }
 
     static * lex(lexer, location) {
 
@@ -217,6 +207,7 @@ export class StringLiteral extends Terminal {
         }
 
         const [head, characters] = [match(quote, quote), []];
+        const StringClass = head.length > 1 ? TextLiteral : StringLiteral;
 
         lexer.advance();
 
@@ -229,7 +220,7 @@ export class StringLiteral extends Terminal {
 
                 // this block handles streams of interpolated tokens...
 
-                yield new StringLiteral(location, characters.join(empty), head);
+                yield new StringClass(location, characters.join(empty));
 
                 lexer.advance();
                 lexer.advance();
@@ -257,8 +248,7 @@ export class StringLiteral extends Terminal {
 
                 if (tailCount === headCount) {          // exactly the right number of quotes...
 
-                    yield new StringLiteral(location, characters.join(empty), head);
-                    return;
+                    return yield new StringClass(location, characters.join(empty));
 
                 } else characters.push(candidate);      // not enough quotes to close the string
 
@@ -311,25 +301,55 @@ export class StringLiteral extends Terminal {
     js(writer) {
 
         /* Generate a template literal from the various parts of the string literal, reproducing
+        the interpolations, and possibly including a tag-expression.
+        
+        Note: Text literals have their own `js(writer)` method. */
+
+        if (this.at(1) === null) { // tagged string literal...
+
+            var prefix = this.at(0).js(writer)
+            var string = this.value;
+
+            this.operands = this.operands.slice(2);
+
+        } else { // plain string literal...
+
+            var prefix = empty;
+            var string = this.value;
+        }
+
+        for (const operand of this.operands) {
+
+            if (operand instanceof Array) for (const interpolation of operand) {
+
+                string += "${" + interpolation.js(writer) + "}";
+
+            } else string += operand.value;
+        }
+
+        return prefix + backtick + string + backtick;
+    }
+}
+
+export class TextLiteral extends StringLiteral {
+
+    js(writer) {
+
+        /* Generate a template literal from the various parts of the text literal, reproducing
         the interpolations, and possibly including a tag-expression. */
 
-        const strip = string => textLiteral ? string.replaceAll(indentation, newline) : string;
+        const strip = string => string.replaceAll(indentation, newline);
 
-        const [textLiteral, indentation] = function(self) {
+        const indentation = function(self) {
 
-            /* Get the value of the last string operand, assuming there is one, and get the index
-            of the last newline in that string, assuming there is one. Use the results to return 
-            a bool that indicates whether to strip indentation from the start of every string
-            operand (which is `true` for text literals and `false` otherwise), as well as
-            the indentation to remove (a newline, followed by zero or more spaces).
+            /* Get the value of the last string operand and the index of the last newline in that
+            string. Use the results to return the indentation to remove (a newline, followed by
+            zero or more spaces, as a string). */
 
-            Note: The results are only valid when the literal is a text literal, but `strip` will
-            return its argument unchanged otherwise, so that's ok. */
+            const value = (self.at(-1) ?? self).value;
+            const index = value.lastIndexOf(newline);
 
-            const value = self.at(-1)?.value;
-            const index = value?.lastIndexOf(newline);
-
-            return [self.at(0).length > 1, value?.slice(index)];
+            return value.slice(index);
 
         }(this); // iffe
 
@@ -337,27 +357,25 @@ export class StringLiteral extends Terminal {
         // `string` that the rest of the tokens will be concatented to, as well as the appropriate
         // slice of the `operands` array (which depends on whether the literal is tagged or not)...
 
-        if (this.at(2) === null) { // tagged literal...
+        if (this.at(1) === null) { // tagged text literal...
 
-            var prefix = this.at(1).js(writer)
+            var prefix = this.at(0).js(writer)
             var string = strip(this.value);
 
-            this.operands = this.operands.slice(3);
+            this.operands = this.operands.slice(2);
 
-        } else { // plain string literal...
+        } else { // plain text literal...
 
             var prefix = empty;
             var string = strip(this.value);
-
-            this.operands = this.operands.slice(1);
         }
 
-        // remove superfluous leading newline from text literals...
+        // remove superfluous leading newline (from replacing indentation with a newline)...
 
-        if (textLiteral) { string = string.slice(1) }
+        string = string.slice(1);
 
-        // now, iterate over the (remaining) operands, convert them to js, wrapping
-        // any interpolations appropriately, and concatenate the results to `string`...
+        // now, iterate over the (remaining) operands, convert them to js, wrapping any
+        // interpolations appropriately, and concatenate the results to `string`...
 
         for (const operand of this.operands) {
 
@@ -368,10 +386,10 @@ export class StringLiteral extends Terminal {
             } else string += strip(operand.value);
         }
 
-        // remove the superfluous trailing newline from text literals, then concatenate
-        // everything together, and return the result...
+        // finally, remove the superfluous trailing newline, then concatenate everything
+        // together, and return the result...
 
-        if (textLiteral) { string = string.slice(0, -1) }
+        string = string.slice(0, -1);
 
         return prefix + backtick + string + backtick;
     }
@@ -916,7 +934,7 @@ export class FullFunction extends Functional {
 
         let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-        return this.gatherFullHeader(parser, blockType);
+        return this.gatherHeader(parser, blockType);
     }
 }
 
@@ -931,7 +949,7 @@ export class Generator extends Functional {
 
         let blockType = context?.is(Async) ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
 
-        return this.gatherFullHeader(parser, blockType);
+        return this.gatherHeader(parser, blockType);
     }
 }
 

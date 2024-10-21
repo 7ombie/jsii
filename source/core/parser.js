@@ -1,7 +1,7 @@
 import { LarkError } from "../core/error.js"
+import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
 import { Header, Keyword, Operator, Terminator, Word } from "../user/concrete.js"
 import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
-import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
 import { lex } from "../core/lexer.js"
 
 export function * parse(source) {

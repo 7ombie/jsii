@@ -655,7 +655,7 @@ export class Functional extends Header {
     LBP = 1;
     expression = true;
 
-    gatherFullHeader(parser, blockType) {
+    gatherHeader(parser, blockType) {
 
         /* This helper method is used by function and generator parsing methods to gather
         their optional names, optional parameters and required bodies (and supports
@@ -683,6 +683,32 @@ export class Functional extends Header {
             return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
 
         } else return this.push([], parser.gatherBlock(blockType));
+    }
+
+    js(writer) {
+
+        /* Render a function or generator literal (not handling arrow grammar). */
+
+        let name = empty;
+
+        // having assumed that `this.at(0)` is `null` (indicating an anonymous function), now
+        // check if it's an `Array` (indicating a computed name) or a `Variable` (indicating
+        // a plain old named-function), and update `name` accordingly...
+
+        if (this.at(0) instanceof Array) {
+
+            name = space + openBracket + this.at(0).at(0).js(writer) + closeBracket;
+        
+        } else if (this.at(0) instanceof Variable) name = space + this.at(0).js(writer);
+
+        // prerender the keyword, parameters and the function body, then interpolate them into
+        // a literal, and return the result...
+
+        const keyword = this.spelling === "function" ? "function" : "function*";
+        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
+        const block = writer.writeBlock(this.at(2));
+
+        return `${keyword}${name}(${params}) ${block}`;
     }
 }
 

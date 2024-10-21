@@ -1,3 +1,23 @@
+[function f of x, y {
+
+    x + y    
+    sum
+}, 1, 2, 3,
+
+    1 + """
+    spam and eggs
+        line two
+    """
+]
+
+"foobar \(
+
+    1 + """
+    spam and eggs
+        line two
+    """
+)"
+
 "foobar \("()")"
 
 "outer: \("inner: \( "innermost: \(boogie + woogie, 100 * 45)^^^"  ) 2"  )"
