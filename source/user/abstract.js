@@ -568,6 +568,15 @@ export class BranchStatement extends Keyword {
 
         return this;
     }
+
+    js(writer) {
+
+        /* Render a `break` or `continue` statement with its optional label. */
+
+        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
+
+        return `${this.spelling}${expression}`;
+    }
 }
 
 export class CommandStatement extends Keyword {

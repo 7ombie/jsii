@@ -1409,6 +1409,15 @@ export class Return extends Keyword {
 
         return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
+
+    js(writer) {
+
+        /* Render a `return` statement with its optional expression. */
+
+        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
+
+        return `return${expression}`;
+    }
 }
 
 export class RSHIFT extends InfixOperator {
@@ -1578,8 +1587,8 @@ export class XOR extends InfixOperator {
 
 export class Yield extends Keyword {
 
-    /* This concrete class implements the `yield` keyword, which can begin a formal statement,
-    while also being a valid prefix operator (potentially, at the same time). */
+    /* This concrete class implements the `yield` and `yield from` prefix-operators, which both
+    begin formal statements (while also being a valid expressions). */
 
     LBP = 2;
     expression = true;
@@ -1588,12 +1597,13 @@ export class Yield extends Keyword {
 
     prefix(parser) {
 
-        /* Gather an optional expression, unless the parser is on `from`. In which case, gather
-        the keyword, *then* gather a required expression. */
+        /* Gather an *optional* expression, unless the parser is on `from`. In that case,
+        gather the `from` keyword, and then gather the *required* expression. */
 
-        if (parser.on(From)) return this.push(parser.advance(true), parser.gatherExpression());
-        else if (parser.on(Terminator, Closer)) return this;
-        else return this.push(parser.gatherExpression());
+        if (parser.on(From)) { parser.advance(true); this.push(From, parser.gatherExpression()) }
+        else if (!parser.on(Terminator, Closer)) this.push(parser.gatherExpression());
+
+        return this;
     }
 
     validate(parser) {
@@ -1602,5 +1612,17 @@ export class Yield extends Keyword {
         it is a block for a generator function, else `false`. */
 
         return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
+    }
+
+    js(writer) {
+
+        /* Render a `yield` expression with its optional operand, or a `yield from` expression
+        with its required operand. */
+
+        if (this.at(0) === From) return `yield * ${this.at(1).js(writer)}`;
+
+        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
+
+        return `yield${expression}`;
     }
 }
