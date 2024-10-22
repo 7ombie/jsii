@@ -4,7 +4,7 @@ import { Header, Keyword, Operator, Terminator, Word } from "../user/concrete.js
 import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
 import { lex } from "../core/lexer.js"
 
-export function * parse(source) {
+export function * parse(source, {dev=false}={}) {
 
     /* This generator implements the parser stage, and yields an AST node for each top-level
     statement. Like the lexer stage, the specifics of parsing any given grammar are left to
@@ -383,9 +383,13 @@ export function * parse(source) {
         else labelspaceStack[lastIndex][name.value] = value;
     }
 
+    // gather the api functions and flags to form the parser api object, initialize the internal
+    // state, then invoke `LIST` to yield the resulting top-level statements, one by one...
+
     const api = {
         advance,
         check,
+        dev,
         gather,
         gatherVariable,
         gatherProperty,
@@ -402,7 +406,7 @@ export function * parse(source) {
     const labelspaceStack = [{}];               // the labelspaces for the blocks in scope
     const newlineSignificanceStack = [true];    // the significance of newlines by scope
 
-    const tokens = lex(source);
+    const tokens = lex(source, {dev});
 
     let token, previous;
 

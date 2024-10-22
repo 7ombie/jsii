@@ -2,9 +2,17 @@ import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core
 import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
 import { parse } from "../core/parser.js"
 
-export function * write(source) {
+export function * write(source, {dev=false}={}) {
 
-    /* This function implements the Writer Stage. It is new, and just being sketched out. */
+    /* This function implements the Writer Stage. It is the entrypoint to the compiler. */
+
+    function prefix(name) { // internal helper
+    
+        /* Take a value, prefix it with the Lark Character, and return the result as a string. This
+        helper expects to be invoked on `String`s and (integer) `Number`s. */
+
+        return `ƥ${name}`
+    }
 
     function * walk(statements) { // internal helper
 
@@ -13,14 +21,14 @@ export function * write(source) {
         were generated during the compilation of the statement, before yielding the JavaScript for
         the statement itself. */
 
-        for (const statement of statements) {
+        for (const statement of statements) if (statement.compile) {
 
             const terminated = statement instanceof Header || statement instanceof Label;
             const source = indentation + statement.js(api) + (terminated ? empty : semicolon);
 
             yield * preambles;
             yield source;
-            
+
             preambles.length = 0;
         }
     }
@@ -45,13 +53,6 @@ export function * write(source) {
         return openBrace + newline + code + newline + indentation + closeBrace;
     }
 
-    function prefix(name) { // internal helper
-    
-        /* Take a string or number. Prefix it with the Lark Character. Return the result-string. */
-
-        return `ƥ${name}`
-    }
-
     function register(expression) { // api function
 
         /* Take an expression node and check if it's safe to evaluate more than once (either a
@@ -71,15 +72,15 @@ export function * write(source) {
         return register;
     }
 
-    // gather the api functions, initialize the internal state, and walk the parse tree, yielding
-    // the results (as strings), one top-level statement at a time...
+    // gather the api functions and flags into the api object, initialize the internal state, then
+    // walk the parse tree, yielding the results (as strings), one top-level statement at a time...
 
-    const api = {register, write, writeBlock};
+    const api = {register, write, writeBlock, dev};
 
     let indentation = empty;
     let registerCounter = 0;
     let preambles = [];
 
-    yield * walk(parse(source));
+    yield * walk(parse(source, {dev}));
 }
 

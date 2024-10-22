@@ -769,12 +769,21 @@ export class Delete extends CommandStatement {
 export class Dev extends Keyword {
 
     /* This concrete class implements the `dev` qualifier, which can prefix any statement,
-    formal or informal, ensuring it will only be included in the compiled output when the
-    parser is in `devmode`. */// TODO: add a `devmode` parameter to each stage
+    ensuring that it will only be included in the compiled output when the parser is in
+    devmode.
+
+    TODO: Add some kind of 'devmode' parameter to each stage. */
 
     prefix(parser) {
 
+        this.compile = parser.dev;
+
         return this.push(parser.gather());
+    }
+
+    js(writer) {
+
+        return this.at(0).js(writer);
     }
 }
 
@@ -1526,8 +1535,8 @@ export class ThisConstant extends Constant {
 
 export class Throw extends CommandStatement {
 
-    /* This concrete class implements the `throw` statement, which imples `new` in Lark,
-    so `throw t` compiles to `throw new t`. */
+    /* This concrete class implements the `throw` statement, which implies `new` in Lark,
+    so `throw t` compiles to `throw new t` (you cannot throw strings etc). */
 
     expresssion = true;
 

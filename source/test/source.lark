@@ -85,7 +85,7 @@ async function f { await call() }
 generator foo { yield from something }
 generator foo { return somethingElse + 1 }
 
-generator {
+dev generator {
     dance: while x while y {
         o is packed
         o is sealed
