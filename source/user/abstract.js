@@ -173,8 +173,8 @@ export class Token {
     LBP = 0;                // left-binding power (a generalization of precedence, per Pratt)
     RBP = 0;                // right-binding-power (prefix and infix precedence often differs)
     operands = [];          // the token's operands (including params, blocks, tokens etc)
-    compile = true;         // specifies whether to include the statement (used by devmode)
-    expression = false;     // specifies whether the token forms a valid expression
+    compile = true;         // whether to compile the statement to JS (used by `dev` mode)
+    expression = false;     // whether the token forms a node which is a valid expression
 
     get spelling() {
 

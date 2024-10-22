@@ -769,12 +769,14 @@ export class Delete extends CommandStatement {
 export class Dev extends Keyword {
 
     /* This concrete class implements the `dev` qualifier, which can prefix any statement,
-    ensuring that it will only be included in the compiled output when the parser is in
-    devmode.
-
-    TODO: Add some kind of 'devmode' parameter to each stage. */
+    formal or informal, ensuring it will only be included in the compiled JavaScript when
+    the `dev` flag (which is `false` by default) is truthy. */
 
     prefix(parser) {
+
+        /* Gather an arbitrary statement, while copying the `dev` flag to the `compile`
+        property, so this statement can be omitted from the output correctly (without
+        the semicolon we would get if `js(writer)` simply returned an empty string). */
 
         this.compile = parser.dev;
 
@@ -782,6 +784,9 @@ export class Dev extends Keyword {
     }
 
     js(writer) {
+
+        /* Render the only operand and return the result, leaving it to the writer stage to
+        omit the result when the `compile` property (of `this` instance) is falsey. */
 
         return this.at(0).js(writer);
     }
