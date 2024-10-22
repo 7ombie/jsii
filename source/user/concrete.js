@@ -579,6 +579,13 @@ export class Await extends CommandStatement {
 
         return parser.check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
     }
+
+    js(writer) {
+
+        /* Render an `await` expression. */
+
+        return `await ${this.at(0).js(writer)}`;
+    }
 }
 
 export class Bang extends GeneralDotOperator {
@@ -748,6 +755,15 @@ export class Delete extends CommandStatement {
 
     LBP = 14;
     expression = true;
+
+    expresssion = true;
+
+    js(writer) {
+
+        /* Render a `delete` expression. */
+
+        return `delete ${this.at(0).js(writer)}`;
+    }
 }
 
 export class Dev extends Keyword {
@@ -1510,7 +1526,17 @@ export class ThisConstant extends Constant {
 
 export class Throw extends CommandStatement {
 
-    /* This concrete class implements the `throw` statement. */
+    /* This concrete class implements the `throw` statement, which imples `new` in Lark,
+    so `throw t` compiles to `throw new t`. */
+
+    expresssion = true;
+
+    js(writer) {
+
+        /* Render a `throw new` expression. */
+
+        return `throw new ${this.at(0).js(writer)}`;
+    }
 }
 
 export class TrueConstant extends Constant {

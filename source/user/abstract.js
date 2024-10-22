@@ -68,6 +68,7 @@ import {
     Comma,
     Continue,
     Debug,
+    Delete,
     DefaultConstant,
     Dev,
     Do,
@@ -582,7 +583,7 @@ export class BranchStatement extends Keyword {
 export class CommandStatement extends Keyword {
 
     /* This is the abstract class for keywords that are followed by a required, arbitrary
-    expression (`await`, `delete` etc). */
+    expression (`await`, `delete` and `throw`). */
 
     prefix(parser) {
 

@@ -1,4 +1,4 @@
-[function f of x, y {
+await [function f of x, y {
 
     x + y    
     sum
@@ -10,7 +10,7 @@
     """
 ]
 
-"foobar \(
+delete "foobar \(
 
     1 + """
     spam and eggs
@@ -100,7 +100,7 @@ generator {
 function (foo) of x, y { return 100 }
 function foo of x, y { return 200 }
 function of x, y { return 0x100 - 0x200 }
-throw new Foo()
+throw Foo("spam and eggs")
 dev if x { Y }
 dev 1 + 2 * 3 + 3
 pack new foo(x, y, z)
