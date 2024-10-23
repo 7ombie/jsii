@@ -84,7 +84,7 @@ import {
     Freeze,
     From,
     Frozen,
-    FullFunction,
+    FunctionLiteral,
     Generator,
     GlobalConstant,
     Greater,
@@ -535,7 +535,7 @@ export class Keyword extends Word {
             case "export": return new Export(location, value);
             case "for": return new For(location, value);
             case "from": return new From(location, value);
-            case "function": return new FullFunction(location, value);
+            case "function": return new FunctionLiteral(location, value);
             case "generator": return new Generator(location, value);
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
@@ -666,7 +666,7 @@ export class Functional extends Header {
     LBP = 1;
     expression = true;
 
-    gatherHeader(parser, blockType) {
+    gather(parser, blockType) {
 
         /* This helper method is used by function and generator parsing methods to gather
         their optional names, optional parameters and required bodies (and supports

@@ -935,10 +935,29 @@ Comments start on a hash character (`#`), then run to end of the line.
 
 Note: Lark uses `//` for floor-division (`x // y` -> `Math.floor(x / y)`).
 
-Docstrings
-----------
+By contrived-convention, docstrings use a string literal instead. For example, this is the function
+that implements the main loop of the writer stage:
 
-Docstrings are superficially similar to string and text literals, but haven't been finalized yet.
+    let walk = function of statements { # internal helper
+
+        "Take a statement iterator, traverse it, and convert each statement to its corresponding
+        JavaScript code, adding preambles and semicolons as required, before yielding each top-
+        level statement, one at a time. Returns `undefined`."
+
+        for statement of statements if statement.compile {
+
+            let terminated = statement is Header or statement is Label
+            let source = indentation + statement.js(api) + (empty when terminated else semicolon)
+
+            yield from preambles
+            yield source
+
+            preambles.length = 0
+        }
+    }
+
+Note: Naturally, you can use text literals as docstrings too. They're just expressions that the
+compiler will throw away (as they are not used for anything).
 
 Object Literals
 ---------------
@@ -947,29 +966,152 @@ Objects defined with object literals have `null` prototypes by default:
 
     let o = {x: 1}                     -> const o = {__proto__: null, x: 1}
 
-If you want a different prototype, wrap it in parens:
+If you want a different prototype, use `as <Type>` inside the literal:
 
-    let oo = {(Object), x: 1}          -> const oo = {__proto__: Object, x: 1}
+    let oo = {as Object, x: 1}          -> const oo = {__proto__: Object, x: 1}
 
-Dynamic keys also use parens inside Lark object literals:
+Note: You can use the `as` prefix-operator anywhere within the object literal, but it's a syntax
+error to include more than one (really just as a sanity check).
+
+Dynamic keys use parens, instead of square brackets (just like computed function names):
 
     {(foo): 1, (bar): 2}               -> {__proto__: null, [foo]: 1, [bar]: 2}
 
-Note: The `__proto__` key has no special meaning in Lark:
+Note: The `__proto__` key has no special meaning in Lark object literals:
 
-    {__proto__: Object}                -> {"__proto__": Object}
+    {__proto__: Object}                -> {__proto__: null, "__proto__": Object}
 
-Labelled Arguments
-------------------
+Math Operators
+--------------
 
-When passing an object literal during an invocation, you can usually omit the braces, as Lark
-will group any sequence of one or more adjacent labelled arguments into a single object:
+The `Math` object is fully expanded in Lark, making it generally redundant.
 
-    range(from: 1, to: 10)             -> range({from: 1, to: 10}) 
-    insert("hello", at: 5)             -> insert("hello", {at: 5})
+The `Math.pow` function is available as the `**` infix-operator, like JavaScript.
+
+The `Math.clz32` (count leading zeros) function is available as the `?` bitwise prefix-operator.
+
+All of the remaining `Math` functions that take a single `Number` argument are available as
+Lark prefix-operators:
+
++ `abs x`: Returns the absolute value of `x`.
++ `acos x`: Returns the arccosine of `x`, in radians.
++ `acosh x`: Returns the hyperbolic arccosine of `x`.
++ `asin x`: Returns the arcsine of `x`, in radians.
++ `asinh x`: Returns the hyperbolic arcsine of `x`.
++ `atan x`: Returns the arctangent of `x` (as a value between `-PI / 2` and `PI / 2` radians).
++ `atanh x`: Returns the hyperbolic arctangent of `x`.
++ `cbrt x`: Returns the cubic root of `x`.
++ `ceil x`: Returns `x`, rounded upwards to the nearest integer.
++ `cos x`: Returns the cosine of `x` (`x` is in radians).
++ `cosh x`: Returns the hyperbolic cosine of `x`.
++ `exp x`: Returns the value of `E ** x`.
++ `expm1 x`: Returns the value of `E ** x - 1` (more accurate than `(exp 1) - 1`).
++ `floor x`: Returns `x`, rounded downwards to the nearest integer.
++ `log x`: Returns the natural logarithm (base-E) of `x`.
++ `log2 x`: Returns the base-2 logarithm of `x`.
++ `log10 x`: Returns the base-10 logarithm of `x`.
++ `log1p x`: Returns the natural logarithm of `1 + x`.
++ `round x`: Rounds `x` to the nearest integer.
++ `fround x`: Returns the nearest 32-bit, single precision, IEEE floating-point representation to `x`.
++ `sign x`: Returns whether `x` is negative, null or positive (-1, 0, 1)
++ `sin x`: Returns the sine of `x`.
++ `sinh x`: Returns the hyperbolic sine of `x`.
++ `sqrt x`: Returns the square root of `x`.
++ `tan x`: Returns the tangent of the angle `x`.
++ `tanh x`: Returns the hyperbolic tangent of `x`.
++ `trunc x`: Returns the integer part of `x`.
+
+For consistancy, the remaining `Math` functions (the ones that take more than one argument) have been
+converted to prefix-operators that require a single compound operand instead:
+
++ `atan2 p`: Returns the arctangent of the quotient of point `p` (compiles to `Math.atan2(p.y, p.x)`).
++ `max c`: Returns the highest value in some collection `c` (compiles to `Math.max(...c)`).
++ `min c`: Returns the lowest value in some collection `c` (compiles to `Math.min(...c)`).
+
+All of JavaScript's `Math` constants (as well as 𝜏, and a randomized number named `R`) are also
+available without qualification. However, only four names are used: `E`, `PI` and `TAU` and `R`.
+The other constants are expressed by combining existing constants with the corresponding operators
+as follows:
+
++ `R` -> `Math.random()`: A new random number every time.
++ `E` -> `Math.E`: Euler's number.
++ `PI` -> `Math.PI`: The value of π.
++ `TAU` -> `Math.TAU` The value of 𝜏 (2π).
++ `sqrt 2` -> `Math.SQRT2`: The square root of 2.
++ `sqrt .5` -> `Math.SQRT1_2`: The square root of 1/2.
++ `log 2` -> `Math.LN2`: The natural logarithm of 2.
++ `log 10` -> `Math.LN10`: The natural logarithm of 10.
++ `log2 E` -> `Math.LOG2E`: The base-2 logarithm of Euler's number.
++ `log10 E` -> `Math.LOG10E`: The base-10 logarithm of Euler's number.
+
+Note: The Lark runtime includes `Math.TAU = 6.283185307179586`. This is the only name (that's not
+prefixed by a Lark Character) that we introduce to any JavaScript namespace. It seems safe to
+assume that any future standard that defines `Math.TAU` at all would only ever bind it to
+`Math.PI * 2`.
+
+Note: The number `6.283185307179586` is equal to `Math.PI * 2` in JavaScript (and any language that
+uses 64-bit IEEE-754 arithmetic), and the exact value of Python's `math.tau` constant as well, so
+Lark reuses the same approximation for `TAU`.
+
+Note: Consistant with the `Math` operators, the names `E`, `PI`, `TAU` and `R` will not exist at
+runtime. The compiler replaces them with the `Math` constants they map to.
+
+Note: The compiler detects when the constants listed above are passed to the corresponding operators,
+replacing the invocations with the corresponding constants (so `log 10` compiles to `Math.LN10`). As
+long as the expression is a literal that evaluates to the appropriate value, the compiler optimizes
+it away. For example, `log 2`, `log 2.0`, `log 2.000000`, `log 0x0002` and `log .0002e4` would all
+be optmized to the `Math.LN2` constant.
+
+Keywords and Named Prefix Operators
+-----------------------------------
+
+Lark has four types of word token: Reserved words, keywords, (named) operators and variable names
+(symbols). The first three types are defined by membership in the arrays of spellings exported
+from `./user/spellings.js` (`reserved`, `keywords` and `operators`). You can declare any word
+that's not in those arrays as a name.
+
+Naturally, reserved words never appear in valid code, and there's not much to say about variable
+names. Keywords and operators generally do what you expect as well. However, Lark does handle the
+distinction between its keywords (that naturally begin statements), and its named prefix-operators
+(that naturally begin expressions, which can also incidentally start statements) differently.
+
+JavaScript generally avoids the need for a distinction at all by classifying words like `throw`,
+`delete` and `yield` as prefix-operators: If `delete x` is a valid expression, then it's also a
+valid statement, so you can just use `delete x` anywhere, and never need to worry about it. It's
+a distinction without a difference.
+
+While JavaScript's approach seems ideal, it has edgecases. If a JavaScript statement begins with
+the `function` keyword, it becomes a function-statement (which is not a valid expression), so you
+can not invoke the function (to form a IIFE) in this one specific case. This requires workarounds,
+like wrapping the function in parens, or adding a noop prefix operation (like `void` or `!`).
+
+Lark never trades consistancy for simplicity, so we had to address this issue, accepting that some
+words will just be keywords (like `for` and `while` - words that only ever begin statements), other
+words will just be prefix operators (like `sin` and `floor` - words that act like any other prefix
+operators), and there will also be words (like `function`) that are both keywords and operators
+(forming formal statements and valid expressions).
+
+Once a language adds (proper) support for keyword-operators (so they just work), there's no reason
+to avoid them. In Lark, words like `throw`, `delete` and `yield` (as well as `function`) all form
+formal statements (that are also valid expressions) when used to begin a statement, and all form
+plain expressions in any other context.
+
+For consistancy, Lark treats all named prefix-operators (including `pack`, `seal`, `freeze` etc)
+as keyword-operators, except the core ALU operators (arithmetic, comparison, logical and bitwise
+operators, including `not`, `cos`, `tan` etc). They are plain operators, and cannot introduce
+formal statements.
+
+Note: This distinction has no relevance to named infix-operators (like `and` and `or`). They are
+just plain operators in any context. Likewise for suffix operators (like `is packed`).
+
+Note: The distinction between formal and informal statements is purely lexical (only determining when
+curly braces are optional around control-flow blocks). Beyond that sugar, keywords and operators just
+do the correct thing implicitly. 
 
 Labelled Parameters
 -------------------
+
+# THIS IS A MAYBE...
 
 When accepting and unpacking an object into one or more parameters, you can usually omit the
 braces, as Lark will group any sequence of one or more adjacent labelled parameters into a
@@ -1252,6 +1394,8 @@ All of the concrete classes in the token hierarchy:
 
 // NumberLiteral,
 // StringLiteral,
+// TextLiteral
+// FullFunction,
 // AllConstant,
 // ArgumentsConstant,
 // And,
@@ -1300,7 +1444,6 @@ All of the concrete classes in the token hierarchy:
 // Freeze,
 // From,
 // Frozen,
-// FullFunction,
 // Generator,
 // GlobalConstant,
 // Greater,
@@ -1309,7 +1452,6 @@ All of the concrete classes in the token hierarchy:
 // In,
 // InfinityConstant,
 // Is,
-// Lambda,
 // Lesser,
 // Let,
 // LineFeed,

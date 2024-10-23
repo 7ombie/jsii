@@ -155,8 +155,8 @@ export function * parse(source, {dev=false}={}) {
         number and kind). Once the block has been parsed, the block type is popped from
         the stack, and the parsed block is returned.
 
-        If the block type is functional (including a class), this function pushes the LIST
-        state `true` to the list stack and an empty hash to the label hash stack, which are
+        If the block type is functional (including a class), this function pushes `true` to
+        the `newlineSignificanceStack` and an empty hash to the `labelspaceStack`, which are
         both then popped when the function body has been parsed. Furthermore, this function
         requires that the body is wrapped in braces (only control-flow statements can have
         unbraced blocks). */

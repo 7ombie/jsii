@@ -955,9 +955,9 @@ export class Frozen extends Operator {
     `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
 }
 
-export class FullFunction extends Functional {
+export class FunctionLiteral extends Functional {
 
-    /* This is the concrete class for function statements, which are also expressions. */
+    /* This is the concrete class for function literals. */
 
     prefix(parser, context) {
 
@@ -966,7 +966,7 @@ export class FullFunction extends Functional {
 
         let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-        return this.gatherHeader(parser, blockType);
+        return this.gather(parser, blockType);
     }
 }
 
@@ -981,7 +981,7 @@ export class Generator extends Functional {
 
         let blockType = context?.is(Async) ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
 
-        return this.gatherHeader(parser, blockType);
+        return this.gather(parser, blockType);
     }
 }
 
