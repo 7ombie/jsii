@@ -11,6 +11,8 @@ imports everything it needs, and exports everything it defines, though its expor
 imported by `concrete.js`, which re-exports everything. All other modules import everything they
 need via `concrete.js`, so the circular dependencies never lead to conflicts. */
 
+import { put, not } from "../core/helpers.js"
+
 import { LarkError } from "../core/error.js"
 
 import {
@@ -85,7 +87,6 @@ import {
     From,
     Frozen,
     FunctionLiteral,
-    Generator,
     GlobalConstant,
     Greater,
     If,
@@ -225,8 +226,8 @@ export class Token {
         API methods that invoke `parser.gather` or `parser.gatherExpression` (on subexpressions)
         can optionally pass a `context` to those API functions (as well as a binding-power) and
         that context will be passed to the `prefix` method of the following token. This is used
-        by `Async` to let `Lambda`, `Function` and `Generator` know the context (without which,
-        they cannot correctly validate `await` statements). */
+        by `Async` to let `FunctionLiteral` know the context (which it needs to validate `await`
+        statements). */
 
         throw new LarkError("invalid token (in prefix position)", this.location);
     }
@@ -536,7 +537,6 @@ export class Keyword extends Word {
             case "for": return new For(location, value);
             case "from": return new From(location, value);
             case "function": return new FunctionLiteral(location, value);
-            case "generator": return new Generator(location, value);
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
             case "let": return new Let(location, value);
@@ -613,15 +613,15 @@ export class Declaration extends Keyword {
 
 export class ClassQualifier extends Declaration {
 
-    /* This is the abstract base class for the `static`, `local` and `private` qualifiers
-    that prefix declarations inside classes. */
+    /* This is the abstract base class for the `static` and `private` qualifiers that
+    prefix declarations inside classes. */
 
     prefix(parser) {
 
         /* When present, gather an optionally asynchronous function, and parse a regular
         declaration otherwise. */
 
-        if (parser.on(Functional, Async)) return this.push(parser.gather());
+        if (parser.on(Async, FunctionLiteral)) return this.push(parser.gather());
         else return super.prefix(parser);
     }
 
@@ -656,73 +656,6 @@ export class PredicatedBlock extends Header {
     }
 }
 
-export class Functional extends Header {
-
-    /* This is the abstract base class for all functional blocks, including the `lambda`,
-    `function` and `generator` blocks, but not including the arrow grammars. This applies
-    to function statements/expressions, whether they are asynchronous, IIFEs, neither or
-    both. */
-
-    LBP = 1;
-    expression = true;
-
-    gather(parser, blockType) {
-
-        /* This helper method is used by function and generator parsing methods to gather
-        their optional names, optional parameters and required bodies (and supports
-        computed properties, using parenthesis (instead of brackets)). */
-
-        // first, handle the name (which may be computed), if present...
-
-        if (parser.on(Variable)) {
-
-            this.push(parser.gatherVariable());
-
-        } else if (parser.on(OpenParen)) {
-
-            parser.advance();
-            this.push(parser.gatherCompoundExpression(CloseParen));
-
-        } else this.push(null);
-
-        // now, handle the optional parameters and required function body...
-
-        if (parser.on(Of)) {
-
-            parser.advance();
-
-            return this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
-
-        } else return this.push([], parser.gatherBlock(blockType));
-    }
-
-    js(writer) {
-
-        /* Render a function or generator literal (not handling arrow grammar). */
-
-        let name = empty;
-
-        // having assumed that `this.at(0)` is `null` (indicating an anonymous function), now
-        // check if it's an `Array` (indicating a computed name) or a `Variable` (indicating
-        // a plain old named-function), and update `name` accordingly...
-
-        if (this.at(0) instanceof Array) {
-
-            name = space + openBracket + this.at(0).at(0).js(writer) + closeBracket;
-        
-        } else if (this.at(0) instanceof Variable) name = space + this.at(0).js(writer);
-
-        // prerender the keyword, parameters and the function body, then interpolate them into
-        // a literal, and return the result...
-
-        const keyword = this.spelling === "function" ? "function" : "function*";
-        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
-        const block = writer.writeBlock(this.at(2));
-
-        return `${keyword}${name}(${params}) ${block}`;
-    }
-}
-
 export class Operator extends Token {
 
     /* This is the abstract base class for all of the operator subclasses. It is used by the
@@ -740,7 +673,7 @@ export class Operator extends Token {
         
         Note: The location is only needed to generate synax errors. */
 
-        if (!value) return [];
+        if (not(value)) return [];
 
         if (operators.includes(value)) return [value];
 

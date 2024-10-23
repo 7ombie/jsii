@@ -1,3 +1,8 @@
+function f { return true }
+function j of x, y, z { yield false }
+async function spam { return 1 }
+async function of args { yield 1 }
+
 await [function f of x, y {
 
     x + y    
@@ -62,7 +67,6 @@ y != z
 if p0 { foo } else if p1 { bar } else { spam }
 
 do async function { return await true }
-do async generator { return await yield true }
 
 html.tag "
 line one: onside
@@ -82,10 +86,10 @@ foo: while expression { break foo, continue foo }
 
 async function f { await call() }
 
-generator foo { yield from something }
-generator foo { return somethingElse + 1 }
+function foo { yield from something }
+function (prefix + "bar") of args { return somethingElse + 1 }
 
-dev generator {
+dev function {
     dance: while x while y {
         o is packed
         o is sealed

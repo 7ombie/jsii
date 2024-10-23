@@ -1,8 +1,11 @@
 // this module implements all of the concrete classes in the token hierarchy...
 
+import { put, not, iife } from "../core/helpers.js"
+
 import { LarkError } from "../core/error.js"
 
 import {
+    asterisk,
     backslash,
     backtick,
     bases,
@@ -29,8 +32,6 @@ import {
     LOOPBLOCK,
     SIMPLEBLOCK,
     FUNCTIONBLOCK,
-    GENERATORBLOCK,
-    ASYNCGENERATORBLOCK,
     ASYNCFUNCTIONBLOCK,
     CLASSBLOCK,
 } from "../core/blocktypes.js"
@@ -47,7 +48,6 @@ import {
     Declaration,
     Delimiter,
     DotOperator,
-    Functional,
     GeneralDotOperator,
     GeneralOperator,
     Header,
@@ -75,7 +75,6 @@ export {
     Declaration,
     Delimiter,
     DotOperator,
-    Functional,
     GeneralDotOperator,
     GeneralOperator,
     Header,
@@ -130,7 +129,7 @@ export class NumberLiteral extends Terminal {
             throw new LarkError("leading zeros are invalid", location);
         }
 
-        if (!isDecimal && this.value.length === 2) { // base-prefix without (valid) digits...
+        if (not(isDecimal) && this.value.length === 2) { // base-prefix without (valid) digits...
 
             if (lexer.at(decimal)) throw new LarkError("invalid digit for notation", location);
             else throw new LarkError("incomplete base-prefix", location);
@@ -341,8 +340,8 @@ export class TextLiteral extends StringLiteral {
         the interpolations, and possibly including a tag-expression. */
 
         const strip = string => string.replaceAll(indentation, newline);
-
-        const indentation = function(self) {
+        
+        const self = this, indentation = iife(function() {
 
             /* Get the value of the last string operand and the index of the last newline in that
             string. Use the results to return the indentation to remove (a newline, followed by
@@ -352,8 +351,7 @@ export class TextLiteral extends StringLiteral {
             const index = value.lastIndexOf(newline);
 
             return value.slice(index);
-
-        }(this); // iffe
+        });
 
         // first, prepare the `prefix` string (either a tag-expression or an empty string) and the
         // `string` that the rest of the tokens will be concatented to, as well as the appropriate
@@ -539,18 +537,24 @@ export class AssignXOR extends AssignmentOperator {
 
 export class Async extends Keyword {
 
-    /* This concrete class implements the `async` qualifier, used to prefix the `lambda`,
-    `function` and `generator` keywords to define asynchronous versions. */
+    /* This concrete class implements the `async` function-qualifier. */
 
     expression = true;
 
     prefix(parser) {
 
-        /* This method checks that the next token is valid, and if so, gathers it as an
-        operand, complaining otherwise. */
+        /* This method checks that the next token is a function literal, and if so, gathers
+        it as an operand, complaining otherwise. */
 
-        if (parser.on(Functional)) return this.push(parser.gather(0, this));
-        else throw new LarkError("unexpected async qualifier", this.location);
+        if (parser.on(FunctionLiteral)) return this.push(parser.gather(0, this));
+        else throw new LarkError("`async` qualifier without `function` keyword", this.location);
+    }
+
+    js(writer) {
+
+        /* Render the function operand with the `async` qualifier. */
+
+        return `async ${this.at(0).js(writer)}`;
     }
 }
 
@@ -560,8 +564,6 @@ export class Await extends CommandStatement {
 
     LBP = 14;
     expression = true;
-
-    static blocks = [ASYNCGENERATORBLOCK, ASYNCFUNCTIONBLOCK];
 
     prefix(parser) {
 
@@ -577,7 +579,7 @@ export class Await extends CommandStatement {
         is found, the validation *succeeds* (note the third argument), as top-level await
         is valid (unlike all other other such cases). */
 
-        return parser.check($ => $ > SIMPLEBLOCK, $ => Await.blocks.includes($), true);
+        return parser.check($ => $ > SIMPLEBLOCK, $ => ASYNCFUNCTIONBLOCK, true);
     }
 
     js(writer) {
@@ -794,17 +796,15 @@ export class Dev extends Keyword {
 
 export class Do extends Header {
 
-    /* This concrete class implements the `do` keyword, which prefixes blocks to create
-    block statements, or prefixes `async`, `lambda`, `function` or `generator` to create
-    an IIFE. */
+    /* This concrete class implements the `do` keyword, which prefixes blocks and functions
+    to create IIFEs (which Lark uses as a more flexible version of block-statements). */
 
     prefix(parser) {
 
-        /* If the next token is `async` or something functional, make this instance valid
-        as an expression, then gather whatever follows. Otherwise, gather a control-flow
-        block. */
+        /* If the next token is `async` or `function`, make this instance valid as an
+        expression, then gather whatever follows. Otherwise, gather a control-flow block. */
 
-        if (parser.on(Async, Functional)) {
+        if (parser.on(Async, FunctionLiteral)) {
             
             this.expression = true;
             this.push(parser.gather());
@@ -955,33 +955,92 @@ export class Frozen extends Operator {
     `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
 }
 
-export class FunctionLiteral extends Functional {
+export class FunctionLiteral extends Keyword {
 
     /* This is the concrete class for function literals. */
 
+    LBP = 1;
+    expression = true;
+
     prefix(parser, context) {
 
-        /* This method parses functions, based on the given context (either an instance of
-        `Async` or `undefined`). */
+        /* This method parses functions, based on the given context (either `Async` or
+        `undefined`, with the later implying no qualifier). */
 
         let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-        return this.gather(parser, blockType);
+        // having established the blocktype, parse the optional function name, which may,
+        // when present, use a computed (runtime) value...
+
+        if (parser.on(Variable)) {
+
+            this.push(parser.gatherVariable());
+
+        } else if (parser.on(OpenParen)) {
+
+            parser.advance();
+            this.push(parser.gatherCompoundExpression(CloseParen));
+
+        } else this.push(null);
+
+        // now, handle the optional parameters and required function body...
+
+        if (parser.on(Of)) {
+
+            parser.advance();
+
+            this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
+
+        } else this.push([], parser.gatherBlock(blockType));
+
+        function walk(statements) {
+
+            /* Takes an array of statements, walks the operands array of each statement, recurring
+            on blocks and compound expressions, but ignoring anything functional, looking for any
+            `yield` (or `yield from`) expressions that belong to the current function. Returns a
+            bool that indicates whether it found `yield`, and by extension, whether the caller
+            should compile to a generator or just a regular function. */
+
+            for (const statement of statements) for (const operand of statement.operands) {
+
+                if (operand instanceof Array && walk(operand)) return true;
+
+                if (not(operand instanceof Token)) continue;
+
+                if (operand.is(ArrowOperator, FunctionLiteral, Class)) continue;
+
+                if (statement instanceof Yield) return true;
+
+            } return false;
+        }
+
+        return this.push(walk(this.at(2)));
     }
-}
 
-export class Generator extends Functional {
+    js(writer) {
 
-    /* This is the concrete class for generator statements, which are also expressions. */
+        /* Render a function literal (not handling arrow grammar). */
 
-    prefix(parser, context) {
+        let name = empty;
 
-        /* This method parses generators, based on the given context (which may be an
-        instance of `Async` or `undefined`). */
+        // having assumed that `this.at(0)` is `null` (indicating an anonymous function), now
+        // check if it is an `Array` (indicating a computed name) or a `Variable` (indicating
+        // a regular named-function), and update `name` accordingly...
 
-        let blockType = context?.is(Async) ? ASYNCGENERATORBLOCK : GENERATORBLOCK;
+        if (this.at(0) instanceof Array) {
 
-        return this.gather(parser, blockType);
+            name = space + openBracket + this.at(0).at(0).js(writer) + closeBracket;
+
+        } else if (this.at(0) instanceof Variable) name = space + this.at(0).js(writer);
+
+        // prerender the keyword, parameters and the function body, then interpolate them into
+        // a literal, and return the result...
+
+        const keyword = "function" + (this.at(-1) ? asterisk : empty);
+        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
+        const block = writer.writeBlock(this.at(2));
+
+        return `${keyword}${name}(${params}) ${block}`;
     }
 }
 
@@ -1206,7 +1265,7 @@ export class Nullish extends GeneralOperator {
 export class Of extends InfixOperator {
 
     /* This concrete class implements the infix of-operator, which is also used by functions
-    and generators to prefix their (optional) arguments, as well as `for-of` loops. */
+    to prefix their (optional) arguments, as well as `for-of` loops. */
 
     LBP = 8;
 }
@@ -1516,7 +1575,7 @@ export class Subclass extends Header {
 
     prefix(parser) {
 
-        if (!parser.on(Of)) this.push(parser.gatherVariable());
+        if (not(parser.on(Of))) this.push(parser.gatherVariable());
 
         if (parser.on(Of)) {
 
@@ -1633,25 +1692,23 @@ export class Yield extends Keyword {
     LBP = 2;
     expression = true;
 
-    static blocks = [GENERATORBLOCK, ASYNCGENERATORBLOCK];
-
     prefix(parser) {
 
         /* Gather an *optional* expression, unless the parser is on `from`. In that case,
         gather the `from` keyword, and then gather the *required* expression. */
 
         if (parser.on(From)) { parser.advance(true); this.push(From, parser.gatherExpression()) }
-        else if (!parser.on(Terminator, Closer)) this.push(parser.gatherExpression());
+        else if (not(parser.on(Terminator, Closer))) this.push(parser.gatherExpression());
 
         return this;
     }
 
     validate(parser) {
 
-        /* Climb the block stack till something functional is found, then return `true` if
-        it is a block for a generator function, else `false`. */
+        /* Climb the block stack till something functional is found, then return `true`
+        if it is anything other than a class block, and `false` if it is one. */
 
-        return parser.check($ => $ > SIMPLEBLOCK, $ => Yield.blocks.includes($));
+        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 
     js(writer) {

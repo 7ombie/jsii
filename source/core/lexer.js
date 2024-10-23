@@ -1,3 +1,6 @@
+import { put, not } from "../core/helpers.js"
+import { LarkError } from "../core/error.js"
+
 import {
     closeParen,
     comma,
@@ -16,7 +19,6 @@ import {
     wordInitials,
 } from "../core/ascii.js"
 
-import { LarkError } from "../core/error.js"
 import { Operator, Terminator, Delimiter, Word } from "../user/concrete.js"
 import { NumberLiteral, StringLiteral } from "../user/concrete.js"
 
@@ -56,7 +58,7 @@ export function * lex(source, {dev=false}={}) {
 
         /* Gather while the next character is not in the given character set. */
 
-        while ((!at(characters)) && advance()) if (token) token.value += character;
+        while ((not(at(characters))) && advance()) if (token) token.value += character;
     }
 
     function read() { // api function
@@ -97,7 +99,7 @@ export function * lex(source, {dev=false}={}) {
         updating the line number. Note: As new logical lines can be created by commas,
         the function must also check for a proper newline. */
 
-        if (!on(newline)) return;
+        if (not(on(newline))) return;
 
         lastNewline = index;
         line++;

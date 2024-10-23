@@ -968,7 +968,7 @@ Objects defined with object literals have `null` prototypes by default:
 
 If you want a different prototype, use `as <Type>` inside the literal:
 
-    let oo = {as Object, x: 1}          -> const oo = {__proto__: Object, x: 1}
+    let oo = {as Object, x: 1}         -> const oo = {__proto__: Object, x: 1}
 
 Note: You can use the `as` prefix-operator anywhere within the object literal, but it's a syntax
 error to include more than one (really just as a sanity check).

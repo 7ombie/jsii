@@ -1,8 +1,10 @@
+import { put, not } from "../core/helpers.js"
 import { LarkError } from "../core/error.js"
+import { lex } from "../core/lexer.js"
+
 import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
 import { Header, Keyword, Operator, Terminator, Word } from "../user/concrete.js"
 import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
-import { lex } from "../core/lexer.js"
 
 export function * parse(source, {dev=false}={}) {
 
@@ -84,8 +86,8 @@ export function * parse(source, {dev=false}={}) {
         The first (required) argument is the binding power. The second (optional) argument can
         be anything, as it is simply passed to the `prefix` method of the first token in the
         expression, as a context. In practice, it is used by `Async` to contextualize the
-        lambda, function and generator statement that follows (`Async.prefix` checks the
-        next token begins a functional statement before it invokes this function). */
+        function statement that follows (`Async.prefix` checks the next token begins a
+        function literal before it invokes this function). */
 
         function validate(result) {
 
@@ -174,7 +176,7 @@ export function * parse(source, {dev=false}={}) {
 
         const [functional, braced] = [type > 0, on(OpenBrace)];
 
-        if (functional && !braced) throw new LarkError("required a body", token.location);
+        if (functional && not(braced)) throw new LarkError("required a body", token.location);
 
         blocktypeStack.push(type);
 
@@ -228,7 +230,7 @@ export function * parse(source, {dev=false}={}) {
         // labelled expressions that comprise the compound expression, while allowing for empty
         // expressions to permit empty assignees in destructuring assignments...
 
-        while (!on(Closer)) if (on(Comma)) {
+        while (not(on(Closer))) if (on(Comma)) {
 
              // this block handles an empty assignee...
 
@@ -258,9 +260,9 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherParameters() { // api function
 
-        /* This function gathers the parameters for a lambda, function or generator header
-        into a `results` array, which is returned. The results will all be valid expressions,
-        with no empty values, but are not otherwise validated (as function parameters).
+        /* This function gathers the parameters for a function into a `results` array, which
+        is returned. The results will all be valid expressions, with no empty values, but are
+        not otherwise validated (as function parameters).
 
         Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
         not be encountered until the parameters have already been parsed). */
@@ -338,10 +340,8 @@ export function * parse(source, {dev=false}={}) {
             + loop blocks = -1
             + simple blocks = 0
             + function blocks = 1
-            + generator blocks = 2
-            + async generator blocks = 3
-            + async function blocks = 4
-            + class blocks = 5
+            + async function blocks = 2
+            + class blocks = 3
 
         It is always possible to establish the validity of a statement by walking to
         the last related block, then checking whether its enumeration is within some

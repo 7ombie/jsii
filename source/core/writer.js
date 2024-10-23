@@ -1,6 +1,8 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core/ascii.js"
-import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
 import { parse } from "../core/parser.js"
+import { put } from "../core/helpers.js"
+
+import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
 
 export function * write(source, {dev=false}={}) {
 
