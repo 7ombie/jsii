@@ -134,7 +134,6 @@ import {
     Static,
     Subclass,
     SuperConstant,
-    ThisConstant,
     Throw,
     TrueConstant,
     Unless,
