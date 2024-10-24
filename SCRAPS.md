@@ -810,12 +810,12 @@ This works by comparing the left operand's prototype to the right operand's `pro
 the right operand is a `Function`, and directly comparing the left operand's prototype to the right
 operand otherwise, which compiles to this:
 
-    x is of T                       -> Object.getPrototypeOf(x) === (T?.ƥprototype ?? T)
+    x is of T                       -> Object.getPrototypeOf(x) === (T?.ƥisOf ?? T)
 
-The runtime binds `Function.prototype.ƥprototype` to a computed (instance) property that returns the
-value of the function's `prototype` property. So, when `T` in the example is a `Function` instance, we
-check its prototype, but in any other case, we just compare to `T` directly (so you can also check if
-`x` has some arbitray object as its prototype or just a `null` prototype).
+The runtime binds `Function.prototype.ƥisOf` to a computed (instance) property that returns the value
+of the function's `prototype` property. So, when `T` in the example is a `Function` instance, we check
+its prototype, but in any other case, we just compare to `T` directly (so you can also check if `x`
+has some arbitray object as its prototype or just a `null` prototype).
 
 The `put` Operator
 ------------------

@@ -504,7 +504,6 @@ export class Constant extends Word {
             case "null": return new NullConstant(location, value);
             case "random": return new RandomConstant(location, value);
             case "super": return new SuperConstant(location, value);
-            case "this": return new ThisConstant(location, value);
             case "true": return new TrueConstant(location, value);
             case "void": return new VoidConstant(location, value);
         }
@@ -540,7 +539,6 @@ export class Keyword extends Word {
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
             case "let": return new Let(location, value);
-            case "local": return new Local(location, value);
             case "pass": return new Pass(location, value);
             case "private": return new Private(location, value);
             case "return": return new Return(location, value);

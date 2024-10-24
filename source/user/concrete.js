@@ -1453,12 +1453,6 @@ export class Plus extends GeneralOperator {
 export class Private extends ClassQualifier {
 
     /* This contrete class implements private-statements, used inside classes. */
-
-    prefix(parser) {
-
-        if (parser.on(Static, Local)) return this.push(parser.gather());
-        else throw new LarkError("incomplete private-declaration", this.location);
-    }
 }
 
 export class Raise extends InfixOperator {
@@ -1611,11 +1605,6 @@ export class Subclass extends Header {
 export class SuperConstant extends Constant {
 
     /* This concrete class implements the `super` constant. */
-}
-
-export class ThisConstant extends Constant {
-
-    /* This concrete class implements the `this` constant. */
 }
 
 export class Throw extends CommandStatement {
