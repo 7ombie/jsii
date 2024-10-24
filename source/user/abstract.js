@@ -121,7 +121,6 @@ import {
     Plus,
     Private,
     Raise,
-    RandomConstant,
     Reserved,
     Return,
     RSHIFT,
@@ -501,7 +500,6 @@ export class Constant extends Word {
             case "Infinity": return new InfinityConstant(location, value);
             case "NaN": return new NaNConstant(location, value);
             case "null": return new NullConstant(location, value);
-            case "random": return new RandomConstant(location, value);
             case "super": return new SuperConstant(location, value);
             case "true": return new TrueConstant(location, value);
             case "void": return new VoidConstant(location, value);

@@ -1468,12 +1468,6 @@ export class Raise extends InfixOperator {
     }
 }
 
-export class RandomConstant extends Constant {
-
-    /* This concrete class implements the `random` constant, which always evaluates to a
-    random `Number` between `0` and `1`, compiling to a `Math.random` invocation. */
-}
-
 export class Reserved extends Word {
 
     /* This class implements reserved words, which always make it as far as the parser,

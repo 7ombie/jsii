@@ -69,7 +69,6 @@ export const constants = [
     "Infinity",
     "NaN",
     "null",
-    "random",
     "super",
     "true",
     "void",
