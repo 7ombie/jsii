@@ -108,6 +108,6 @@ throw Foo("spam and eggs")
 dev if x { Y }
 dev 1 + 2 * 3 + 3
 pack new Foo(x, y, z)
-seal new Bar(spam, eggs)
+seal new Bar(spam, eggs) + foo
 freeze 1 + 2 when x * y else spam + eggs
 (1, 2, 3, seal 4)

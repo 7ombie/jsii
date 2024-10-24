@@ -8,12 +8,12 @@ import {
     asterisk,
     backslash,
     backtick,
+    bang,
     bases,
     binary,
     closeBrace,
     closeBracket,
     closeParen,
-    colon,
     comma,
     decimal,
     dollar,
@@ -1119,18 +1119,27 @@ export class Is extends GeneralOperator {
 
     js(writer) {
 
+        /* Render an `is` or `is not` infix-operation, or an `is packed`, `is not packed`,
+        `is sealed`, `is not sealed`, `is frozen` or `is not frozen` suffix-operation.
+        
+        Note: All of the operators that begin with `is` return a bool, so it's unlikely that
+        they would ever form a standalone expression-statement (which is why we ignore the
+        context of the `writer`).
+
+        TODO: Implement the `is of` and `is not of` operators (which also return bools). */
+
         if (this.at(1).is(Not)) {
 
             if (this.at(2).is(Packed)) return `Object.isExtensible(${this.at(0).js(writer)})`;
-            if (this.at(2).is(Sealed)) return `!(Object.isSealed(${this.at(0).js(writer)}))`;
-            if (this.at(2).is(Frozen)) return `!(Object.isFrozen(${this.at(0).js(writer)}))`;
+            if (this.at(2).is(Sealed)) return `(!Object.isSealed(${this.at(0).js(writer)}))`;
+            if (this.at(2).is(Frozen)) return `(!Object.isFrozen(${this.at(0).js(writer)}))`;
 
             const [value, type] = [writer.register(this.at(0)), writer.register(this.at(2))];
 
-            return `!(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type})`;
+            return `(!(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type}))`;
         }
 
-        if (this.at(1).is(Packed)) return `!(Object.isExtensible(${this.at(0).js(writer)}))`;
+        if (this.at(1).is(Packed)) return `(!Object.isExtensible(${this.at(0).js(writer)}))`;
         if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(writer)})`;
         if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(writer)})`;
 

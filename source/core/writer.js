@@ -26,7 +26,7 @@ export function * write(source, {dev=false}={}) {
         for (const statement of statements) if (statement.compile) {
 
             const terminated = statement instanceof Header || statement instanceof Label;
-            const source = indentation + statement.js(api) + (terminated ? empty : semicolon);
+            const source = indentation + statement.js(api, true) + (terminated ? empty : semicolon);
 
             yield * preambles;
             yield source;
