@@ -941,6 +941,11 @@ export class Freeze extends PrefixOperator {
     of `Object.freeze`. */
 
     RBP = 1;
+
+    js(writer) {
+
+        return `Object.freeze(${this.at(0).js(writer)})`;
+    }
 }
 
 export class From extends Keyword {
@@ -1392,14 +1397,20 @@ export class OpenParen extends Caller {
 
     js(writer) {
 
-        /* Output a grouped expression or an invocation (using the `js` method inherited from
-        the `Opener` base class, unless the `value` string is "__proto__". In which case, the
-        first operand gets expanded to a prototype declaration.
-        
-        Note: It is a syntax error to have more than one expression in a prototype expression. */
+        /* Output a grouped expression or an invocation. */
 
-        if (this.value === "__proto__") return this.value + colon + space + this.at(0).js(writer);
-        else return super.js(writer, openParen, closeParen);
+        if (this.at(1) === OpenParen) { // invocation...
+
+            const args = this.operands.slice(2).map(operand => operand.js(writer));
+
+            return `${this.at(0).js(writer)}(${args.join(comma + space)})`;
+
+        } else { // grouped expression...
+
+            const operands = this.operands.map(operand => operand.js(writer));
+
+            return `(${operands.join(comma + space)})`;
+        }
     }
 }
 
@@ -1409,6 +1420,11 @@ export class Pack extends PrefixOperator {
     of `Object.preventExtensions`. */
 
     RBP = 1;
+
+    js(writer) {
+
+        return `Object.preventExtensions(${this.at(0).js(writer)})`;
+    }
 }
 
 export class Packed extends Operator {
@@ -1522,6 +1538,11 @@ export class Seal extends PrefixOperator {
     of `Object.seal`. */
 
     RBP = 1;
+
+    js(writer) {
+
+        return `Object.seal(${this.at(0).js(writer)})`;
+    }
 }
 
 export class Sealed extends Operator {
@@ -1667,6 +1688,11 @@ export class When extends Operator {
         else throw new LarkError("incomplete when-operation", this.location);
 
         return this.push(parser.gatherExpression(this.LBP - 1));
+    }
+
+    js(writer) {
+
+        return `${this.at(1).js(writer)} ? ${this.at(0).js(writer)} : ${this.at(2).js(writer)}`;
     }
 }
 

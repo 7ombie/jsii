@@ -307,9 +307,8 @@ Lark provides a `json` prefix operator for serializing and deserializing JSON:
 
     json <expression>
 
-When the operand is a `String` (any kind of string), the operator deserializes it to the encoded
-value (typically an object). In all other cases, the operator serializes to operand to a string
-of JSON text.
+When the operand is a string, the operator deserializes it to the encoded value (typically an
+object). In all other cases, the operator serializes to operand to a JSON text string.
 
 Note: The above description is overly optimistic. The `json` operator relies on `JSON.stringify`
 and `JSON.parse`, which can both choke on invalid operands.
@@ -1174,21 +1173,7 @@ bodies always start with an empty line. For example:
     }
 
 In short, prefer longer lines that do more, while also using more vertical whitespace to keep
-things from getting too noisey.
-
-You should also leave a line before and after docstrings:
-
-    let walk = generator statements {
-
-        "Take a statement iterator, iterate over it, and convert each statement to
-        JavaScript source, adding semi-colons as required."
-
-        for statement in statements {
-
-            if statement is Header or statement is Label yield indentation + statement.js(api)
-            else yield indentation + statement.js(api) + semicolon
-        }
-    }
+things from getting too noisey. You should also leave a line before and after docstrings.
 
 Note: Nobody needs two whitelines.
 

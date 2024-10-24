@@ -787,6 +787,11 @@ export class PrefixOperator extends Operator {
 
         return this.push(parser.gatherExpression(this.RBP));
     }
+
+    js(writer) {
+
+        return `${this.spelling} ${this.at(0).js(writer)}`;
+    }
 }
 
 export class InfixOperator extends Operator {
