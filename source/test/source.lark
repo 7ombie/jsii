@@ -1,4 +1,5 @@
-function f { return true }
+function f { return true }.bind(fish)
+
 function j of x, y, z { yield false }
 async function spam { return 1 }
 async function of args { yield 1 }

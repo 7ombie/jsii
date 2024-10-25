@@ -13,6 +13,7 @@ import {
     binary,
     closeBrace,
     closeBracket,
+    closeParen,
     comma,
     decimal,
     dollar,
@@ -582,7 +583,7 @@ export class Await extends CommandStatement {
 
         /* This method gathers await-expressions. */
 
-        return this.push(parser.gatherExpression(this.LBP));
+        return this.push(parser.gatherExpression(this.RBP));
     }
 
     validate(parser) {
@@ -1471,10 +1472,11 @@ export class Raise extends InfixOperator {
     associative. */
 
     LBP = 13;
+    RBP = 12;
 
     infix(parser, left) {
 
-        return this.push(left, parser.gatherExpression(this.LBP - 1));
+        return this.push(left, parser.gatherExpression(this.RBP));
     }
 }
 
@@ -1733,6 +1735,7 @@ export class When extends Operator {
     which is right-associative. */
 
     LBP = 2;
+    RBP = 1;
 
     infix(parser, left) {
 
@@ -1741,7 +1744,7 @@ export class When extends Operator {
         if (parser.on(Else)) parser.advance();
         else throw new LarkError("incomplete when-operation", this.location);
 
-        return this.push(parser.gatherExpression(this.LBP - 1));
+        return this.push(parser.gatherExpression(this.RBP));
     }
 
     js(writer) {

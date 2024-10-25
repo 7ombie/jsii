@@ -168,7 +168,6 @@ export class Token {
     the helper methods. */
 
     LBP = 0;                // left-binding power (a generalization of precedence, per Pratt)
-    RBP = 0;                // right-binding-power (prefix and infix precedence often differs)
     operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
     expression = false;     // whether the token forms a node which is a valid expression
@@ -183,6 +182,24 @@ export class Token {
 
         return this.value;
     }
+
+    get RBP() {
+
+        /* The parser uses the `LBP` property (*left binding power*) for establishing operator
+        precedence. The parser is not aware of the `RBP` property (the *right binding power*).
+        The `RBP` property is passed to (ultimately recursive) invocations of the Parser API
+        methods.
+
+        This computed property returns `LBP` (as the value of `RPB`), as they're often the same
+        value. It is often overridden (usually just with a stored property) for various reasons,
+        mainly when an operator has different precedence, depending on whether it's a prefix or
+        infix operator (infix operators pass `LBP`, while prefix operators pass `RBP`). It is
+        also by right-associative operators (where `RBP = LBP - 1`).
+        
+        TODO: Consider ways of refactoring this so it makes more sense (it's part of the API). */
+
+        return this.LBP;
+    };
 
     constructor(location, value=empty) {
 
@@ -866,10 +883,11 @@ export class AssignmentOperator extends InfixOperator {
     associative. */
 
     LBP = 2;
+    RBP = 1;
 
     infix(parser, left) {
 
-        return this.push(left, parser.gatherExpression(this.LBP - 1));
+        return this.push(left, parser.gatherExpression(this.RBP));
     }
 }
 

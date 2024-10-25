@@ -258,7 +258,7 @@ export function * parse(source, {dev=false}={}) {
         return results;
     }
 
-    function gatherParameters() {
+    function gatherParameters() { // api function
 
         /* This function gathers the parameters for a function into a `results` array, which
         is returned. The results will all be valid expressions, with no empty values, but are
@@ -330,8 +330,8 @@ export function * parse(source, {dev=false}={}) {
         /* This function allows statements (like `return` and `break`) that can only appear in
         specific contexts to establish whether they are in a valid context.
 
-        If no arguments are given, the function returns `true` is the `blocktypeStack` is empty,
-        indicating that the parser is at the to level, and `false` otherwise.
+        If no arguments are given, the function returns `true` if the `blocktypeStack` is empty
+        (indicating that the parser is at the top level), and `false` otherwise.
 
         When two or three arguments are givenm the function walks the nonlocal `blocktypeStack`
         backwards (from innermost to outermost), and calls the `doStop` callback on each type
@@ -351,8 +351,8 @@ export function * parse(source, {dev=false}={}) {
             + class blocks = 3
 
         It is always possible to establish the validity of a statement by walking to the last
-        related block, then checking whether its enumeration is within some range,allowing for
-        use of a `fallback` argument when the top-level is reached.
+        related block, then checking whether its enumeration is within some range, assuming a
+        `fallback` argument is returned when the top-level is reached.
 
         Note: Reaching the top would always result in `false`, except that top-level-await is
         valid (in modules), so the fallback must be `true` in that case. */
