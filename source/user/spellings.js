@@ -61,11 +61,8 @@ export const operators = [
     ">>>=",
 ];
 
-export const constants = [
-    "all",
-    "default",
+export const constants = [ // TODO: add `root`
     "false",
-    "global",
     "Infinity",
     "NaN",
     "null",
@@ -99,6 +96,7 @@ export const keywords = [
     "static",
     "subclass",
     "throw",
+    "unit",
     "unless",
     "until",
     "var",
@@ -110,6 +108,7 @@ export const keywords = [
 
 export const reserved = [
     "abstract",
+    "all",
     "arguments",
     "at",
     "auto",
@@ -121,6 +120,7 @@ export const reserved = [
     "construct",
     "constructor",
     "contra",
+    "default",
     "define",
     "emit",
     "enum",
@@ -131,6 +131,7 @@ export const reserved = [
     "find",
     "generator",
     "get",
+    "global",
     "go",
     "ignore",
     "inherit",

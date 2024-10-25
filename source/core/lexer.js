@@ -70,8 +70,8 @@ export function * lex(source, {dev=false}={}) {
 
     function on(characters) { // api function
 
-        /* This function takes a string, representing a character or character set,
-        and returns `true` if the current character is in the set, else `false`. */
+        /* This function takes a string, representing a character or character set, and returns
+        `true` if the current character is in the set, else `false`. */
 
         return characters.includes(character);
     }

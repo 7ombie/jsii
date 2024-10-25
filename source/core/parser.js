@@ -258,11 +258,13 @@ export function * parse(source, {dev=false}={}) {
         return results;
     }
 
-    function gatherParameters() { // api function
+    function gatherParameters() {
 
         /* This function gathers the parameters for a function into a `results` array, which
         is returned. The results will all be valid expressions, with no empty values, but are
         not otherwise validated (as function parameters).
+
+        Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 
         Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
         not be encountered until the parameters have already been parsed). */
@@ -312,8 +314,11 @@ export function * parse(source, {dev=false}={}) {
 
     function on(...Classes) { // api function
 
-        /* Take any number of `Token` subclasses, and return the (truthy) subclass of the
-        current `token` if it is included amongst the arguments, else return `false`. */
+        /* Optionally take one or more `Token` subclasses, if the current `token` is one of
+        them, return it. If none of the subclasses match, return `false`. If no arguments
+        are given, the function acts as a getter, just returning the current `token`. */
+
+        if (Classes.length === 0) return token;
 
         for (const Class of Classes) if (token instanceof Class) return Class;
 
@@ -322,16 +327,18 @@ export function * parse(source, {dev=false}={}) {
 
     function check(doStop, isValid, fallback=false) { // api function
 
-        /* This function allows statements (like `return` and `break`) that can only
-        appear in specific contexts to establish whether they are in a valid context.
+        /* This function allows statements (like `return` and `break`) that can only appear in
+        specific contexts to establish whether they are in a valid context.
 
-        The process walks the nonlocal `blocktypeStack` backwards (from innermost to
-        outermost), and calls the `doStop` callback on each type to establish when
-        to stop (it should return `true` to stop, and `false` otherwise).
+        If no arguments are given, the function returns `true` is the `blocktypeStack` is empty,
+        indicating that the parser is at the to level, and `false` otherwise.
 
-        If the loop stops, the `isValid` callback is invoked on the type that was
-        stopped on, and the result of that invocation (which is expected to be a
-        bool) is returned.
+        When two or three arguments are givenm the function walks the nonlocal `blocktypeStack`
+        backwards (from innermost to outermost), and calls the `doStop` callback on each type
+        to establish when to stop (it should return `true` to stop, and `false` otherwise).
+
+        If the loop stops, the `isValid` callback is invoked on the type that was stopped on,
+        and the result of that invocation (which is expected to be a bool) is returned.
 
         The `fallback` is returned when the stack is exhausted without a match.
 
@@ -343,12 +350,14 @@ export function * parse(source, {dev=false}={}) {
             + async function blocks = 2
             + class blocks = 3
 
-        It is always possible to establish the validity of a statement by walking to
-        the last related block, then checking whether its enumeration is within some
-        range, falling back to a bool if the top-level is reached.
+        It is always possible to establish the validity of a statement by walking to the last
+        related block, then checking whether its enumeration is within some range,allowing for
+        use of a `fallback` argument when the top-level is reached.
 
-        Note: Reaching the top would always result in `false`, except top-level-await
-        is valid (in modules), so the fallback must be `true` in that case. */
+        Note: Reaching the top would always result in `false`, except that top-level-await is
+        valid (in modules), so the fallback must be `true` in that case. */
+
+        if (arguments.length === 0) return blocktypeStack.length === 0;
 
         const stack = blocktypeStack;
         const top = stack.length - 1;

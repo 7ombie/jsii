@@ -38,7 +38,6 @@ import { CLASSBLOCK } from "../core/blocktypes.js"
 import { constants, keywords, operators, reserved } from "../user/spellings.js"
 
 import {
-    AllConstant,
     And,
     AND,
     ARSHIFT,
@@ -71,7 +70,6 @@ import {
     Continue,
     Debug,
     Delete,
-    DefaultConstant,
     Dev,
     Do,
     Dot,
@@ -87,7 +85,6 @@ import {
     From,
     Frozen,
     FunctionLiteral,
-    GlobalConstant,
     Greater,
     If,
     Import,
@@ -135,6 +132,7 @@ import {
     SuperConstant,
     Throw,
     TrueConstant,
+    Unit,
     Unless,
     Until,
     Var,
@@ -492,11 +490,7 @@ export class Constant extends Word {
         /* Return the appropriate subclass, based on the value. */
 
         switch (value) {
-
-            case "all": return new AllConstant(location, value);
-            case "default": return new DefaultConstant(location, value);
             case "false": return new FalseConstant(location, value);
-            case "global": return new GlobalConstant(location, value);
             case "Infinity": return new InfinityConstant(location, value);
             case "NaN": return new NaNConstant(location, value);
             case "null": return new NullConstant(location, value);
@@ -542,6 +536,7 @@ export class Keyword extends Word {
             case "static": return new Static(location, value);
             case "subclass": return new Subclass(location, value);
             case "throw": return new Throw(location, value);
+            case "unit": return new Unit(location, value);
             case "unless": return new Unless(location, value);
             case "until": return new Until(location, value);
             case "var": return new Var(location, value);
@@ -593,16 +588,14 @@ export class Declaration extends Keyword {
 
     prefix(parser) {
 
-        this.push(parser.gatherExpression());
+        if (parser.on(Unit)) return this.push(parser.gather(0, this));
+        else throw Error("NOT IMPLEMENTED YET"); // TODO
+    }
 
-        while (parser.on(Comma)) {
+    js(writer) {
 
-            parser.advance();
-
-            this.push(parser.gatherExpression());
-        }
-
-        return this;
+        if (this.at(0) instanceof Unit) return this.at(0).js(writer);
+        else throw Error("NOT IMPLEMENTED YET"); // TODO
     }
 }
 

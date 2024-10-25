@@ -5,6 +5,7 @@ import { put, not, iife } from "../core/helpers.js"
 import { LarkError } from "../core/error.js"
 
 import {
+    alphas,
     asterisk,
     backslash,
     backtick,
@@ -60,6 +61,7 @@ import {
     Token,
     Word
 } from "../user/abstract.js"
+import { parse } from "../core/parser.js"
 
 export {
     ArrowOperator,
@@ -90,17 +92,24 @@ export {
 
 export class NumberLiteral extends Terminal {
 
-    /* This is the concrete class for all number-literals. It is also imported by the Lexer Stage
-    for number tokenization. */
+    /* This is the concrete class for all number-literals (integers and floats, with or without a
+    unit-suffix). It is also imported by the Lexer Stage for number tokenization.
+
+    This class defines an associated-type, named `Unit` that is used for unit-suffixes (as in `1n`
+    and `22.4KHz`). Units must immediately follow the last digit of a regular number literal, and
+    when present, always consist of one or more alphas. */
 
     expression = true;
+
+    static Unit = class extends Terminal {}
 
     static * lex(...args) { yield new NumberLiteral(...args) }
 
     constructor(lexer, location) {
 
-        /* This constructor tokenizes a number literal, ensuring that dots are only included when
-        they are valid (permitting number literals to be followed by a dot operator). */
+        /* This generator tokenizes a number literal, ensuring that dots are only included when
+        they are valid (permitting number literals to be followed by a dot-operator without any
+        parens). */
 
         super(location, lexer.read());
 
@@ -112,49 +121,63 @@ export class NumberLiteral extends Terminal {
 
             var [digits, isDecimal] = [lexer.on("xX") ? hexadecimal : binary, false];
 
-        } else var digits = decimal, isDecimal = true;
+        } else var [digits, isDecimal] = [decimal, true];
 
         // gather as many digits as possible from the appropriate set...
 
         lexer.gatherWhile(digits, this);
 
         // validate the value so far, requiring that it does not start with a zero, unless it is
-        // the start of a base-prefix, or it is just a single zero, as well as checking that it
-        // is not just a a base-prefix without any significant digits...
+        // the start of a base-prefix, or it is just a single zero, as well as checking that it's
+        // not *only* a base-prefix (without any significant digits)...
 
         if (isDecimal && this.value[0] === "0" && this.value !== "0") { // leading zeros...
 
             throw new LarkError("leading zeros are invalid", location);
         }
 
-        if (not(isDecimal) && this.value.length === 2) { // base-prefix without (valid) digits...
+        if (not(isDecimal) && this.value.length === 2) { // incomplete base-prefix...
 
             if (lexer.at(decimal)) throw new LarkError("invalid digit for notation", location);
             else throw new LarkError("incomplete base-prefix", location);
         }
 
-        // finally, check for a dot, and handle it if present...
+        // if a dot is present and legal, continue to lex this number literal using float-notation,
+        // complaining if a dot is present but illegal, and doing nothing if there's no dot...
 
         if (lexer.at(dot)) {
-
-            // if a decimal point is currently legal (the literal uses decimal notation and the
-            // literal did not start with a dot), and should be considered part of the literal
-            // (at least one decimal digit immediately follows the dot), then gather the dot
-            // and the digits that follow it, otherwise complain (as only decimals use dots
-            // in javascript)...
 
             if (isDecimal && this.value[0] !== dot && lexer.peek(+2, decimal)) {
 
                 this.value += lexer.advance();
                 lexer.gatherWhile(digits, this);
-            
+
             } else throw new LarkError("fractional numbers must use decimal notation", location);
+        }
+
+        // finally, check for a unit, and when present, store it in the `operands` array as an
+        // instance of the associated type `NumberLiteral.Unit`...
+
+        if (lexer.at(alphas)) {
+
+            const unit = new NumberLiteral.Unit(location, empty);
+
+            lexer.gatherWhile(alphas, unit);
+            this.push(unit);
         }
     }
 
     prefix(_) { return this }
 
     validate(_) { return true }
+
+    js(writer) {
+
+        /* Render a number literal, and if it has a unit, wrap it in a unit-invocation. */
+
+        if (this.operands.length === 0) return super.js(writer);
+        else return `Number[Symbol.for(\`ƥu.${this.at(0).js(writer)}\`)].bind(${super.js(writer)})`;
+    }
 }
 
 export class StringLiteral extends Terminal {
@@ -391,14 +414,6 @@ export class TextLiteral extends StringLiteral {
 
         return prefix + backtick + string + backtick;
     }
-}
-
-export class AllConstant extends Constant {
-
-    spelling = "*";
-
-    /* This concrete class implements the `all` constant, used instead of an asterisk
-    in import and export statements. */
 }
 
 export class And extends InfixOperator {
@@ -743,12 +758,6 @@ export class Debug extends Keyword {
     prefix(_) { return this }
 }
 
-export class DefaultConstant extends Constant {
-
-    /* This concrete class implements the `default` constant, used by import and export
-    statements. */
-}
-
 export class Delete extends CommandStatement {
 
     /* This concrete class implements the `delete` operator, exactly like JavaScript. */
@@ -1045,12 +1054,6 @@ export class FunctionLiteral extends Keyword {
 
         return `${keyword}${name}(${params}) ${block}`;
     }
-}
-
-export class GlobalConstant extends Constant {
-
-    /* This concrete class implements the `global` constant, which compiles to
-    `globalThis`. */
 }
 
 export class Greater extends InfixOperator {
@@ -1626,6 +1629,67 @@ export class Throw extends CommandStatement {
 export class TrueConstant extends Constant {
 
     /* This concrete class implements the `true` constant. */
+}
+
+export class Unit extends Terminal {
+
+    /* This concrete class implements `unit` declarations, which register number literal units in
+    the global symbol registry, using the Lark units-namespace (symbol keys beginning with `ƥu.`).
+    The value is always expected to be a function, whether its assigned or defined by a block. */
+
+    prefix(parser, context=null) {
+
+        /* Parse a `unit` statement, which either registers a function as a numeric unit. When the
+        context exists (it's not the default context), it will be an instance of either `Let` or
+        `Var` (indicating a declaration as well). */
+
+        this.push(context);
+
+        if (parser.on(Variable)) this.push(parser.advance(true));
+        else throw new LarkError("incomplete unit definition", this.location);
+
+        if (parser.on(Assign)) return this.push(parser.advance(true), parser.gatherExpression());
+        else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
+    }
+
+    validate(parser) { return parser.check() }
+
+    js(writer) {
+
+        /* Render a unit declaration, preceded by a `let` or `var` preamble when one of the two
+        was used as a qualifier (to declare the function as well as register it). */
+
+        const name = this.at(1).js(writer);
+
+        if (this.at(2) instanceof Assign) {
+
+            const expression = this.at(3).js(writer);
+
+            if (this.at(0) instanceof Declaration) {
+
+                const declarator = this.at(0) instanceof Let ? "const" : "let";
+
+                writer.preamble(`${declarator} ${name} = ${expression}`);
+
+                return `Number[Symbol.for(\`ƥu.${name}\`)] = ${name}`;
+
+            } else return `Number[Symbol.for(\`ƥu.${name}\`)] = ${expression}`;
+
+        } else {
+
+            const block = writer.writeBlock(this.at(2));
+
+            if (this.at(0) instanceof Declaration) {
+
+                const declarator = this.at(0) instanceof Let ? "const" : "let";
+
+                writer.preamble(`${declarator} ${name} = function() ${block}`);
+
+                return `Number[Symbol.for(\`ƥu.${name}\`)] = ${name}`;
+
+            } else return `Number[Symbol.for(\`ƥu.${name}\`)] = function() ${block}`;
+        }
+    }
 }
 
 export class Unless extends PredicatedBlock {

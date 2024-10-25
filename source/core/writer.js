@@ -74,10 +74,18 @@ export function * write(source, {dev=false}={}) {
         return register;
     }
 
+    function preamble(string, terminate=true) { // api function
+
+        /* Take a preamble string and an optional bool. Push the string to the `preambles` array,
+        concatenating a semicolon to the end if `terminated` is truthy (the default). */
+
+        preambles.push(string + (terminate ? semicolon : empty));
+    }
+
     // gather the api functions and flags into the api object, initialize the internal state, then
     // walk the parse tree, yielding the results (as strings), one top-level statement at a time...
 
-    const api = {register, write, writeBlock, dev};
+    const api = {preamble, register, write, writeBlock, dev};
 
     let indentation = empty;
     let registerCounter = 0;
