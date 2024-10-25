@@ -167,7 +167,7 @@ export class Token {
     and are individually documented below (within the default implementations), along with
     the helper methods. */
 
-    LBP = 0;                // left-binding power (a generalization of precedence, per Pratt)
+    LBP = 0;                // left-binding-power (described by the `get RBP` method below)
     operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
     expression = false;     // whether the token forms a node which is a valid expression
@@ -185,18 +185,32 @@ export class Token {
 
     get RBP() {
 
-        /* The parser uses the `LBP` property (*left binding power*) for establishing operator
-        precedence. The parser is not aware of the `RBP` property (the *right binding power*).
-        The `RBP` property is passed to (ultimately recursive) invocations of the Parser API
-        methods.
+        /* Every token defines or inherits `LBP` and `RBP` properties (short for *left-binding-
+        power* and *right-binding-power* respectively), refered to hereafter as *LBP* and *RBP*.
 
-        This computed property returns `LBP` (as the value of `RBP`), as they're often the same
-        value. It is often overridden (usually just with a stored property) for various reasons,
-        mainly when an operator has different precedence, depending on whether it's a prefix or
-        infix operator (infix operators pass `LBP`, while prefix operators pass `RBP`). It is
-        also used by right-associative operators (where `RBP = LBP - 1`).
+        LBP is required by the Parser Stage API, and is used by Pratt's Algorithm to implement
+        operator precedence. RBP is only used within this object hierarchy (it is not required
+        by any API), and only exists because many token types need two binding powers, and it
+        can be useful to name them.
 
-        TODO: Consider ways of refactoring this so it makes more sense (it's part of the API). */
+        Tokens that should not have any precedence (keywords, terminals, terminators etc) must
+        have an LBP of zero, so they can just inherit their binding powers from this class.
+
+        Tokens that implement an `infix(parser)` method (infix and suffix operators) must set
+        LBP to the precedence of that operator, and will *almost* always pass the same value
+        in recursive calls to the Parser Stage API (when gathering their righthand operand).
+        The note below the following paragraph describes the exception.
+
+        Tokens that implement a `prefix(parser)` method (prefix operators) are not required to
+        set a binding power property, but will need to pass the precedence of the operator in
+        recursive calls to the Parser Stage API. RBP is often used to store that value, as
+        tokens can implement both prefix operators and infix/suffix operators.
+
+        Note: RBP is also used by right-associative operators (that do not have a prefix form),
+        just as a convenient place to store `LBP - 1` (as per Pratt's Algorithm).
+
+        This computed property returns LBP as the value for RBP, as they're often the same value.
+        Subclasses can simply override this property (usually just using a stored property). */
 
         return this.LBP;
     };
