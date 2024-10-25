@@ -190,12 +190,12 @@ export class Token {
         The `RBP` property is passed to (ultimately recursive) invocations of the Parser API
         methods.
 
-        This computed property returns `LBP` (as the value of `RPB`), as they're often the same
+        This computed property returns `LBP` (as the value of `RBP`), as they're often the same
         value. It is often overridden (usually just with a stored property) for various reasons,
         mainly when an operator has different precedence, depending on whether it's a prefix or
         infix operator (infix operators pass `LBP`, while prefix operators pass `RBP`). It is
-        also by right-associative operators (where `RBP = LBP - 1`).
-        
+        also used by right-associative operators (where `RBP = LBP - 1`).
+
         TODO: Consider ways of refactoring this so it makes more sense (it's part of the API). */
 
         return this.LBP;
