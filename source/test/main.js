@@ -11,5 +11,5 @@ window.source = await result.text();
 console.log("SOURCE...\n---------\n\n" + source);
 
 // for (const token of lex(source)) console.log("token:", token);
-for (const statement of parse(source, {dev: true})) console.log("statement:", statement);
+// for (const statement of parse(source, {dev: true})) console.log("statement:", statement);
 for (const string of write(source, {dev: true})) console.log(string);

@@ -40,6 +40,21 @@ with inline blocks:
 
     if valid(candidate) { count += 1, yield candidate }
 
+Hoisting
+--------
+
+Lark does not hoist anything, ever.
+
+Declarations (using `let` and `var`) compile to `const` and `let` (respectively), which are not
+hoisted (by JavaScript).
+
+Function literals (including class literals) are *always* expressions, even when the statement
+begins with the corresponding (operative) keyword. As a result, they are never hoisted either.
+
+As a consequence, naming a function (or class) simply sets the `name` property (whether the name
+is hardcoded or computed at runtime). It will never declare a variable of the same name. You can
+only declare names using `let` or `var`.
+
 Keywords
 --------
 
@@ -1589,3 +1604,9 @@ You can also use `import <url>` to import a module, without importing anything *
 module:
 
     import ./runtime.js
+
+asm multiply of x: i32, y: i32 returns i32 {
+    return x * y
+}
+
+put multiply(1, 1)

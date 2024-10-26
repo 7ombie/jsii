@@ -309,10 +309,12 @@ export class StringLiteral extends Terminal {
 
     infix(parser, prefix) {
 
-        /* Take a prefix expression, push it to the `operands` array, then call `prefix(parser)`
-        to parse the actual string literal. This exists to support tagged-literals. */
+        /* Take a prefix expression, set the `initial` property to `false`, push the prefix to the
+        `operands` array, then call `prefix(parser)` to parse the actual string literal. This
+        exists to support tagged-literals. */
 
-        this.push(prefix, null);
+        this.initial = false;
+        this.push(prefix);
 
         return this.prefix(parser);
     }
@@ -321,22 +323,21 @@ export class StringLiteral extends Terminal {
 
     js(writer) {
 
-        /* Generate a template literal from the various parts of the string literal, reproducing
-        the interpolations, and possibly including a tag-expression.
-        
-        Note: Text literals have their own `js(writer)` method. */
+        /* Generate a template literal from the various parts of the *string* literal (text
+        literals have their own `js(writer)` method), reproducing the interpolations, and
+        possibly including a tag-expression. */
 
-        if (this.at(1) === null) { // tagged string literal...
+        if (this.initial) { // plain string literal...
+
+            var prefix = empty;
+            var string = this.value;
+
+        } else { // tagged string literal...
 
             var prefix = this.at(0).js(writer)
             var string = this.value;
 
-            this.operands = this.operands.slice(2);
-
-        } else { // plain string literal...
-
-            var prefix = empty;
-            var string = this.value;
+            this.operands = this.operands.slice(1);
         }
 
         for (const operand of this.operands) {
@@ -379,17 +380,17 @@ export class TextLiteral extends StringLiteral {
         // `string` that the rest of the tokens will be concatented to, as well as the appropriate
         // slice of the `operands` array (which depends on whether the literal is tagged or not)...
 
-        if (this.at(1) === null) { // tagged text literal...
-
-            var prefix = this.at(0).js(writer)
-            var string = strip(this.value);
-
-            this.operands = this.operands.slice(2);
-
-        } else { // plain text literal...
+        if (this.initial) { // plain text literal...
 
             var prefix = empty;
             var string = strip(this.value);
+
+        } else { // tagged text literal...
+
+            var prefix = this.at(0).js(writer);
+            var string = strip(this.value);
+
+            this.operands = this.operands.slice(1);
         }
 
         // remove superfluous leading newline (from replacing indentation with a newline)...
@@ -697,14 +698,13 @@ export class Label extends InfixOperator {
         before nullifying the label. Otherwise, just treat the colon like a normal infix
         operator. */
 
-        if (parser.on(Do, Else, For, If, Unless, Until, While)) { // a label...
+        if (parser.on(If, Else, While, For)) { // a label...
 
-            if (parser.label(prefix) === null) parser.label(prefix, parser.on(For, Until, While));
+            if (parser.label(prefix) === null) parser.label(prefix, parser.on(For, While));
             else throw new LarkError("cannot reassign an active label", prefix.location);
 
             this.expression = false;
             this.push(prefix, parser.gather());
-
             parser.label(prefix, null);
 
         } else super.infix(parser, prefix); // a key-value pair
@@ -844,6 +844,8 @@ export class Else extends PredicatedBlock {
 
     js(writer) {
 
+        /* Render an `else` or an `else if` statement. */
+
         if (this.at(0) === If) return `else ${this.at(1).js(writer)}`;
         else return `else ${writer.writeBlock(this.at(0))}`;
     }
@@ -975,15 +977,56 @@ export class FunctionLiteral extends Keyword {
     LBP = 1;
     expression = true;
 
+    static isGenerator(block) {
+
+        /* Iterates over an array of statements, recurring on each token or block in the `operands`
+        array, but ignoring anything functional, looking for `yield` (or `yield from`) expressions
+        that belong to the current function. Returns `true` when `yield` or `yield from` is found,
+        and `false` otherwise (in practice, indicating whether the caller is a generator). */
+
+        for (const statement of block) {
+
+            if (statement instanceof Yield) return true;
+
+            if (statement instanceof Array) {
+                
+                if (FunctionLiteral.isGenerator(statement)) return true;
+                else continue;
+            }
+
+            if (not(statement instanceof Token)) continue;
+
+            if (statement.is(ArrowOperator, FunctionLiteral, Class)) continue;
+
+            for (const operand of statement.operands) {
+
+                if (operand instanceof Yield) return true;
+
+                if (operand instanceof Array) {
+
+                    if (FunctionLiteral.isGenerator(operand)) return true;
+                    else continue;
+                }
+
+                if (operand instanceof Token) {
+
+                    if (FunctionLiteral.isGenerator(operand.operands)) return true;
+                    else continue;
+                }
+            }
+
+        } return false;
+    }
+
     prefix(parser, context) {
 
-        /* This method parses functions, based on the given context (either `Async` or
-        `undefined`, with the later implying no qualifier). */
+        /* This method parses functions, based on the given context (either `Async` or `undefined`,
+        with the later implying no qualifier). */
 
         let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-        // having established the blocktype, parse the optional function name, which may,
-        // when present, use a computed (runtime) value...
+        // having established the blocktype, parse the optional function name, which when present,
+        // may use a computed (runtime) value...
 
         if (parser.on(Variable)) {
 
@@ -1006,28 +1049,7 @@ export class FunctionLiteral extends Keyword {
 
         } else this.push([], parser.gatherBlock(blockType));
 
-        function walk(statements) {
-
-            /* Takes an array of statements, walks the operands array of each statement, recurring
-            on blocks and compound expressions, but ignoring anything functional, looking for any
-            `yield` (or `yield from`) expressions that belong to the current function. Returns a
-            bool that indicates whether it found `yield`, and by extension, whether the caller
-            should compile to a generator or just a regular function. */
-
-            for (const statement of statements) for (const operand of statement.operands) {
-
-                if (operand instanceof Array && walk(operand)) return true;
-
-                if (not(operand instanceof Token)) continue;
-
-                if (operand.is(ArrowOperator, FunctionLiteral, Class)) continue;
-
-                if (statement instanceof Yield) return true;
-
-            } return false;
-        }
-
-        return this.push(walk(this.at(2)));
+        return this.push(FunctionLiteral.isGenerator(this.at(2)));
     }
 
     js(writer) {
@@ -1102,7 +1124,7 @@ export class InfinityConstant extends Constant {
     /* This concrete class implements the `Infinity` floating-point constant. */
 }
 
-export class Is extends GeneralOperator {
+export class Is extends InfixOperator {
 
     /* This concrete class implements the `is`, `is not`, `is packed`, `is sealed`,
     `is frozen`, `is not packed`, `is not sealed` and `is not frozen` operators. */
@@ -1226,6 +1248,8 @@ export class Not extends GeneralOperator {
     spelling = "!";
 
     infix(parser, left) {
+
+        this.initial = false;
 
         if (parser.on(In)) {
 
@@ -1361,8 +1385,9 @@ export class OpenBracket extends Caller {
 
         /* This method gathers bracket-notation. */
 
-        this.push(left, OpenBracket, ...parser.gatherCompoundExpression(CloseBracket));
-        this.check({prefixed: OpenBracket, singular: true, plain: true});
+        this.initial = false;
+        this.push(left, ...parser.gatherCompoundExpression(CloseBracket));
+        this.check({skip: 1, singular: true, plain: true});
 
         return this;
     }
@@ -1400,8 +1425,9 @@ export class OpenParen extends Caller {
 
         /* This method gathers and validates an invocation. */
 
-        this.push(left, OpenParen, ...parser.gatherCompoundExpression(CloseParen));
-        this.check({prefixed: OpenParen, plain: true});
+        this.initial = false;
+        this.push(left, ...parser.gatherCompoundExpression(CloseParen));
+        this.check({skip: 1, plain: true});
 
         return this;
     }
@@ -1410,17 +1436,17 @@ export class OpenParen extends Caller {
 
         /* Output a grouped expression or an invocation. */
 
-        if (this.at(1) === OpenParen) { // invocation...
-
-            const args = this.operands.slice(2).map(operand => operand.js(writer));
-
-            return `${this.at(0).js(writer)}(${args.join(comma + space)})`;
-
-        } else { // grouped expression...
+        if (this.initial) { // grouped expression...
 
             const operands = this.operands.map(operand => operand.js(writer));
 
             return `(${operands.join(comma + space)})`;
+
+        } else { // invocation...
+
+            const args = this.operands.slice(1).map(operand => operand.js(writer));
+
+            return `${this.at(0).js(writer)}(${args.join(comma + space)})`;
         }
     }
 }
@@ -1694,22 +1720,6 @@ export class Unit extends Terminal {
     }
 }
 
-export class Unless extends PredicatedBlock {
-
-    /* This concrete class implements the `unless` keyword, which compiles to an if-not
-    construct (without any else-clauses). */
-
-    static block = SIMPLEBLOCK;
-}
-
-export class Until extends PredicatedBlock {
-
-    /* This concrete class implements the `until` keyword, which compiles to a while-not
-    construct. */
-
-    static block = LOOPBLOCK;
-}
-
 export class Var extends Declaration {
 
     /* This concrete class implements var-statements, which compile to let-statements. */
@@ -1736,6 +1746,7 @@ export class When extends Operator {
 
     LBP = 2;
     RBP = 1;
+    initial = false;
 
     infix(parser, left) {
 

@@ -97,8 +97,6 @@ export const keywords = [
     "subclass",
     "throw",
     "unit",
-    "unless",
-    "until",
     "var",
     "while",
     "yield",

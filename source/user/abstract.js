@@ -133,8 +133,6 @@ import {
     Throw,
     TrueConstant,
     Unit,
-    Unless,
-    Until,
     Var,
     Variable,
     VoidConstant,
@@ -170,6 +168,7 @@ export class Token {
     LBP = 0;                // left-binding-power (described by the `get RBP` method below)
     operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
+    initial = true;         // whether the token was found in the prefix position or not
     expression = false;     // whether the token forms a node which is a valid expression
 
     get spelling() {
@@ -372,7 +371,7 @@ export class Opener extends Delimiter {
     /* This is an abstract base class for opening parens, brackets and braces. Subclasses implement
     grouped expressions, invocations, array literals, object literals and bracket notation. */
 
-    check({proto, prefixed, singular, plain}={}) {
+    check({proto, skip = 0, singular, plain}={}) {
 
         /* This helper is used to traverse, validate and modify the operands that represent the
         items inside the compound-expressions that are implemented by its subclasses. It takes a
@@ -385,38 +384,30 @@ export class Opener extends Delimiter {
                If exactly one such expression is noted, the `prototyped` boolean result is set to
                `true`. If more than one expression gets expanded, the helper complains instead.
                The value of `proto` defaults to `false` (so none of the above applies by default).
-            + `prefixed Token`: When present, the check starts from the operand following the first
-               operand of the given token-type, and starts from the first token otherwise.
+            + `skip Number`: When present, the check starts from (and includes) the indexed operand.
             + `plain Boolean`: When truthy, the helper checks that all of the relevant operands are
                plain expressions (without labels), complaining otherwise. Defaults to `false`.
-            + `singular Boolean`: When truthy, the helper ensures that the `checklist` containing
-               all of the relevant operands contains exactly one operand. Defaults to `false`.
+            + `singular Boolean`: When truthy, the helper ensures that their is only one relevant
+               operand. Defaults to `false`.
 
         Note: Only top-level operands are checked (as children handle their own operands). */
 
-        // start by slicing the `operands` array, keeping everything after the starting token, or
-        // the entire array if `prefixed` was not defined, assigning the result to `checklist`...
-
-        let startingIndex = 0;
-
-        if (prefixed) for (; this.operands[startingIndex - 1] !== prefixed; startingIndex++);
-
-        const checklist = this.operands.slice(startingIndex);
+        const operands = this.operands.slice(skip);
 
         // next, if the `singular` rule applies, check that there is only one relevant operand...
 
-        if (singular) switch (checklist.length) {
+        if (singular) switch (operands.length) {
             case 1: break;
             case 0: throw new LarkError("expected an expression", this.location);
-            default: throw new LarkError("unexpected expression", checklist[1].location);
+            default: throw new LarkError("unexpected expression", operands[1].location);
         }
 
-        // next, if either of the `plain` or `proto` rules apply, traverse the `checklist` array,
+        // next, if either of the `plain` or `proto` rules apply, traverse the `operands` array,
         // and enforce whichever rules apply to each operand...
 
         let prototyped = false;
 
-        if (plain || proto) for (const operand of checklist) {
+        if (plain || proto) for (const operand of operands) {
 
             if (operand.is(Label)) { // key-value pairs...
 
@@ -457,13 +448,8 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.at(1)?.prototype instanceof Opener) { // infix...
-
-            const prefix = this.at(0).js(writer);
-
-            return prefix + opener + join(this.operands.slice(2)) + closer;
-
-        } else return opener + join(this.operands) + closer; // prefix
+        if (this.initial) return opener + join(this.operands) + closer;
+        else return this.at(0).js(writer) + opener + join(this.operands.slice(1)) + closer;
     }
 }
 
@@ -568,8 +554,6 @@ export class Keyword extends Word {
             case "subclass": return new Subclass(location, value);
             case "throw": return new Throw(location, value);
             case "unit": return new Unit(location, value);
-            case "unless": return new Unless(location, value);
-            case "until": return new Until(location, value);
             case "var": return new Var(location, value);
             case "while": return new While(location, value);
             case "yield": return new Yield(location, value);
@@ -661,8 +645,8 @@ export class Header extends Keyword {
 
 export class PredicatedBlock extends Header {
 
-    /* This is the abstract base class for the predicated blocks (`if`, `else if`, `while`,
-    `unless` and `until`). */
+    /* This is the abstract base class for the predicated blocks (`if`, `else if`, and `while`,
+    but not `else` on its own, as it has no predicate). */
 
     prefix(parser) {
 
@@ -818,6 +802,8 @@ export class InfixOperator extends Operator {
     /* This base class provids functionality for operators that are only valid as infix
     operators. */
 
+    initial = false;
+
     infix(parser, left) {
 
         return this.push(left, parser.gatherExpression(this.LBP));
@@ -835,6 +821,7 @@ export class DotOperator extends InfixOperator {
     name (which can be any type of word token) on the rightside. */
 
     LBP = 17;
+    initial = false;
 
     infix(parser, left) {
 
@@ -858,12 +845,14 @@ export class GeneralOperator extends Operator {
 
     infix(parser, left) {
 
+        this.initial = false;
+
         return this.push(left, parser.gatherExpression(this.LBP));
     }
 
     js(writer) {
 
-        if (this.operands.length === 1) { // prefix operator...
+        if (this.initial) {
 
             let separator = lowers.includes(this.spelling[0]) ? space : empty;
 
@@ -886,6 +875,8 @@ export class ArrowOperator extends GeneralOperator {
         /* This method overrides the inherited version to ensure that the `left` parameter
         (when present) is wrapped in parens, and that the operator is right-associative. */
 
+        this.initial = false;
+
         if (left.is(OpenParen)) return this.push(left, parser.gatherExpression(this.RBP));
         else throw new LarkError("arrow-operator parameters must be parenthesized", left.location);
     }
@@ -898,6 +889,7 @@ export class AssignmentOperator extends InfixOperator {
 
     LBP = 2;
     RBP = 1;
+    initial = false;
 
     infix(parser, left) {
 
