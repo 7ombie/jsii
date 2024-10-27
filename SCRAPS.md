@@ -43,7 +43,7 @@ with inline blocks:
 Hoisting
 --------
 
-Lark does not hoist anything, ever.
+Lark does not hoist anything.
 
 Declarations (using `let` and `var`) compile to `const` and `let` (respectively), which are not
 hoisted (by JavaScript).
@@ -54,6 +54,11 @@ begins with the corresponding (operative) keyword. As a result, they are never h
 As a consequence, naming a function (or class) simply sets the `name` property (whether the name
 is hardcoded or computed at runtime). It will never declare a variable of the same name. You can
 only declare names using `let` or `var`.
+
+I'm not sure what to do about temporal dead zones. We could detect them and swap out the name of
+the hoisted declaration for a register (updating any references), so any references that appear
+before a declaration, will (attempt to) reference the outer scope. I need to look into the
+ratioanal for JavaScript's current design. I may be missing something.
 
 Keywords
 --------

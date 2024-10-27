@@ -387,7 +387,7 @@ export class Opener extends Delimiter {
             + `skip Number`: When present, the check starts from (and includes) the indexed operand.
             + `plain Boolean`: When truthy, the helper checks that all of the relevant operands are
                plain expressions (without labels), complaining otherwise. Defaults to `false`.
-            + `singular Boolean`: When truthy, the helper ensures that their is only one relevant
+            + `singular Boolean`: When truthy, the helper ensures that there is only one relevant
                operand. Defaults to `false`.
 
         Note: Only top-level operands are checked (as children handle their own operands). */

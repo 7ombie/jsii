@@ -1,4 +1,4 @@
-import { put, not } from "../core/helpers.js"
+import { put, not, Stack } from "../core/helpers.js"
 import { LarkError } from "../core/error.js"
 import { lex } from "../core/lexer.js"
 
@@ -56,7 +56,7 @@ export function * parse(source, {dev=false}={}) {
         significant, all tokens are significant, so this is a noop. Otherwise, it skips over
         any newlines, stopping on the first non-newline token. */
 
-        if (newlineSignificanceStack.at(-1) === false) while (on(LineFeed)) advance();
+        if (whitespace.top === false) while (on(LineFeed)) advance();
     }
 
     function gather(RBP=0, context=undefined) { // api function
@@ -101,6 +101,12 @@ export function * parse(source, {dev=false}={}) {
 
         let current, result;
 
+        // use `current` to track the token we need to parse next when advancing the (nonlocal)
+        // parser state to the next `token` in the stream, and use `result` to store the parse
+        // tree is it's generated, first by an invocation of the `current` token's `prefix`
+        // method, then by zero or more iterations of the following loop (which invokes
+        // the `current` token's `infix` instead)...
+
         current = token;
         token = advance();
         result = validate(current.prefix(api, context));
@@ -109,7 +115,15 @@ export function * parse(source, {dev=false}={}) {
 
             current = token;
 
-            if (current instanceof Keyword) return result; // break on formal expressions
+            // check for and break on operative keywords (like `yield` and `throw`), so they still
+            // act like keywords when used to begin an unbraced control-flow block, despite also
+            // being operators (that always introduce valid expressions)...
+
+            if (current instanceof Keyword) return result;
+
+            // advance to the next token, then pass everything that has been parsed so far (as a
+            // prefix) to the the `infix` method of the `current` token instance, updating the
+            // `result` with whatever it returns (assuming it also validates)...
 
             token = advance();
             result = validate(current.infix(api, result));
@@ -158,10 +172,10 @@ export function * parse(source, {dev=false}={}) {
         the stack, and the parsed block is returned.
 
         If the block type is functional (including a class), this function pushes `true` to
-        the `newlineSignificanceStack` and an empty hash to the `labelspaceStack`, which are
-        both then popped when the function body has been parsed. Furthermore, this function
-        requires that the body is wrapped in braces (only control-flow statements can have
-        unbraced blocks). */
+        the `whitespace` stack and an empty hash to the `labelspace` stack, which are both
+        then popped when the function body has been parsed. Furthermore, this function
+        requires that the body is wrapped in braces (as only control-flow statements
+        can have unbraced blocks). */
 
         function gatherFormalStatement() {
 
@@ -178,24 +192,15 @@ export function * parse(source, {dev=false}={}) {
 
         if (functional && not(braced)) throw new LarkError("required a body", token.location);
 
-        blocktypeStack.push(type);
+        blocktypes.top = type;
 
-        if (functional) {
-            
-            labelspaceStack.push({});
-            newlineSignificanceStack.push(true);
-        }
+        if (functional) { labelspace.top = {}; whitespace.top = true }
 
         let result = braced ? [...LIST()] : gatherFormalStatement();
 
-        if (functional) {
+        if (functional) { labelspace.pop; whitespace.pop }
 
-            labelspaceStack.pop();
-            newlineSignificanceStack.pop();
-            ignoreInsignificantNewlines();
-        }
-
-        blocktypeStack.pop();
+        blocktypes.pop;
 
         return result;
     }
@@ -218,8 +223,7 @@ export function * parse(source, {dev=false}={}) {
 
         Note: This function is also used for bracketed notation, computed properties etc. */
 
-        newlineSignificanceStack.push(false); /// firstly, disable significant newlines, then
-        ignoreInsignificantNewlines();        /// ensure that the first token is significant
+        whitespace.top = false;
 
         // initialize the `results` array, accounting for the possibility of a leading empty
         // expression (which is legal in destructuring assignments)...
@@ -252,8 +256,7 @@ export function * parse(source, {dev=false}={}) {
         // restore the previous significance of newlines *before* advancing to drop both the
         // the `Closer` instance and any insignificant newlines, then return the results...
 
-        newlineSignificanceStack.pop();
-        advance();
+        whitespace.pop; advance();
 
         return results;
     }
@@ -330,15 +333,15 @@ export function * parse(source, {dev=false}={}) {
         /* This function allows statements (like `return` and `break`) that can only appear in
         specific contexts to establish whether they are in a valid context.
 
-        If no arguments are given, the function returns `true` if the `blocktypeStack` is empty
+        If no arguments are given, the function returns `true` if the `blocktypes` stack is empty
         (indicating that the parser is at the top level), and `false` otherwise.
 
-        When two or three arguments are givenm the function walks the nonlocal `blocktypeStack`
-        backwards (from innermost to outermost), and calls the `doStop` callback on each type
-        to establish when to stop (it should return `true` to stop, and `false` otherwise).
+        When two or three arguments are givenm the function walks the nonlocal `blocktypes` stack
+        backwards (from innermost to outermost), and calls the `doStop` callback on each type to
+        establish when to stop (it should return `true` to stop, and `false` otherwise).
 
-        If the loop stops, the `isValid` callback is invoked on the type that was stopped on,
-        and the result of that invocation (which is expected to be a bool) is returned.
+        If the loop stops, the `isValid` callback is invoked on the type that was stopped on, and
+        the result of that invocation (which is expected to be a bool) is returned.
 
         The `fallback` is returned when the stack is exhausted without a match.
 
@@ -357,12 +360,12 @@ export function * parse(source, {dev=false}={}) {
         Note: Reaching the top would always result in `false`, except that top-level-await is
         valid (in modules), so the fallback must be `true` in that case. */
 
-        if (arguments.length === 0) return blocktypeStack.length === 0;
+        if (arguments.length === 0) return blocktypes.length === 0;
 
-        const stack = blocktypeStack;
-        const top = stack.length - 1;
+        for (let i = blocktypes.length - 1; i >= 0; i--) {
 
-        for (let i = top; i >= 0; i--) if (doStop(stack[i])) return isValid(stack[i]);
+            if (doStop(blocktypes[i])) return isValid(blocktypes[i]);
+        }
 
         return fallback;
     }
@@ -376,20 +379,18 @@ export function * parse(source, {dev=false}={}) {
         When the second argument is left undefined (getter mode), the function returns
         `true` when the given label is active and bound to a loop block, `false` when
         it is active and bound to a simple block, and `null` when it is inactive (as
-        it cannot be found in the hash of labels on top of the Label-Hash Stack).
+        it cannot be found in the hash of labels on top of the `labelspace` stack).
 
         When the second argument is set (setter mode), its value is used to update the
-        state of the given label on the Label-Hash Stack.
+        state of the given label on the `labelspace` stack.
 
-        Note: The Label-Hash Stack is a stack, which has label-hashes pushed and popped
-        automatically (by `gatherBlock`) whenever entering or leaving a function body.
-        The hashes on the stack map label names (as strings) to their ternary state. */
+        Note: The `labelspace` is a stack that has label-hashes pushed and popped auto-
+        matically (by `gatherBlock`) whenever entering or leaving a function body. The
+        hashes on the stack map label names (as strings) to their ternary state. */
 
-        let lastIndex = labelspaceStack.length - 1;
-
-        if (value === undefined) return labelspaceStack[lastIndex][name.value] ?? null;
-        else if (value === null) delete labelspaceStack[lastIndex][name.value];
-        else labelspaceStack[lastIndex][name.value] = value;
+        if (value === undefined) return labelspace.top[name.value] ?? null;
+        else if (value === null) delete labelspace.top[name.value];
+        else labelspace.top[name.value] = value;
     }
 
     // gather the api functions and flags to form the parser api object, initialize the internal
@@ -411,9 +412,9 @@ export function * parse(source, {dev=false}={}) {
         on
     };
 
-    const blocktypeStack = [];                  // the blocktypes of the blocks in scope
-    const labelspaceStack = [{}];               // the labelspaces for the blocks in scope
-    const newlineSignificanceStack = [true];    // the significance of newlines by scope
+    const blocktypes = new Stack();
+    const labelspace = new Stack({});
+    const whitespace = new Stack(true).on(false, ignoreInsignificantNewlines);
 
     const tokens = lex(source, {dev});
 
