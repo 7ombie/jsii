@@ -104,6 +104,36 @@ export class NumberLiteral extends Terminal {
 
     static Unit = class extends Terminal {}
 
+    static units = {
+
+        p: n => `"${n}%"`,                        // css unit strings...
+        ch: n => `"${n}ch"`,
+        cm: n => `"${n}cm"`,
+        em: n => `"${n}em"`,
+        ex: n => `"${n}ex"`,
+        mm: n => `"${n}mm"`,
+        pc: n => `"${n}pc"`,
+        pt: n => `"${n}pt"`,
+        px: n => `"${n}px"`,
+        rem: n => `"${n}rem"`,
+        vh: n => `"${n}vh"`,
+        vmax: n => `"${n}vmax"`,
+        vmin: n => `"${n}vmin"`,
+        vw: n => `"${n}vw"`,
+
+        K: n => `${n * 1_000}`,                 // numeric units of magnitude...
+        M: n => `${n * 1_000_000}`,
+        B: n => `${n * 1_000_000_000}`,
+        T: n => `${n * 1_000_000_000_000}`,
+        Q: n => `${n * 1_000_000_000_000_000}`,
+
+        n: (n, float, location) => {            // bigint literals...
+
+            if (float) throw new LarkError("invalid (fractional) bigint literal", location);
+            else return `${n}n`;
+        }
+    };
+
     static * lex(...args) { yield new NumberLiteral(...args) }
 
     constructor(lexer, location) {
@@ -146,39 +176,34 @@ export class NumberLiteral extends Terminal {
         // if a dot is present and legal, continue to lex this number literal using float-notation,
         // complaining if a dot is present but illegal, and doing nothing if there's no dot...
 
+        let float = false;
+
         if (lexer.at(dot)) {
 
             if (isDecimal && this.value[0] !== dot && lexer.peek(+2, decimal)) {
 
+                float = true;
                 this.value += lexer.advance();
                 lexer.gatherWhile(digits, this);
 
             } else throw new LarkError("fractional numbers must use decimal notation", location);
         }
 
-        // finally, check for a unit, and when present, store it in the `operands` array as an
-        // instance of the associated type `NumberLiteral.Unit`...
+        // finally, check for a unit, and if present, use the corresponding unit-helper to expand
+        // the `value` property to a numeric constant string, and assign it back to `value`...
 
         if (lexer.at(alphas)) {
 
             const unit = new NumberLiteral.Unit(location, empty);
 
             lexer.gatherWhile(alphas, unit);
-            this.push(unit);
+            this.value = NumberLiteral.units[unit.value](parseFloat(this.value), float, location);
         }
     }
 
     prefix(_) { return this }
 
     validate(_) { return true }
-
-    js(writer) {
-
-        /* Render a number literal, and if it has a unit, wrap it in a unit-invocation. */
-
-        if (this.operands.length === 0) return super.js(writer);
-        else return `Number[Symbol.for(\`ƥu.${this.at(0).js(writer)}\`)].bind(${super.js(writer)})`;
-    }
 }
 
 export class StringLiteral extends Terminal {
@@ -1659,67 +1684,6 @@ export class TrueConstant extends Constant {
     /* This concrete class implements the `true` constant. */
 }
 
-export class Unit extends Terminal {
-
-    /* This concrete class implements `unit` declarations, which register number literal units in
-    the global symbol registry, using the Lark units-namespace (symbol keys beginning with `ƥu.`).
-    The value is always expected to be a function, whether its assigned or defined by a block. */
-
-    prefix(parser, context=null) {
-
-        /* Parse a `unit` statement, which either registers a function as a numeric unit. When the
-        context exists (it's not the default context), it will be an instance of either `Let` or
-        `Var` (indicating a declaration as well). */
-
-        this.push(context);
-
-        if (parser.on(Variable)) this.push(parser.advance(true));
-        else throw new LarkError("incomplete unit definition", this.location);
-
-        if (parser.on(Assign)) return this.push(parser.advance(true), parser.gatherExpression());
-        else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
-    }
-
-    validate(parser) { return parser.check() }
-
-    js(writer) {
-
-        /* Render a unit declaration, preceded by a `let` or `var` preamble when one of the two
-        was used as a qualifier (to declare the function as well as register it). */
-
-        const name = this.at(1).js(writer);
-
-        if (this.at(2) instanceof Assign) {
-
-            const expression = this.at(3).js(writer);
-
-            if (this.at(0) instanceof Declaration) {
-
-                const declarator = this.at(0) instanceof Let ? "const" : "let";
-
-                writer.preamble(`${declarator} ${name} = ${expression}`);
-
-                return `Number[Symbol.for(\`ƥu.${name}\`)] = ${name}`;
-
-            } else return `Number[Symbol.for(\`ƥu.${name}\`)] = ${expression}`;
-
-        } else {
-
-            const block = writer.writeBlock(this.at(2));
-
-            if (this.at(0) instanceof Declaration) {
-
-                const declarator = this.at(0) instanceof Let ? "const" : "let";
-
-                writer.preamble(`${declarator} ${name} = function() ${block}`);
-
-                return `Number[Symbol.for(\`ƥu.${name}\`)] = ${name}`;
-
-            } else return `Number[Symbol.for(\`ƥu.${name}\`)] = function() ${block}`;
-        }
-    }
-}
-
 export class Var extends Declaration {
 
     /* This concrete class implements var-statements, which compile to let-statements. */
@@ -1727,7 +1691,7 @@ export class Var extends Declaration {
 
 export class Variable extends Word {
 
-    /* This concrete class implements variable names, as a kind of word. */
+    /* This concrete class implements variable names. */
 
     expression = true;
 

@@ -1,20 +1,12 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core/ascii.js"
+import { put, lark } from "../core/helpers.js"
 import { parse } from "../core/parser.js"
-import { put } from "../core/helpers.js"
 
 import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
 
 export function * write(source, {dev=false}={}) {
 
     /* This function implements the Writer Stage. It is the entrypoint to the compiler. */
-
-    function prefix(name) { // internal helper
-    
-        /* Take a value, prefix it with the Lark Character, and return the result as a string. This
-        helper expects to be invoked on `String`s and (integer) `Number`s. */
-
-        return `ƥ${name}`
-    }
 
     function * walk(statements) { // internal helper
 
@@ -57,17 +49,18 @@ export function * write(source, {dev=false}={}) {
 
     function register(expression) { // api function
 
-        /* Take an expression node and check if it's safe to evaluate more than once (either a
-        simple, non-compound literal or a variable). If it is safe to reuse, expand it to JS,
-        and return the resulting source. Otherwise, register the expression in a preamble,
-        and return the register name instead.
-        
-        Note: Preambles are required when reusing operands in expressions (see the `in` and `of`
-        infix-operators, for examples), as registers cannot be declared inside an expression. */
+        /* Take an optional expression node. When provided, check whether the node is safe to
+        evaluate more than once (either a simple, non-compound literal or a variable). If it
+        is safe to reuse, just expand it to JS, and return the resulting source. Otherwise,
+        register the expression in a preamble, and return the register name instead.
+
+        When no argument is given, immediately create and return a register name. */
+
+        if (arguments.length === 0) return lark(registerCounter++);
 
         if (expression.is(Variable, Constant, NumberLiteral)) return expression.js(api);
 
-        const register = prefix(registerCounter++);
+        const register = lark(registerCounter++);
 
         preambles.push(`const ${register} = ${expression.js(api)};\n`);
 

@@ -413,6 +413,7 @@ export function * parse(source, {dev=false}={}) {
     };
 
     const blocktypes = new Stack();
+    const blockspace = new Stack({});
     const labelspace = new Stack({});
     const whitespace = new Stack(true).on(false, ignoreInsignificantNewlines);
 

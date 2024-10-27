@@ -132,7 +132,6 @@ import {
     SuperConstant,
     Throw,
     TrueConstant,
-    Unit,
     Var,
     Variable,
     VoidConstant,
@@ -553,7 +552,6 @@ export class Keyword extends Word {
             case "static": return new Static(location, value);
             case "subclass": return new Subclass(location, value);
             case "throw": return new Throw(location, value);
-            case "unit": return new Unit(location, value);
             case "var": return new Var(location, value);
             case "while": return new While(location, value);
             case "yield": return new Yield(location, value);
@@ -600,18 +598,6 @@ export class CommandStatement extends Keyword {
 export class Declaration extends Keyword {
 
     /* This abstract base class implements `let` and `var` declarations. */
-
-    prefix(parser) {
-
-        if (parser.on(Unit)) return this.push(parser.gather(0, this));
-        else throw Error("NOT IMPLEMENTED YET"); // TODO
-    }
-
-    js(writer) {
-
-        if (this.at(0) instanceof Unit) return this.at(0).js(writer);
-        else throw Error("NOT IMPLEMENTED YET"); // TODO
-    }
 }
 
 export class ClassQualifier extends Declaration {

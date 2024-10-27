@@ -1,5 +1,7 @@
 /* This module defines and exports and bunch of unrelated stuff that is useful everywhere. */
 
+export function lark(name) { return `ƥ${name}` } // prefix the argument with a lark character
+
 export function iife(lambda) { return lambda() } // replace the dangling-dogballs operator
 
 export function not(arg) { return ! arg } // replace the logical-not operator

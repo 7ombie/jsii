@@ -112,7 +112,14 @@ pack new Foo(x, y, z)
 seal new Bar(spam, eggs) + foo
 freeze 1 + 2 when x * y else spam + eggs
 (1, 2, 3, seal 4)
-4.3K
 
-let unit foo = BigInt
-unit bar { return BigInt(1) }
+28n
+4.3K
+300M
+14px
+12.345em
+34mm
+26p
+34.3T
+12vh
+12.3vmax

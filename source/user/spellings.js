@@ -96,7 +96,6 @@ export const keywords = [
     "static",
     "subclass",
     "throw",
-    "unit",
     "var",
     "while",
     "yield",
