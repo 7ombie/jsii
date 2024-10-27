@@ -13,7 +13,6 @@ import {
     binary,
     closeBrace,
     closeBracket,
-    closeParen,
     comma,
     decimal,
     dollar,
@@ -25,6 +24,7 @@ import {
     openBracket,
     openParen,
     quote,
+    slash,
     space,
 } from "../core/ascii.js"
 
@@ -96,22 +96,22 @@ export class NumberLiteral extends Terminal {
     /* This is the concrete class for all number-literals (integers and floats, with or without a
     unit-suffix). It is also imported by the Lexer Stage for number tokenization.
 
-    This class defines an associated-type, named `Unit` that is used for unit-suffixes (as in `1n`
-    and `22.4KHz`). Units must immediately follow the last digit of a regular number literal, and
-    when present, always consist of one or more alphas. */
+    Units must immediately follow the last digit, and always consist of one or more alphas. Units
+    can use binary or hexadecimal notation, but they are not compatible with exponentiation.
 
-    expression = true;
+    Note: Datetime related units (`hrs`, `mins`, `s`, `ms` etc) are reserved while the `Temporal`
+    proposal matures.
 
-    static Unit = class extends Terminal {}
+    TODO: Support underscore separators (requiring a digit on either side of each underscore). */
 
     static units = {
 
-        p: n => `"${n}%"`,                        // css unit strings...
-        ch: n => `"${n}ch"`,
+        ch: n => `"${n}ch"`,                    // css unit strings...
         cm: n => `"${n}cm"`,
         em: n => `"${n}em"`,
         ex: n => `"${n}ex"`,
         mm: n => `"${n}mm"`,
+        p: n => `"${n}%"`,
         pc: n => `"${n}pc"`,
         pt: n => `"${n}pt"`,
         px: n => `"${n}px"`,
@@ -127,12 +127,14 @@ export class NumberLiteral extends Terminal {
         T: n => `${n * 1_000_000_000_000}`,
         Q: n => `${n * 1_000_000_000_000_000}`,
 
-        n: (n, float, location) => {            // bigint literals...
+        n(n, float, location) {                 // bigint literals...
 
             if (float) throw new LarkError("invalid (fractional) bigint literal", location);
             else return `${n}n`;
         }
     };
+
+    expression = true;
 
     static * lex(...args) { yield new NumberLiteral(...args) }
 
@@ -180,7 +182,7 @@ export class NumberLiteral extends Terminal {
 
         if (lexer.at(dot)) {
 
-            if (isDecimal && this.value[0] !== dot && lexer.peek(+2, decimal)) {
+            if (isDecimal && this.value[0] !== dot && lexer.peek(2, decimal)) {
 
                 float = true;
                 this.value += lexer.advance();
@@ -189,15 +191,28 @@ export class NumberLiteral extends Terminal {
             } else throw new LarkError("fractional numbers must use decimal notation", location);
         }
 
-        // finally, check for a unit, and if present, use the corresponding unit-helper to expand
-        // the `value` property to a numeric constant string, and assign it back to `value`...
+        // finally, check for a numeric unit xor an exponentiation pseudo-operator - on units, use
+        // the appropriate unit-helper to expand the `value` property to a JavaScript literal, and
+        // on operators, lex the characters and convert to JavaScript exponentiation notation - in
+        // either case, update the `value` property with the result...
 
-        if (lexer.at(alphas)) {
+        const atDouble = character => lexer.at(character) && lexer.peek(2, character);
 
-            const unit = new NumberLiteral.Unit(location, empty);
+        if (lexer.at(alphas)) { // numeric units...
+
+            const unit = new Token(location, empty);
 
             lexer.gatherWhile(alphas, unit);
             this.value = NumberLiteral.units[unit.value](parseFloat(this.value), float, location);
+
+        } else if (atDouble(slash) || atDouble(backslash)) { // exponentiation...
+
+            const operator = lexer.at(slash) ? "e-" : "e";
+            const exponent = new Token(location, empty);
+
+            lexer.advance(2);
+            lexer.gatherWhile(digits, exponent);
+            this.value += operator + exponent.value;
         }
     }
 
@@ -268,8 +283,7 @@ export class StringLiteral extends Terminal {
 
                 yield new StringClass(location, characters.join(empty));
 
-                lexer.advance();
-                lexer.advance();
+                lexer.advance(2);
                 characters.length = 0;
 
                 yield new OpenInterpolation(lexer.locate());
@@ -512,7 +526,7 @@ export class AssignARSHIFT extends AssignmentOperator {
 export class AssignFloor extends AssignmentOperator {
 
     /* This concrete class implements the inplace-assignment version of the floor-division
-    operator (`//=`). */
+    operator (`\=`). */
 }
 
 export class AssignPlus extends AssignmentOperator {
@@ -920,12 +934,12 @@ export class FalseConstant extends Constant {
 
 export class FatArrow extends ArrowOperator {
 
-    /* This concrete class implements the fat-arrow function operator (`=>`). */
+    /* This concrete class implements the fat-arrow function-operator (`=>`). */
 }
 
 export class Floor extends InfixOperator {
 
-    /* This concrete class implements the floor division operator (`//`). */
+    /* This concrete class implements the floor-division infix operator (`\`). */
 
     LBP = 12;
 

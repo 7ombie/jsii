@@ -29,14 +29,14 @@ export function * lex(source, {dev=false}={}) {
     so they can handle the specifics of parsing the given token type, yielding one or
     more tokens of that type. */
 
-    function advance() { // api function
+    function advance(stride=1) { // api function
 
-        /* This function takes no arguments, and advances the state of the lexer by one
-        character. If the new character exists and is is legal, it gets returned. If it
-        is `undefined` (the source has been exhausted), `undefined` is returned. If the
-        character is illegal, and exception is raised. */
+        /* This function takes an optional number of characters to advance by, defaulting
+        to `1`, and advances that far. If the new character exists and is is legal, it's
+        returned. If the source becomes exhausted, `undefined` is returned, and if the
+        new character's illegal, and exception is raised. */
 
-        index += 1;
+        index += stride;
         character = source[index];
 
         if (character === undefined) return undefined;

@@ -694,7 +694,7 @@ export class Operator extends Token {
             case ">": return new Greater(location, value);
             case "<=": return new NotGreater(location, value);
             case ">=": return new NotLesser(location, value);
-            case "//": return new Floor(location, value);
+            case "\\": return new Floor(location, value);
             case "**": return new Raise(location, value);
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
@@ -712,7 +712,7 @@ export class Operator extends Token {
             case "*=": return new AssignStar(location, value);
             case "/=": return new AssignSlash(location, value);
             case "%=": return new AssignModulo(location, value);
-            case "//=": return new AssignFloor(location, value);
+            case "\\=": return new AssignFloor(location, value);
             case "**=": return new AssignRaise(location, value);
             case "&=": return new AssignAND(location, value);
             case "|=": return new AssignOR(location, value);
