@@ -61,7 +61,7 @@ import {
     Await,
     Bang,
     Break,
-    Class,
+    ClassLiteral,
     CloseBrace,
     CloseBracket,
     CloseParen,
@@ -532,7 +532,7 @@ export class Keyword extends Word {
             case "async": return new Async(location, value);
             case "await": return new Await(location, value);
             case "break": return new Break(location, value);
-            case "class": return new Class(location, value);
+            case "class": return new ClassLiteral(location, value);
             case "continue": return new Continue(location, value);
             case "debug": return new Debug(location, value);
             case "delete": return new Delete(location, value);

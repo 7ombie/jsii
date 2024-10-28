@@ -171,11 +171,8 @@ export function * parse(source, {dev=false}={}) {
         number and kind). Once the block has been parsed, the block type is popped from
         the stack, and the parsed block is returned.
 
-        If the block type is functional (including a class), this function pushes `true` to
-        the `whitespace` stack and an empty hash to the `labelspace` stack, which are both
-        then popped when the function body has been parsed. Furthermore, this function
-        requires that the body is wrapped in braces (as only control-flow statements
-        can have unbraced blocks). */
+        If the block type is functional, this function requires that the body is wrapped in
+        braces (as only control-flow statements can have unbraced blocks). */
 
         function gatherFormalStatement() {
 
@@ -193,13 +190,15 @@ export function * parse(source, {dev=false}={}) {
         if (functional && not(braced)) throw new LarkError("required a body", token.location);
 
         blocktypes.top = type;
+        whitespace.top = true;
 
-        if (functional) { labelspace.top = {}; whitespace.top = true }
+        if (functional) labelspace.top = {};
 
-        let result = braced ? [...LIST()] : gatherFormalStatement();
+        const result = braced ? [...LIST()] : gatherFormalStatement();
 
-        if (functional) { labelspace.pop; whitespace.pop }
+        if (functional) labelspace.pop;
 
+        whitespace.pop
         blocktypes.pop;
 
         return result;
@@ -256,7 +255,8 @@ export function * parse(source, {dev=false}={}) {
         // restore the previous significance of newlines *before* advancing to drop both the
         // the `Closer` instance and any insignificant newlines, then return the results...
 
-        whitespace.pop; advance();
+        whitespace.pop;
+        advance();
 
         return results;
     }

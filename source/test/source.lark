@@ -1,3 +1,29 @@
+(do for item in items {
+    if item.meets(requirements) { item0, item1 }
+    spam
+    eggs
+})
+
+(do {
+    foo + bar
+    spam + eggs
+})
+
+(do function of x, y {
+    x * y
+    return x + y
+})
+
+(do async function of x, y {
+    x * y
+    return x + y
+})
+
+(do if item.meets(requirements) {
+    item0
+    item1
+})
+
 function f { return true }.bind(fish)
 
 function j of x, y, z { yield false }

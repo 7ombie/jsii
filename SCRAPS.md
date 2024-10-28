@@ -162,6 +162,51 @@ the expression would otherwise cause a statement to begin with an opening brace.
 The `<assignees>` grammar is also used by for-loops, params in function definitions, and import
 parameters in (static) import declarations (all described later in the document).
 
+
+Implicitly Initialized Variables
+--------------------------------
+
+In JavaScript, variables can be declared without explicit initializers, and are implicitly void,
+so the follow JavaScript statements are equivalent:
+
+    let x = undefined;
+    let x;
+
+Lark declarations require initializers, so either of those statements would be written like this:
+
+    var x = void
+
+JavaScript users often forward-declare variables, so they can use more complex code to initialize
+the variable. Below is a simple example:
+
+    let result;
+    for (const item of items) if (item.meets(requirements)) {
+        result = item;
+        break;
+    }
+
+That works, but it prevents `result` from being declared as a constant. To achieve that, something
+like this is required:
+
+    const result = function() {
+        for (const item of item) if (item.meets(requirements)) return item;
+    }();
+
+Lark has a `do` qualifier that allows that code to be written like this:
+
+    let result = do for item in items if item.meets(requirements) return item
+
+Note: The `do` qualifier is described later, but it basically wraps the statement that follows
+it in a function literal (if it's not a function literal already), then immediately invokes it.
+
+Note: In Lark, blocks have the same semantics, whether they're wrapped in braces or not. This is
+unlike JavaScript, which only introduces a new scope when you use a (braced) block statement.
+However, Lark does not pick between JavaScript's semantics. It simply lacks the JavaScript
+features that make the distinction matter.
+
+With `do` statements, we can use arbitrarily complex initializers, so Lark declarations invariably
+require explicit initialization.
+
 Control Flow
 ------------
 

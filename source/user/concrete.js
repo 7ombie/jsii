@@ -1,6 +1,6 @@
 // this module implements all of the concrete classes in the token hierarchy...
 
-import { put, not, iife } from "../core/helpers.js"
+import { put, not, iife, lark } from "../core/helpers.js"
 
 import { LarkError } from "../core/error.js"
 
@@ -682,7 +682,7 @@ export class Break extends BranchStatement {
     }
 }
 
-export class Class extends Header {
+export class ClassLiteral extends Header {
 
     /* This concrete class implements the `class` statement, which cannot extend anything,
     as we use `subclass` for that. */
@@ -841,24 +841,33 @@ export class Dev extends Keyword {
     }
 }
 
-export class Do extends Header {
+export class Do extends PrefixOperator {
 
-    /* This concrete class implements the `do` keyword, which prefixes blocks and functions
-    to create IIFEs (which Lark uses as a more flexible version of block-statements). */
+    /* This concrete class implements the `do` keyword, which prefixes blocks and functions to
+    create IIFEs (which Lark uses as a more flexible version of block-statements). */
 
     prefix(parser) {
 
-        /* If the next token is `async` or `function`, make this instance valid as an
-        expression, then gather whatever follows. Otherwise, gather a control-flow block. */
+        /* If the next token is `async` or `function`, make this instance valid as an expression,
+        then gather whatever follows. Otherwise, gather a control-flow block. */
 
-        if (parser.on(Async, FunctionLiteral)) {
-            
-            this.expression = true;
-            this.push(parser.gather());
+        if (parser.on(If, While, For, Async, FunctionLiteral)) return this.push(parser.gather());
+        else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
+    }
 
-        } else this.push(parser.gatherBlock(SIMPLEBLOCK));
+    js(writer) {
 
-        return this;
+        if (this.at(0) instanceof Token) {
+
+            if (this.at(0).is(Async, FunctionLiteral)) return `${this.at(0).js(writer)}()`;
+
+            const lambda = new FunctionLiteral(this.location, empty);
+
+            lambda.push(null, [], [this.at(0)]); // name, params, block
+
+            return `${lambda.js(writer)}()`;
+
+        } else return `function() ${writer.writeBlock(this.at(0))}()`;
     }
 }
 
@@ -1035,7 +1044,7 @@ export class FunctionLiteral extends Keyword {
 
             if (not(statement instanceof Token)) continue;
 
-            if (statement.is(ArrowOperator, FunctionLiteral, Class)) continue;
+            if (statement.is(ArrowOperator, FunctionLiteral, ClassLiteral)) continue;
 
             for (const operand of statement.operands) {
 
@@ -1110,7 +1119,7 @@ export class FunctionLiteral extends Keyword {
         // prerender the keyword, parameters and the function body, then interpolate them into
         // a literal, and return the result...
 
-        const keyword = "function" + (this.at(-1) ? asterisk : empty);
+        const keyword = "function" + (this.at(3) ? asterisk : empty);
         const params = this.at(1).map(param => param.js(writer)).join(comma + space);
         const block = writer.writeBlock(this.at(2));
 
