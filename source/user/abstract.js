@@ -33,7 +33,7 @@ import {
     wordCharacters,
 } from "../core/ascii.js"
 
-import { CLASSBLOCK } from "../core/blocktypes.js"
+import { CLASSBLOCK, FUNCTIONBLOCK } from "../core/blocktypes.js"
 
 import { constants, keywords, operators, reserved } from "./spellings.js"
 
@@ -444,8 +444,11 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.notes.length === 0) return opener + join(this.at(0).operands) + closer;
-        else return this.at(0).js(writer) + opener + join(this.at(1).operands) + closer;
+        if (this.notes.includes("infix")) {
+
+            return this.at(0).js(writer) + opener + join(this.at(1).operands) + closer;
+
+        } else return opener + join(this.at(0).operands) + closer;
     }
 }
 
@@ -636,9 +639,11 @@ export class PredicatedBlock extends Header {
     /* This is the abstract base class for the predicated blocks (`if`, `else if`, and `while`,
     but not `else` on its own, as it has no predicate). */
 
-    prefix(parser) {
+    prefix(parser, context=undefined) {
 
-        return this.push(parser.gatherExpression(), parser.gatherBlock(this.constructor.block));
+        const blocktype = context instanceof Do ? FUNCTIONBLOCK : this.constructor.blocktype;
+
+        return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
     }
 
     js(writer) {

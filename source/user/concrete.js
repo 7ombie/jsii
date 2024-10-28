@@ -858,7 +858,7 @@ export class Do extends PrefixOperator {
         /* If the next token is `async` or `function`, make this instance valid as an expression,
         then gather whatever follows. Otherwise, gather a control-flow block. */
 
-        if (parser.on(If, While, For, Functional)) return this.push(parser.gather());
+        if (parser.on(If, While, For, Functional)) return this.push(parser.gather(0, this));
         else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
     }
 
@@ -961,17 +961,19 @@ export class For extends Header {
     /* This concrete class implements for-loops (old school for-loops have not been
     designed yet, but will be added in some form). */
 
-    prefix(parser) {
+    prefix(parser, context=undefined) {
 
         /* This method parses all four for-loops. It uses `parser.gatherAssignee` to
         avoid parsing the operator (`in`, `of`, `on` or `from`) as an infix. */
+
+        const blocktype = context instanceof Do ? FUNCTIONBLOCK : LOOPBLOCK;
 
         this.push(parser.gatherAssignee());
 
         if (parser.on(In, Of, On, From)) this.note(parser.advance(true).value);
         else throw new LarkError("incomplete for-statement", this.location);
 
-        return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
+        return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
     }
 
     js(writer) {
@@ -1112,7 +1114,7 @@ export class If extends PredicatedBlock {
 
     /* This concrete class implements if-statements. */
 
-    static block = SIMPLEBLOCK;
+    static blocktype = SIMPLEBLOCK;
 }
 
 export class Import extends Keyword {
@@ -1725,7 +1727,7 @@ export class While extends PredicatedBlock {
 
     /* This concrete class implements the `while` keyword. */
 
-    static block = LOOPBLOCK;
+    static blocktype = LOOPBLOCK;
 }
 
 export class XOR extends InfixOperator {

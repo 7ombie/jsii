@@ -7,25 +7,27 @@
 x in foo()
 x not in y
 
-(do {
+a = do {
     foo + bar
     return spam + eggs
-})
+}
 
-(do function of x, y {
+b = do function of x, y {
     x * y
     return x + y
-})
+}
 
-(do async function of x, y {
+c = do async function of x, y {
     x * y
     return x + y
-})
+}
 
-(do if item.meets(requirements) {
+d = do if item.meets(requirements) {
     item0
-    item1
-})
+    return item1
+}
+
+do while x > y { x -= 1, return y }
 
 function f { return true }.bind(fish)
 
