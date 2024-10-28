@@ -159,12 +159,33 @@ export class Token {
     share that state. Those functions (known as *API functions*) are bound to an object to
     form an API that can be passed around freely.
 
-    The five *API methods* (`token`, `prefix`, `infix`, `validate` and `js`) take a reference
-    to the corresponding API object (`lexer`, `parser` or `writer`) as their first argument,
-    and are individually documented below (within the default implementations), along with
-    the helper methods. */
+    The five *API methods* (`token`, `prefix`, `infix`, `validate` and `js`) take a reference to
+    the corresponding API object (`lexer`, `parser` or `writer`) as their first argument, and
+    are individually documented below (within the default implementations), along with the
+    helper methods.
 
-    LBP = 0;                // left-binding-power (described by the `get RBP` method below)
+    Every token defines or inherits `LBP` and `RBP` properties (short for *left-binding-power*
+    and *right-binding-power* respectively), refered to hereafter as *LBP* and *RBP*.
+
+    LBP is required by the Parser Stage API, and is used by Pratt's Algorithm to implement operator
+    precedence. RBP is only used within this object hierarchy (it is not required by any API).
+
+    Tokens that should not have any precedence (plain keywords, terminals, terminators etc) must
+    have an LBP of zero, so they can just inherit their binding-powers from this class.
+
+    Tokens that implement an `infix(parser)` method (infix and suffix operators) must set LBP to
+    the precedence of that operator, and will reuse the same value in any recursive calls to the
+    Parser Stage API (when gathering their righthand operand), unless they are right-associtive,
+    where they pass `LBP - 1` instead.
+
+    Tokens that implement a `prefix(parser)` method (prefix operators) are not *required* to set
+    a binding-power property, but will need to pass the precedence of the operator in recursive
+    calls to the Parser Stage API. RBP is used to store that binding-power, as there are many
+    tokens that implement both prefix operators and infix/suffix operators. */
+
+    LBP = 0;                // left-binding-power (infix-operator precedence)
+    RBP = 0;                // right-binding-power (prefix-operator precedence)
+
     operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
     initial = true;         // whether the token was found in the prefix position or not
@@ -181,49 +202,16 @@ export class Token {
         return this.value;
     }
 
-    get RBP() {
-
-        /* Every token defines or inherits `LBP` and `RBP` properties (short for *left-binding-
-        power* and *right-binding-power* respectively), refered to hereafter as *LBP* and *RBP*.
-
-        LBP is required by the Parser Stage API, and is used by Pratt's Algorithm to implement
-        operator precedence. RBP is only used within this object hierarchy (it is not required
-        by any API), and only exists because many token types need two binding powers, and it
-        can be useful to name them.
-
-        Tokens that should not have any precedence (keywords, terminals, terminators etc) must
-        have an LBP of zero, so they can just inherit their binding powers from this class.
-
-        Tokens that implement an `infix(parser)` method (infix and suffix operators) must set
-        LBP to the precedence of that operator, and will *almost* always pass the same value
-        in recursive calls to the Parser Stage API (when gathering their righthand operand).
-        The note below the following paragraph describes the exception.
-
-        Tokens that implement a `prefix(parser)` method (prefix operators) are not required to
-        set a binding power property, but will need to pass the precedence of the operator in
-        recursive calls to the Parser Stage API. RBP is often used to store that value, as
-        tokens can implement both prefix operators and infix/suffix operators.
-
-        Note: RBP is also used by right-associative operators (that do not have a prefix form),
-        just as a convenient place to store `LBP - 1` (as per Pratt's Algorithm).
-
-        This computed property returns LBP as the value for RBP, as they're often the same value.
-        Subclasses can simply override this property (usually just using a stored property). */
-
-        return this.LBP;
-    };
-
     constructor(location, value=empty) {
 
-        /* This constructor takes and initializes the two remaining propertoes (`location` and
-        `value`) that combine with the five properties defined above (`LBP`, `RBP`, `operands`,
-        `expression` and `spelling`) to create the complete set of seven properties that all
-        token instances require.
+        /* This constructor takes and initializes the two remaining properties (`location` and
+        `value`) that combine with the five properties defined already to create the complete
+        set of properties that all token instances require.
 
         Note: While a couple of the subclasses define helper methods for their own use, token
-        instances generally have the same shape (the same properties). This is why we push
-        the various AST nodes to a generic array of operands, instead of letting each
-        subclass define its own properties (`lvalue`, `predicate`, `block` etc). */
+        instances have the same shape (the same properties). This is why we push the various
+        AST nodes to a generic array of operands, instead of letting each subclass define
+        its own properties (`lvalue`, `predicate`, `block` etc). */
 
         this.location = location;  // see `locate` in `lexer.js` and `LarkError` above
         this.value = value;        // the value of the token (taken from the source)
@@ -859,7 +847,6 @@ export class ArrowOperator extends GeneralOperator {
     and infix grammars, which are right-associative. */
 
     LBP = 2;
-    RBP = 1;
 
     infix(parser, left) {
 
@@ -868,7 +855,7 @@ export class ArrowOperator extends GeneralOperator {
 
         this.initial = false;
 
-        if (left.is(OpenParen)) return this.push(left, parser.gatherExpression(this.RBP));
+        if (left.is(OpenParen)) return this.push(left, parser.gatherExpression(this.LBP - 1));
         else throw new LarkError("arrow-operator parameters must be parenthesized", left.location);
     }
 }
@@ -879,12 +866,11 @@ export class AssignmentOperator extends InfixOperator {
     associative. */
 
     LBP = 2;
-    RBP = 1;
     initial = false;
 
     infix(parser, left) {
 
-        return this.push(left, parser.gatherExpression(this.RBP));
+        return this.push(left, parser.gatherExpression(this.LBP - 1));
     }
 }
 

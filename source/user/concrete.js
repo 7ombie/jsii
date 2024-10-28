@@ -617,7 +617,7 @@ export class Await extends CommandStatement {
 
     /* This concrete class implements the `await` operator, used to await promises. */
 
-    LBP = 14;
+    RBP = 14;
     expression = true;
 
     prefix(parser) {
@@ -1345,10 +1345,10 @@ export class Nullish extends GeneralOperator {
 
     /* This concrete class implements the infix nullish operator (`??`). It also handles
     pairs of clz32-operators (`?`) in a prefix position (this is an edgecase, where the
-    Operator. disambiguation). */
+    operator parser requires further disambiguation). */
 
-    LBP = 3;    // the infix precedence applies to the nullish operator
-    RBP = 14;   // the prefix precedence applies to clz32 (and equals bitwise-not)
+    LBP = 3;
+    RBP = 14;
 }
 
 export class Of extends InfixOperator {
@@ -1532,8 +1532,8 @@ export class Plus extends GeneralOperator {
 
     /* This concrete class implements the `+` operator (prefix and infix). */
 
-    LBP = 11;   // this is the precedence of the infix operator
-    RBP = 14;   // this is the precedence of the prefix operator
+    LBP = 11;
+    RBP = 14;
 }
 
 export class Private extends ClassQualifier {
@@ -1547,11 +1547,10 @@ export class Raise extends InfixOperator {
     associative. */
 
     LBP = 13;
-    RBP = 12;
 
     infix(parser, left) {
 
-        return this.push(left, parser.gatherExpression(this.RBP));
+        return this.push(left, parser.gatherExpression(this.LBP - 1));
     }
 }
 
@@ -1733,7 +1732,6 @@ export class When extends Operator {
     which is right-associative. */
 
     LBP = 2;
-    RBP = 1;
     initial = false;
 
     infix(parser, left) {
@@ -1743,7 +1741,7 @@ export class When extends Operator {
         if (parser.on(Else)) parser.advance();
         else throw new LarkError("incomplete when-operation", this.location);
 
-        return this.push(parser.gatherExpression(this.RBP));
+        return this.push(parser.gatherExpression(this.LBP - 1));
     }
 
     js(writer) {

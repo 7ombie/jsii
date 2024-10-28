@@ -6,7 +6,7 @@
 
 (do {
     foo + bar
-    spam + eggs
+    return spam + eggs
 })
 
 (do function of x, y {
