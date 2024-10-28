@@ -1,6 +1,5 @@
 import { put, not, Stack } from "./helpers.js"
 import { LarkError } from "./error.js"
-import { empty } from "./ascii.js"
 import { lex } from "./lexer.js"
 
 import {
@@ -261,7 +260,7 @@ export function * parse(source, {dev=false}={}) {
         the function advances the parser, then returns the token (noting it before advancing),
         and simply complaining otherwise. */
 
-        if (on(Word) || on(Operator) && token.named) return advance(true);
+        if (on(Word) || (on(Operator) && token.named)) return advance(true);
         else throw new LarkError("required a property", token.location);
     }
 
@@ -274,16 +273,16 @@ export function * parse(source, {dev=false}={}) {
 
         if (on(Variable)) return gatherVariable();
 
-        if (on(OpenBracket) || on(OpenBrace)) return gather();
+        if (on(OpenBracket, OpenBrace)) return gather();
 
         throw new LarkError("invalid assignee", token.location);
     }
 
     function gatherParameters() { // api function
 
-        /* This function gathers the parameters for a function into a `results` array, which
-        is returned. The results will all be valid expressions, with no empty values, but are
-        not otherwise validated (as function parameters).
+        /* This function gathers the parameters for a function into a `Parameters` instance,
+        which is returned. The operands will all be valid expressions, with no empty values,
+        but are not otherwise validated (as function parameters).
 
         Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 

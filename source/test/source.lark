@@ -4,6 +4,9 @@
     eggs
 })
 
+x in foo()
+x not in y
+
 (do {
     foo + bar
     return spam + eggs

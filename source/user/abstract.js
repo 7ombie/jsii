@@ -186,9 +186,9 @@ export class Token {
     LBP = 0;                // left-binding-power (infix-operator precedence)
     RBP = 0;                // right-binding-power (prefix-operator precedence)
 
+    notes = [];             // notes regarding variations (some tokens implement many operators)
     operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
-    initial = true;         // whether the token was found in the prefix position or not
     expression = false;     // whether the token forms a node which is a valid expression
 
     get spelling() {
@@ -280,11 +280,20 @@ export class Token {
 
     push(...args) { // internal helper
 
-        /* This helper is used by `prefix` and `infix` methods to push zero or more operands to
-        the operands array for the current instance. The method returns a reference to `this`,
-        as its caller will invariably need to do so too. */
+        /* This chainable helper is used by `prefix` and `infix` methods to push zero or more
+        operands to the `operands` array for the current instance. */
 
         args.forEach(arg => this.operands.push(arg));
+
+        return this;
+    }
+
+    note(...args) { // internal helper
+
+        /* This chainable helper is used by `prefix` and `infix` methods to push zero or more notes
+        to the `notes` array for the current instance. */
+
+        args.forEach(arg => this.notes.push(arg));
 
         return this;
     }
@@ -435,7 +444,7 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.initial) return opener + join(this.at(0).operands) + closer;
+        if (this.notes.length === 0) return opener + join(this.at(0).operands) + closer;
         else return this.at(0).js(writer) + opener + join(this.at(1).operands) + closer;
     }
 }
@@ -824,20 +833,19 @@ export class GeneralOperator extends Operator {
 
     infix(parser, left) {
 
-        this.initial = false;
-
-        return this.push(left, parser.gatherExpression(this.LBP));
+        return this.note("infix").push(left, parser.gatherExpression(this.LBP));
     }
 
     js(writer) {
 
-        if (this.initial) {
+        if (this.notes.includes("infix")) {
 
-            let separator = lowers.includes(this.spelling[0]) ? space : empty;
+            return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
+        }
 
-            return `${this.spelling}${separator}${this.at(0).js(writer)}`;
+        let separator = lowers.includes(this.spelling[0]) ? space : empty;
 
-        } else return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
+        return `${this.spelling}${separator}${this.at(0).js(writer)}`;
     }
 }
 
@@ -853,10 +861,11 @@ export class ArrowOperator extends GeneralOperator {
         /* This method overrides the inherited version to ensure that the `left` parameter
         (when present) is wrapped in parens, and that the operator is right-associative. */
 
-        this.initial = false;
+        const message = "arrow operators require parenthesized arguments";
 
-        if (left.is(OpenParen)) return this.push(left, parser.gatherExpression(this.LBP - 1));
-        else throw new LarkError("arrow-operator parameters must be parenthesized", left.location);
+        if (!left.is(OpenParen)) throw new LarkError(message, left.location);
+
+        return this.note("infix").push(left, parser.gatherExpression(this.LBP - 1));
     }
 }
 
