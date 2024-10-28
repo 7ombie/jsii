@@ -35,7 +35,7 @@ import {
 
 import { CLASSBLOCK } from "../core/blocktypes.js"
 
-import { constants, keywords, operators, reserved } from "../user/spellings.js"
+import { constants, keywords, operators, reserved } from "./spellings.js"
 
 import {
     And,
@@ -139,7 +139,7 @@ import {
     While,
     XOR,
     Yield
-} from "../user/concrete.js"
+} from "./concrete.js"
 
 export class Token {
 
@@ -435,8 +435,8 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.initial) return opener + join(this.operands) + closer;
-        else return this.at(0).js(writer) + opener + join(this.operands.slice(1)) + closer;
+        if (this.initial) return opener + join(this.at(0).operands) + closer;
+        else return this.at(0).js(writer) + opener + join(this.at(1).operands) + closer;
     }
 }
 
@@ -547,11 +547,6 @@ export class Keyword extends Word {
     }
 }
 
-export class Functional extends Keyword {
-
-    /* Used to group `Async`, `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
-}
-
 export class BranchStatement extends Keyword {
 
     /* This is the abstract base class for statements that are used to branch from loops (in
@@ -591,6 +586,11 @@ export class CommandStatement extends Keyword {
 export class Declaration extends Keyword {
 
     /* This abstract base class implements `let` and `var` declarations. */
+}
+
+export class Functional extends Keyword {
+
+    /* Used to group `Async`, `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
 }
 
 export class ClassQualifier extends Declaration {

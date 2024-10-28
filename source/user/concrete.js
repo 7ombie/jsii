@@ -62,8 +62,7 @@ import {
     Terminator,
     Token,
     Word
-} from "../user/abstract.js"
-import { parse } from "../core/parser.js"
+} from "./abstract.js"
 
 export {
     ArrowOperator,
@@ -201,7 +200,7 @@ export class NumberLiteral extends Terminal {
 
         if (lexer.at(alphas)) { // numeric units...
 
-            const unit = new Token(location, empty);
+            const unit = new Token(location);
 
             lexer.gatherWhile(alphas, unit);
             this.value = NumberLiteral.units[unit.value](parseFloat(this.value), float, location);
@@ -209,7 +208,7 @@ export class NumberLiteral extends Terminal {
         } else if (atDouble(slash) || atDouble(backslash)) { // exponentiation...
 
             const operator = lexer.at(slash) ? "e-" : "e";
-            const exponent = new Token(location, empty);
+            const exponent = new Token(location);
 
             lexer.advance(2);
             lexer.gatherWhile(digits, exponent);
@@ -382,9 +381,9 @@ export class StringLiteral extends Terminal {
 
         for (const operand of this.operands) {
 
-            if (operand instanceof Array) for (const interpolation of operand) {
+            if (operand instanceof CompoundExpression) for (const expression of operand.operands) {
 
-                string += "${" + interpolation.js(writer) + "}";
+                string += "${" + expression.js(writer) + "}";
 
             } else string += operand.value;
         }
@@ -653,6 +652,11 @@ export class Bang extends GeneralDotOperator {
     operator in a prefix context, and `.#` in an infix context. */
 }
 
+export class Block extends Token {
+
+    /* Used to group statements into a block. */
+}
+
 export class Break extends BranchStatement {
 
     /* This concrete class implements the `break` statement, which is just like JS. */
@@ -724,6 +728,11 @@ export class CloseParen extends Closer {
     arrow params and function invocations. */
 }
 
+export class CompoundExpression extends Token {
+
+    /* Used to group the contents of various compound expressions into an AST node. */
+}
+
 export class Label extends InfixOperator {
 
     /* This concrete class implements the `:` pseudo-operator, used for delimiting key-value
@@ -731,7 +740,7 @@ export class Label extends InfixOperator {
 
     LBP = 1;
 
-    infix(parser, prefix) {
+    infix(parser, left) {
 
         /* If this colon is part of a label, update the parser to note whether the label is
         bound to a loop statement or a simple block statement. Then, gather the statement,
@@ -740,14 +749,14 @@ export class Label extends InfixOperator {
 
         if (parser.on(If, Else, While, For)) { // a label...
 
-            if (parser.label(prefix) === null) parser.label(prefix, parser.on(For, While));
-            else throw new LarkError("cannot reassign an active label", prefix.location);
+            if (parser.label(left) === null) parser.label(left, parser.on(For, While));
+            else throw new LarkError("cannot reassign an active label", left.location);
 
             this.expression = false;
-            this.push(prefix, parser.gather());
-            parser.label(prefix, null);
+            this.push(left, parser.gather());
+            parser.label(left, null);
 
-        } else super.infix(parser, prefix); // a key-value pair
+        } else super.infix(parser, left); // a key-value pair
 
         return this;
     }
@@ -858,17 +867,17 @@ export class Do extends PrefixOperator {
 
     js(writer) {
 
-        if (this.at(0) instanceof Token) {
+        if (this.at(0) instanceof Block) return `function() ${writer.writeBlock(this.at(0))}()`;
 
-            if (this.at(0).is(Functional)) return `${this.at(0).js(writer)}()`;
+        if (this.at(0).is(Functional)) return `${this.at(0).js(writer)}()`;
 
-            const lambda = new FunctionLiteral(this.location, empty);
+        const literal = new FunctionLiteral(this.location);
+        const parameters = new Parameters(this.location);
+        const block = new Block(this.location).push(this.at(0))
 
-            lambda.push(null, [], [this.at(0)]); // name, params, block
+        literal.push(null, parameters, block);
 
-            return `${lambda.js(writer)}()`;
-
-        } else return `function() ${writer.writeBlock(this.at(0))}()`;
+        return `${literal.js(writer)}()`;
     }
 }
 
@@ -887,17 +896,26 @@ export class Else extends PredicatedBlock {
         /* Gather an else-clause (with its block) or an else-if clause (with its predicate before
         its block). */
 
-        if (parser.on(If)) return this.push(If, parser.gather());
-        else return this.push(parser.gatherBlock(SIMPLEBLOCK));
+        if (parser.on(If)) {
+
+            this.initial = false;
+            return this.push(parser.gather());
+
+        } else return this.push(parser.gatherBlock(SIMPLEBLOCK));
     }
 
     js(writer) {
 
         /* Render an `else` or an `else if` statement. */
 
-        if (this.at(0) === If) return `else ${this.at(1).js(writer)}`;
+        if (this.initial) return `else ${this.at(0).js(writer)}`;
         else return `else ${writer.writeBlock(this.at(0))}`;
     }
+}
+
+export class SkipAssignee extends Token {
+
+    /* Used to represent an empty slot in an unpacking assignment (just a comma). */
 }
 
 export class Equal extends InfixOperator {
@@ -920,21 +938,7 @@ export class EOF extends Terminator {
 
 export class Export extends Keyword {
 
-    /* This conrete class implements the export-statement, with its various grammars. */
-
-    prefix(parser) {
-
-        if (parser.on(DefaultConstant)) {
-
-            return this.push(parser.advance(true), parser.gatherExpression());
-        }
-
-        this.push(parser.gatherExpression());
-
-        if (parser.on(From)) this.push(parser.advance(true), parser.gatherExpression());
-
-        return this;
-    }
+    /* This conrete class implements the export-statement. */
 }
 
 export class FalseConstant extends Constant {
@@ -971,7 +975,7 @@ export class For extends Header {
 
         this.push(parser.gatherAssignee());
 
-        if (parser.on(In, Of, On, From)) this.push(parser.advance(true).constructor);
+        if (parser.on(In, Of, On, From)) this.initial = parser.advance(true);
         else throw new LarkError("incomplete for-statement", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(LOOPBLOCK));
@@ -979,16 +983,21 @@ export class For extends Header {
 
     js(writer) {
 
-        const kind = this.at(1);
         const assignees = this.at(0).js(writer);
-        const keyword = kind === From ? "for await" : "for";
-        const operator = kind === On ? "in" : "of";
-        const block = writer.writeBlock(this.at(3));
+        const keyword = this.initial instanceof From ? "for await" : "for";
+        const operator = this.initial instanceof On ? "in" : "of";
+        const block = writer.writeBlock(this.at(2));
 
-        let expression = writer.register(this.at(2));
+        let expression = writer.register(this.at(1));
 
-        if (kind === In) expression = `${expression}?.ƥvalues?.() ?? Object.values(${expression} ?? [])`;
-        if (kind === Of) expression = `${expression}?.ƥkeys?.() ?? Object.keys(${expression} ?? {})`;
+        if (this.initial instanceof In) {
+
+            expression = `${expression}?.ƥvalues?.() ?? Object.values(${expression} ?? [])`;
+
+        } else if (this.initial instanceof Of) {
+
+            expression = `${expression}?.ƥkeys?.() ?? Object.keys(${expression} ?? {})`;
+        }
 
         return `${keyword} (const ${assignees} ${operator} ${expression}) ${block}`;
     }
@@ -1026,45 +1035,14 @@ export class FunctionLiteral extends Functional {
     LBP = 1;
     expression = true;
 
-    static isGenerator(block) {
+    static isGenerator(block) { // TODO: implement
 
         /* Iterates over an array of statements, recurring on each token or block in the `operands`
         array, but ignoring anything functional, looking for `yield` (or `yield from`) expressions
         that belong to the current function. Returns `true` when `yield` or `yield from` is found,
         and `false` otherwise (in practice, indicating whether the caller is a generator). */
 
-        for (const statement of block) {
-
-            if (statement instanceof Yield) return true;
-
-            if (statement instanceof Array) {
-
-                if (FunctionLiteral.isGenerator(statement)) return true;
-                else continue;
-            }
-
-            if (not(statement instanceof Token)) continue;
-
-            if (statement.is(ArrowOperator, Functional)) continue;
-
-            for (const operand of statement.operands) {
-
-                if (operand instanceof Yield) return true;
-
-                if (operand instanceof Array) {
-
-                    if (FunctionLiteral.isGenerator(operand)) return true;
-                    else continue;
-                }
-
-                if (operand instanceof Token) {
-
-                    if (FunctionLiteral.isGenerator(operand.operands)) return true;
-                    else continue;
-                }
-            }
-
-        } return false;
+        return false;
     }
 
     prefix(parser, context) {
@@ -1086,7 +1064,7 @@ export class FunctionLiteral extends Functional {
             parser.advance();
             this.push(parser.gatherCompoundExpression(CloseParen));
 
-        } else this.push(null);
+        } else this.push(new SkipAssignee(this.location));
 
         // now, handle the optional parameters and required function body...
 
@@ -1096,9 +1074,11 @@ export class FunctionLiteral extends Functional {
 
             this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
 
-        } else this.push([], parser.gatherBlock(blockType));
+        } else this.push(new Parameters(this.location), parser.gatherBlock(blockType));
 
-        return this.push(FunctionLiteral.isGenerator(this.at(2)));
+        this.initial = FunctionLiteral.isGenerator(this.at(2));
+
+        return this;
     }
 
     js(writer) {
@@ -1107,11 +1087,11 @@ export class FunctionLiteral extends Functional {
 
         let name = empty;
 
-        // having assumed that `this.at(0)` is `null` (indicating an anonymous function), now
-        // check if it is an `Array` (indicating a computed name) or a `Variable` (indicating
-        // a regular named-function), and update `name` accordingly...
+        // having assumed that `this.at(0)` is a `SkipAssignee` (indicating an anonymous function),
+        // now check if it is a `CompoundExpression` (indicating a computed name) or a `Variable`
+        // (indicating a regular named-function), and update `name` accordingly...
 
-        if (this.at(0) instanceof Array) {
+        if (this.at(0) instanceof CompoundExpression) {
 
             name = space + openBracket + this.at(0).at(0).js(writer) + closeBracket;
 
@@ -1120,8 +1100,8 @@ export class FunctionLiteral extends Functional {
         // prerender the keyword, parameters and the function body, then interpolate them into
         // a literal, and return the result...
 
-        const keyword = "function" + (this.at(3) ? asterisk : empty);
-        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
+        const keyword = "function" + (this.initial ? asterisk : empty);
+        const params = this.at(1).operands.map(param => param.js(writer)).join(comma + space);
         const block = writer.writeBlock(this.at(2));
 
         return `${keyword}${name}(${params}) ${block}`;
@@ -1394,7 +1374,7 @@ export class OpenBrace extends Opener {
         /* This method gathers an object expression, noting if it specifies a prototype by setting
         the `value` string to "__proto__". */
 
-        this.operands = parser.gatherCompoundExpression(CloseBrace);
+        this.operands.push(parser.gatherCompoundExpression(CloseBrace));
 
         if (this.check({proto: true}).prototyped) this.value = "__proto__";
 
@@ -1409,7 +1389,7 @@ export class OpenBrace extends Opener {
         `(Prototype)` expression (indicated by having a `value` of "__proto__"). */
 
         const head = this.value === "__proto__" ? openBrace : "{__proto__: null, ";
-        const body = this.operands.map(operand => operand.js(writer)).join(comma + space);
+        const body = this.at(0).operands.map(operand => operand.js(writer)).join(comma + space);
 
         return head + body + closeBrace;
     }
@@ -1424,7 +1404,7 @@ export class OpenBracket extends Caller {
 
         /* This method gathers an array expression. */
 
-        this.operands = parser.gatherCompoundExpression(CloseBracket);
+        this.operands.push(parser.gatherCompoundExpression(CloseBracket));
         this.check({plain: true});
 
         return this;
@@ -1435,7 +1415,7 @@ export class OpenBracket extends Caller {
         /* This method gathers bracket-notation. */
 
         this.initial = false;
-        this.push(left, ...parser.gatherCompoundExpression(CloseBracket));
+        this.push(left, parser.gatherCompoundExpression(CloseBracket));
         this.check({skip: 1, singular: true, plain: true});
 
         return this;
@@ -1464,7 +1444,7 @@ export class OpenParen extends Caller {
 
         /* This method gathers a grouped expression. */
 
-        this.operands = parser.gatherCompoundExpression(CloseParen);
+        this.operands.push(parser.gatherCompoundExpression(CloseParen));
         this.check({plain: true});
 
         return this;
@@ -1475,7 +1455,7 @@ export class OpenParen extends Caller {
         /* This method gathers and validates an invocation. */
 
         this.initial = false;
-        this.push(left, ...parser.gatherCompoundExpression(CloseParen));
+        this.push(left, parser.gatherCompoundExpression(CloseParen));
         this.check({skip: 1, plain: true});
 
         return this;
@@ -1485,15 +1465,15 @@ export class OpenParen extends Caller {
 
         /* Output a grouped expression or an invocation. */
 
-        if (this.initial) { // grouped expression...
+        if (this.initial) { // parenthesized expression...
 
-            const operands = this.operands.map(operand => operand.js(writer));
+            const args = this.at(0).operands.map(operand => operand.js(writer));
 
-            return `(${operands.join(comma + space)})`;
+            return `(${args.join(comma + space)})`;
 
         } else { // invocation...
 
-            const args = this.operands.slice(1).map(operand => operand.js(writer));
+            const args = this.at(1).operands.map(operand => operand.js(writer));
 
             return `${this.at(0).js(writer)}(${args.join(comma + space)})`;
         }
@@ -1518,6 +1498,11 @@ export class Packed extends Operator {
     /* This concrete class implements the `packed` operator, used by `Is` to implement the
     `is packed` and `id not packed` suffix operators, which compile to expressions using
     `Object.isExtensible` (which equates to is-not-packed). */
+}
+
+export class Parameters extends Token {
+
+    /* Used to group function parameters. */
 }
 
 export class Pass extends Keyword {
@@ -1777,8 +1762,13 @@ export class Yield extends Keyword {
         /* Gather an *optional* expression, unless the parser is on `from`. In that case,
         gather the `from` keyword, and then gather the *required* expression. */
 
-        if (parser.on(From)) { parser.advance(true); this.push(From, parser.gatherExpression()) }
-        else if (not(parser.on(Terminator, Closer))) this.push(parser.gatherExpression());
+        if (parser.on(From)) {
+
+            parser.advance(true);
+            this.initial = false;
+            this.push(parser.gatherExpression());
+
+        } else if (not(parser.on(Terminator, Closer))) this.push(parser.gatherExpression());
 
         return this;
     }
@@ -1796,7 +1786,7 @@ export class Yield extends Keyword {
         /* Render a `yield` expression with its optional operand, or a `yield from` expression
         with its required operand. */
 
-        if (this.at(0) === From) return `yield * ${this.at(1).js(writer)}`;
+        if (this.initial) return `yield * ${this.at(0).js(writer)}`;
 
         const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
 

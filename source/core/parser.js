@@ -1,10 +1,26 @@
-import { put, not, Stack } from "../core/helpers.js"
-import { LarkError } from "../core/error.js"
-import { lex } from "../core/lexer.js"
+import { put, not, Stack } from "./helpers.js"
+import { LarkError } from "./error.js"
+import { empty } from "./ascii.js"
+import { lex } from "./lexer.js"
 
-import { OpenBrace, OpenBracket, Variable } from "../user/concrete.js"
-import { Header, Keyword, Operator, Terminator, Word } from "../user/concrete.js"
-import { CloseBrace, Comma, EOF, LineFeed } from "../user/concrete.js"
+import {
+    Block,
+    CloseBrace,
+    Comma,
+    CompoundExpression,
+    EOF,
+    Header,
+    Keyword,
+    LineFeed,
+    OpenBrace,
+    OpenBracket,
+    Operator,
+    Parameters,
+    SkipAssignee,
+    Terminator,
+    Variable,
+    Word
+} from "../user/concrete.js"
 
 export function * parse(source, {dev=false}={}) {
 
@@ -48,6 +64,32 @@ export function * parse(source, {dev=false}={}) {
         }
 
         if (nested) throw new LarkError("nested end of file", token.location);
+    }
+
+    function advance(returnPrevious=false) { // api function
+
+        /* Advance the token stream by one token, updating the nonlocal `token`, then
+        return a reference to it, unless the `returnPrevious` argument is truthy. In
+        that case, return the token that was current when the invocation was made. */
+
+        [previous, token] = [token, tokens.next().value];
+
+        ignoreInsignificantNewlines();
+
+        return returnPrevious ? previous : token;
+    }
+
+    function on(...Classes) { // api function
+
+        /* Optionally take one or more `Token` subclasses, if the current `token` is one of
+        them, return it. If none of the subclasses match, return `false`. If no arguments
+        are given, the function acts as a getter, just returning the current `token`. */
+
+        if (Classes.length === 0) return token;
+
+        for (const Class of Classes) if (token instanceof Class) return Class;
+
+        return false;
     }
 
     function ignoreInsignificantNewlines() { // internal
@@ -143,67 +185,6 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected an expression", candidate.location);
     }
 
-    function gatherProperty() { // api function
-
-        /* This function gathers a single property token, which can be a variable name or any
-        kind of word (keyword, operator name, reserved word etc). If the token is a property,
-        the function advances the parser, then returns the token (noting it before advancing),
-        and simply complaining otherwise. */
-
-        if (on(Word) || on(Operator) && token.named) return advance(true);
-        else throw new LarkError("required a property", token.location);
-    }
-
-    function gatherVariable() { // api function
-
-        /* This function gathers a single variable token, then advances the parser, before
-        returning the token (which is noted before advancing), complaining if the token is
-        not a variable. */
-
-        if (on(Variable)) return advance(true);
-        else throw new LarkError("required a variable", advance().location);
-    }
-
-    function gatherBlock(type) { // api function
-
-        /* This function takes a block type (an integer, see `check`), and pushes it to the
-        block stack, before gathering a formal statement or an array of statements (of any
-        number and kind). Once the block has been parsed, the block type is popped from
-        the stack, and the parsed block is returned.
-
-        If the block type is functional, this function requires that the body is wrapped in
-        braces (as only control-flow statements can have unbraced blocks). */
-
-        function gatherFormalStatement() {
-
-            /* This function wraps the Pratt function to ensure that the result is a formal
-            statement, complaining otherwise. */
-
-            const candidate = gather();
-
-            if (candidate instanceof Keyword) return candidate;
-            else throw new LarkError("required a formal statement", candidate.location);
-        }
-
-        const [functional, braced] = [type > 0, on(OpenBrace)];
-
-        if (functional && not(braced)) throw new LarkError("required a body", token.location);
-
-        blocktypes.top = type;
-        whitespace.top = true;
-
-        if (functional) labelspace.top = {};
-
-        const result = braced ? [...LIST()] : gatherFormalStatement();
-
-        if (functional) labelspace.pop;
-
-        whitespace.pop
-        blocktypes.pop;
-
-        return result;
-    }
-
     function gatherCompoundExpression(Closer) {
 
         /* This function takes a `Token` subclass which indicates which closing character to
@@ -227,7 +208,9 @@ export function * parse(source, {dev=false}={}) {
         // initialize the `results` array, accounting for the possibility of a leading empty
         // expression (which is legal in destructuring assignments)...
 
-        const results = on(Comma) ? [null] : [];
+        const block = new CompoundExpression(token.location)
+
+        if (on(Comma)) block.push(new SkipAssignee(token.location));
 
         // now, loop until we find the closer, gathering the list of comma-separated, optionally
         // labelled expressions that comprise the compound expression, while allowing for empty
@@ -239,14 +222,14 @@ export function * parse(source, {dev=false}={}) {
 
             advance();
 
-            if (on(Comma, Closer)) results.push(null);
+            if (on(Comma, Closer)) block.push(new SkipAssignee(token.location));
 
         } else {
 
             // this block pushes an actual expression, then requires that it's terminated
             // properly, complaining otherwise...
 
-            results.push(gatherExpression());
+            block.push(gatherExpression());
 
             if (on(Comma, Closer)) continue;
             else throw new LarkError("required delimiter", token.location);
@@ -258,34 +241,28 @@ export function * parse(source, {dev=false}={}) {
         whitespace.pop;
         advance();
 
-        return results;
+        return block;
     }
 
-    function gatherParameters() { // api function
+    function gatherVariable() { // api function
 
-        /* This function gathers the parameters for a function into a `results` array, which
-        is returned. The results will all be valid expressions, with no empty values, but are
-        not otherwise validated (as function parameters).
+        /* This function gathers a single variable token, then advances the parser, before
+        returning the token (which is noted before advancing), complaining if the token is
+        not a variable. */
 
-        Note: Lark parameters do not use parens (so are not parsed as compound expressions).
+        if (on(Variable)) return advance(true);
+        else throw new LarkError("required a variable", advance().location);
+    }
 
-        Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
-        not be encountered until the parameters have already been parsed). */
+    function gatherProperty() { // api function
 
-        const results = [];
+        /* This function gathers a single property token, which can be a variable name or any
+        kind of word (keyword, operator name, reserved word etc). If the token is a property,
+        the function advances the parser, then returns the token (noting it before advancing),
+        and simply complaining otherwise. */
 
-        if (on(OpenBrace)) return results;
-
-        while (true) {
-
-            results.push(gatherExpression());
-
-            if (on(Comma)) advance();
-            else if (on(OpenBrace)) break;
-            else throw new LarkError("required a comma or block", token.location);
-        }
-
-        return results;
+        if (on(Word) || on(Operator) && token.named) return advance(true);
+        else throw new LarkError("required a property", token.location);
     }
 
     function gatherAssignee() { // api function
@@ -302,30 +279,72 @@ export function * parse(source, {dev=false}={}) {
         throw new LarkError("invalid assignee", token.location);
     }
 
-    function advance(returnPrevious=false) { // api function
+    function gatherParameters() { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token`, then
-        return a reference to it, unless the `returnPrevious` argument is truthy. In
-        that case, return the token that was current when the invocation was made. */
+        /* This function gathers the parameters for a function into a `results` array, which
+        is returned. The results will all be valid expressions, with no empty values, but are
+        not otherwise validated (as function parameters).
 
-        [previous, token] = [token, tokens.next().value];
+        Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 
-        ignoreInsignificantNewlines();
+        Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
+        not be encountered until the parameters have already been parsed). */
 
-        return returnPrevious ? previous : token;
+        const result = new Parameters(token.location);
+
+        if (on(OpenBrace)) return result;
+
+        while (true) {
+
+            result.push(gatherExpression());
+
+            if (on(Comma)) advance();
+            else if (on(OpenBrace)) break;
+            else throw new LarkError("required a comma or block", token.location);
+        }
+
+        return result;
     }
 
-    function on(...Classes) { // api function
+    function gatherBlock(type) { // api function
 
-        /* Optionally take one or more `Token` subclasses, if the current `token` is one of
-        them, return it. If none of the subclasses match, return `false`. If no arguments
-        are given, the function acts as a getter, just returning the current `token`. */
+        /* This function takes a block type (an integer, see `check`), and pushes it to the
+        block stack, before gathering a formal statement or an array of statements (of any
+        number and kind). Once the block has been parsed, the block type is popped from
+        the stack, and the parsed block is returned.
 
-        if (Classes.length === 0) return token;
+        If the block type is functional, this function requires that the body is wrapped in
+        braces (as only control-flow statements can have unbraced blocks). */
 
-        for (const Class of Classes) if (token instanceof Class) return Class;
+        function gatherFormalStatement() {
 
-        return false;
+            /* This function wraps the Pratt function to ensure that the result is a formal
+            statement, complaining otherwise. */
+
+            const candidate = gather();
+
+            if (candidate instanceof Keyword) return candidate;
+            else throw new LarkError("required a formal statement", candidate.location);
+        }
+
+        const [functional, braced, block] = [type > 0, on(OpenBrace), new Block(token.location)];
+
+        if (functional && not(braced)) throw new LarkError("required a body", token.location);
+
+        blocktypes.top = type;
+        whitespace.top = true;
+
+        if (functional) labelspace.top = {};
+
+        if (braced) block.push(...LIST());
+        else block.push(gatherFormalStatement());
+
+        if (functional) labelspace.pop;
+
+        whitespace.pop
+        blocktypes.pop;
+
+        return block;
     }
 
     function check(doStop, isValid, fallback=false) { // api function

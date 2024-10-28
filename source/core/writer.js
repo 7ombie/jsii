@@ -1,8 +1,8 @@
-import { empty, space, openBrace, closeBrace, semicolon, newline } from "../core/ascii.js"
-import { put, lark } from "../core/helpers.js"
-import { parse } from "../core/parser.js"
+import { empty, space, openBrace, closeBrace, semicolon, newline } from "./ascii.js"
+import { put, lark } from "./helpers.js"
+import { parse } from "./parser.js"
 
-import { Token, Header, Label, Variable, Constant, NumberLiteral } from "../user/concrete.js"
+import { Token, Header, Label, Variable, Constant, NumberLiteral, Block } from "../user/concrete.js"
 
 export function * write(source, {dev=false}={}) {
 
@@ -27,22 +27,17 @@ export function * write(source, {dev=false}={}) {
         }
     }
 
-    function writeBlock(statements) { // api function
+    function writeBlock(block) { // api function
 
-        /* Take a a block of code, either as a statement iterator or a single statement token.
-        Increase the indentation, `walk` the block and render each statement, before joining
-        them with newlines and wrapping the result in curly braces. Finally, restore the
-        previous indentation level, before returning the result. */
-
-        const oldIndentation = indentation;
+        /* Take a `Block` instance. Increase the indentation, `walk` the block and render each
+        statement, before joining them with newlines and wrapping the result in curly braces.
+        Finally, restore the previous indentation level, before returning the result. */
 
         indentation += space + space;
 
-        if (statements instanceof Token) statements = [statements];
+        const code = Array.from(walk(block.operands)).join(newline);
 
-        const code = Array.from(walk(statements)).join(newline);
-
-        indentation = oldIndentation;
+        indentation = indentation.slice(2);
 
         return openBrace + newline + code + newline + indentation + closeBrace;
     }

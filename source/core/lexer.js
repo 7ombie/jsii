@@ -1,5 +1,5 @@
-import { put, not } from "../core/helpers.js"
-import { LarkError } from "../core/error.js"
+import { put, not } from "./helpers.js"
+import { LarkError } from "./error.js"
 
 import {
     closeParen,
