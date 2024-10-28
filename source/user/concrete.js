@@ -349,8 +349,8 @@ export class StringLiteral extends Terminal {
 
     infix(parser, left) {
 
-        /* Take a prefix expression, push it to `operands`, then defer to `prefix(parser)` to parse
-        the actual string literal. */
+        /* Take a prefix expression, push it to the token's operands, then defer parsing to the
+        `prefix(parser)` method to parse the actual string literal. */
 
         return this.note("tagged").push(left).prefix(parser);
     }
@@ -359,16 +359,16 @@ export class StringLiteral extends Terminal {
 
     js(writer) {
 
-        /* Generate a template literal from the various parts of the *string* literal (text
-        literals have their own `js(writer)` method), reproducing the interpolations, and
-        possibly including a tag-expression. */
+        /* Generate a template literal from the various parts of the string literal (text literals
+        have their own `js(writer)` method), reproducing the interpolations, and possibly including
+        a tag-expression. */
 
         if (this.notes.includes("tagged")) {
 
             var prefix = this.at(0).js(writer)
             var string = this.value;
 
-            this.operands = this.operands.slice(1);
+            this.splice(1);
 
         } else {
 
@@ -376,11 +376,11 @@ export class StringLiteral extends Terminal {
             var string = this.value;
         }
 
-        for (const operand of this.operands) {
+        for (const operand of this) {
 
-            if (operand instanceof CompoundExpression) for (const expression of operand.operands) {
+            if (operand instanceof CompoundExpression) for (const interpolation of operand) {
 
-                string += "${" + expression.js(writer) + "}";
+                string += "${" + interpolation.js(writer) + "}";
 
             } else string += operand.value;
         }
@@ -402,9 +402,9 @@ export class TextLiteral extends StringLiteral {
 
         const self = this, indentation = iife(function() {
 
-            /* Get the value of the last string operand and the index of the last newline in that
-            string. Use the results to return the indentation to remove (a newline, followed by
-            zero or more spaces, as a string). */
+            /* This IIFE computes the indentation to remove from each line (as a string containing
+            a newline, followed by zero or more spaces), returning it, so it becomes `indentation`
+            in the out scope. */
 
             const value = (self.at(-1) ?? self).value;
             const index = value.lastIndexOf(newline);
@@ -412,16 +412,12 @@ export class TextLiteral extends StringLiteral {
             return value.slice(index);
         });
 
-        // first, prepare the `prefix` string (either a tag-expression or an empty string) and the
-        // `string` that the rest of the tokens will be concatented to, as well as the appropriate
-        // slice of the `operands` array (which depends on whether the literal is tagged or not)...
-
         if (this.notes.includes("tagged")) {
 
             var prefix = this.at(0).js(writer);
             var string = strip(this.value);
 
-            this.operands = this.operands.slice(1);
+            this.splice(1);
 
         } else {
 
@@ -433,14 +429,14 @@ export class TextLiteral extends StringLiteral {
 
         string = string.slice(1);
 
-        // now, iterate over the (remaining) operands, convert them to js, wrapping any
-        // interpolations appropriately, and concatenate the results to `string`...
+        // now, iterate over the token's (remaining) operands, convert them to js, wrapping
+        // any interpolations appropriately, and concatenating the results to `string`...
 
-        for (const operand of this.operands) {
+        for (const operand of this) {
 
-            if (operand instanceof CompoundExpression) for (const expression of operand.operands) {
+            if (operand instanceof CompoundExpression) for (const interpolation of operand) {
 
-                string += "${" + expression.js(writer) + "}";
+                string += "${" + interpolation.js(writer) + "}";
 
             } else string += strip(operand.value);
         }
@@ -669,13 +665,11 @@ export class Break extends BranchStatement {
         breaks by climbing the stack, ignoring any simple blocks, and checking
         that the first non-simple block is a loop. */
 
-        if (this.operands.length) { // labeled break...
+        if (this.notes.includes("label")) {
 
-            let label = this.operands[0];
+            if (not(parser.label(this.at(0)))) {
 
-            if (parser.label(label) === null) {
-
-                throw new LarkError(`undefined label '${label.value}'`, label.location);
+                throw new LarkError(`undefined label '${this.at(0).value}'`, this.at(0).location);
             }
 
             return parser.check($ => true, $ => $ < FUNCTIONBLOCK);
@@ -783,9 +777,9 @@ export class Continue extends BranchStatement {
         climb the stack, ignoring simple blocks, and check that the first non-simple block
         is a loop. */
 
-        if (this.operands.length) { // labeled continue...
+        if (this.notes.includes("label")) {
 
-            let label = this.operands[0];
+            let label = this.at(0);
             let state = parser.label(label);
 
             if (state === null) throw new LarkError("undefined label", label.location);
@@ -1032,11 +1026,6 @@ export class FunctionLiteral extends Functional {
 
     static isGenerator(block) { // TODO: implement
 
-        /* Iterates over an array of statements, recurring on each token or block in the `operands`
-        array, but ignoring anything functional, looking for `yield` (or `yield from`) expressions
-        that belong to the current function. Returns `true` when `yield` or `yield from` is found,
-        and `false` otherwise (in practice, indicating whether the caller is a generator). */
-
         return false;
     }
 
@@ -1096,7 +1085,7 @@ export class FunctionLiteral extends Functional {
         // a literal, and return the result...
 
         const keyword = "function" + (this.notes.includes("generator") ? asterisk : empty);
-        const params = this.at(1).operands.map(param => param.js(writer)).join(comma + space);
+        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
         const block = writer.writeBlock(this.at(2));
 
         return `${keyword}${name}(${params}) ${block}`;
@@ -1375,7 +1364,7 @@ export class OpenBrace extends Opener {
         /* This method gathers an object expression, noting if it specifies a prototype by setting
         the `value` string to "__proto__". */
 
-        this.operands.push(parser.gatherCompoundExpression(CloseBrace));
+        this.push(parser.gatherCompoundExpression(CloseBrace));
 
         if (this.check({proto: true}).prototyped) this.value = "__proto__";
 
@@ -1390,7 +1379,7 @@ export class OpenBrace extends Opener {
         `(Prototype)` expression (indicated by having a `value` of "__proto__"). */
 
         const head = this.value === "__proto__" ? openBrace : "{__proto__: null, ";
-        const body = this.at(0).operands.map(operand => operand.js(writer)).join(comma + space);
+        const body = this.at(0).map(operand => operand.js(writer)).join(comma + space);
 
         return head + body + closeBrace;
     }
@@ -1405,7 +1394,7 @@ export class OpenBracket extends Caller {
 
         /* This method gathers an array expression. */
 
-        this.operands.push(parser.gatherCompoundExpression(CloseBracket));
+        this.push(parser.gatherCompoundExpression(CloseBracket));
         this.check({plain: true});
 
         return this;
@@ -1444,7 +1433,7 @@ export class OpenParen extends Caller {
 
         /* This method gathers a grouped expression. */
 
-        this.operands.push(parser.gatherCompoundExpression(CloseParen));
+        this.push(parser.gatherCompoundExpression(CloseParen));
         this.check({plain: true});
 
         return this;

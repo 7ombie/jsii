@@ -35,7 +35,7 @@ export function * write(source, {dev=false}={}) {
 
         indentation += space + space;
 
-        const code = Array.from(walk(block.operands)).join(newline);
+        const code = Array.from(walk(block)).join(newline);
 
         indentation = indentation.slice(2);
 

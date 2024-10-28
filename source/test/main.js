@@ -19,7 +19,7 @@ for (const string of write(source, {dev: true})) console.log(string);
 
 //     put("==>", statement);
 
-//     for (const operand of statement.operands) walk(operand);
+//     for (const operand of statement) walk(operand);
 // }
 
 // for (const statement of parse(source, {dev: true})) walk(statement);

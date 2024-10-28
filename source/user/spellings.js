@@ -61,7 +61,7 @@ export const operators = [
     ">>>=",
 ];
 
-export const constants = [ // TODO: add `root`
+export const constants = [
     "false",
     "Infinity",
     "NaN",

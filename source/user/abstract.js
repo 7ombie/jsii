@@ -141,7 +141,7 @@ import {
     Yield
 } from "./concrete.js"
 
-export class Token {
+export class Token extends Array {
 
     /* This is the abstract base class for all other token classes. Internally, Lark reuses the
     same classes for the tokens (in the token stream) and the AST nodes (in the abstract syntax
@@ -187,7 +187,6 @@ export class Token {
     RBP = 0;                // right-binding-power (prefix-operator precedence)
 
     notes = [];             // notes regarding variations (some tokens implement many operators)
-    operands = [];          // the token's operands (including params, blocks, tokens etc)
     compile = true;         // whether to compile the statement to JS (used by `dev` mode)
     expression = false;     // whether the token forms a node which is a valid expression
 
@@ -213,6 +212,7 @@ export class Token {
         AST nodes to a generic array of operands, instead of letting each subclass define
         its own properties (`lvalue`, `predicate`, `block` etc). */
 
+        super();
         this.location = location;  // see `locate` in `lexer.js` and `LarkError` above
         this.value = value;        // the value of the token (taken from the source)
     }
@@ -230,12 +230,12 @@ export class Token {
 
     prefix(parser, context=undefined) { // api method
 
-        /* This method takes a reference to the Parser API and an optional `context`. By defaut,
-        the method just throws an exception. However, tokens that are valid in the prefix position
-        can define their own implementations that use the Parser API to parse the token stream
-        (pushing results to the `operands` array), before returning the resulting AST node
-        (usually `this`).
-        
+        /* This method takes a reference to the Parser API and an optional `context`. The method
+        just throws an exception. However, tokens that're valid in the prefix position can define
+        their own implementations that use the Parser API to parse the token stream (pushing any
+        results to the token's operands), before returning the resulting AST node (which will
+        normally just be `this` (which is also returned by `note` and `push`)).
+
         API methods that invoke `parser.gather` or `parser.gatherExpression` (on subexpressions)
         can optionally pass a `context` to those API functions (as well as a binding-power) and
         that context will be passed to the `prefix` method of the following token. This is used
@@ -281,9 +281,9 @@ export class Token {
     push(...args) { // internal helper
 
         /* This chainable helper is used by `prefix` and `infix` methods to push zero or more
-        operands to the `operands` array for the current instance. */
+        operands to the current instance. */
 
-        args.forEach(arg => this.operands.push(arg));
+        args.forEach(arg => super.push(arg));
 
         return this;
     }
@@ -296,13 +296,6 @@ export class Token {
         args.forEach(arg => this.notes.push(arg));
 
         return this;
-    }
-
-    at(index) { // internal helper
-
-        /* Expose the `at` method of the `operands` array directly. */
-
-        return this.operands.at(index);
     }
 
     is(...Classes) { // internal helper
@@ -388,7 +381,7 @@ export class Opener extends Delimiter {
 
         Note: Only top-level operands are checked (as children handle their own operands). */
 
-        const operands = this.operands.slice(skip);
+        const operands = this.slice(skip);
 
         // next, if the `singular` rule applies, check that there is only one relevant operand...
 
@@ -398,8 +391,8 @@ export class Opener extends Delimiter {
             default: throw new LarkError("unexpected expression", operands[1].location);
         }
 
-        // next, if either of the `plain` or `proto` rules apply, traverse the `operands` array,
-        // and enforce whichever rules apply to each operand...
+        // next, if either of the `plain` or `proto` rules apply, traverse the operands, and
+        // enforce whichever rules apply to each operand...
 
         let prototyped = false;
 
@@ -446,9 +439,9 @@ export class Opener extends Delimiter {
 
         if (this.notes.includes("infix")) {
 
-            return this.at(0).js(writer) + opener + join(this.at(1).operands) + closer;
+            return this.at(0).js(writer) + opener + join(this.at(1)) + closer;
 
-        } else return opener + join(this.at(0).operands) + closer;
+        } else return opener + join(this.at(0)) + closer;
     }
 }
 
@@ -569,7 +562,7 @@ export class BranchStatement extends Keyword {
         /* If the parser is on a valid label, this method gathers it, continuing without
         operands otherwise. */
 
-        if (parser.on(Variable)) this.push(parser.gatherVariable());
+        if (parser.on(Variable)) this.note("label").push(parser.gatherVariable());
 
         return this;
     }
@@ -578,9 +571,9 @@ export class BranchStatement extends Keyword {
 
         /* Render a `break` or `continue` statement with its optional label. */
 
-        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
+        const label = this.notes.includes("label") ? space + this.at(0).js(writer) : empty;
 
-        return `${this.spelling}${expression}`;
+        return `${this.spelling}${label}`;
     }
 }
 
