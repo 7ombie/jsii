@@ -48,6 +48,7 @@ import {
     Declaration,
     Delimiter,
     DotOperator,
+    Functional,
     GeneralDotOperator,
     GeneralOperator,
     Header,
@@ -589,7 +590,7 @@ export class AssignXOR extends AssignmentOperator {
     operator (`||=`). */
 }
 
-export class Async extends Keyword {
+export class Async extends Functional {
 
     /* This concrete class implements the `async` function-qualifier. */
 
@@ -682,9 +683,9 @@ export class Break extends BranchStatement {
     }
 }
 
-export class ClassLiteral extends Header {
+export class ClassLiteral extends Functional {
 
-    /* This concrete class implements the `class` statement, which cannot extend anything,
+    /* This concrete class implements `class` literals, which cannot extend anything,
     as we use `subclass` for that. */
 
     expression = true;
@@ -851,7 +852,7 @@ export class Do extends PrefixOperator {
         /* If the next token is `async` or `function`, make this instance valid as an expression,
         then gather whatever follows. Otherwise, gather a control-flow block. */
 
-        if (parser.on(If, While, For, Async, FunctionLiteral)) return this.push(parser.gather());
+        if (parser.on(If, While, For, Functional)) return this.push(parser.gather());
         else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
     }
 
@@ -859,7 +860,7 @@ export class Do extends PrefixOperator {
 
         if (this.at(0) instanceof Token) {
 
-            if (this.at(0).is(Async, FunctionLiteral)) return `${this.at(0).js(writer)}()`;
+            if (this.at(0).is(Functional)) return `${this.at(0).js(writer)}()`;
 
             const lambda = new FunctionLiteral(this.location, empty);
 
@@ -1018,7 +1019,7 @@ export class Frozen extends Operator {
     `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
 }
 
-export class FunctionLiteral extends Keyword {
+export class FunctionLiteral extends Functional {
 
     /* This is the concrete class for function literals. */
 
@@ -1037,14 +1038,14 @@ export class FunctionLiteral extends Keyword {
             if (statement instanceof Yield) return true;
 
             if (statement instanceof Array) {
-                
+
                 if (FunctionLiteral.isGenerator(statement)) return true;
                 else continue;
             }
 
             if (not(statement instanceof Token)) continue;
 
-            if (statement.is(ArrowOperator, FunctionLiteral, ClassLiteral)) continue;
+            if (statement.is(ArrowOperator, Functional)) continue;
 
             for (const operand of statement.operands) {
 
@@ -1661,10 +1662,10 @@ export class Static extends ClassQualifier {
     /* This contrete class implements static-statements, used inside classes. */
 }
 
-export class Subclass extends Header {
+export class SubclassLiteral extends Functional {
 
-    /* This concrete class implements the `subclass` statement, which is used to extend one
-    class with another (like `extends` in JavaScript). */
+    /* This concrete class implements `subclass` literals, which are used to extend one
+    class with another (`subclass of Foo` -> `class extends Foo`). */
 
     expression = true;
 

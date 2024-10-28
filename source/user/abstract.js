@@ -128,7 +128,7 @@ import {
     Spread,
     Star,
     Static,
-    Subclass,
+    SubclassLiteral,
     SuperConstant,
     Throw,
     TrueConstant,
@@ -550,13 +550,18 @@ export class Keyword extends Word {
             case "private": return new Private(location, value);
             case "return": return new Return(location, value);
             case "static": return new Static(location, value);
-            case "subclass": return new Subclass(location, value);
+            case "subclass": return new SubclassLiteral(location, value);
             case "throw": return new Throw(location, value);
             case "var": return new Var(location, value);
             case "while": return new While(location, value);
             case "yield": return new Yield(location, value);
         }
     }
+}
+
+export class Functional extends Keyword {
+
+    /* Used to group `Async`, `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
 }
 
 export class BranchStatement extends Keyword {
