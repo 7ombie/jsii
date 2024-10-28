@@ -641,7 +641,7 @@ export class PredicatedBlock extends Header {
 
     prefix(parser, context=undefined) {
 
-        const blocktype = context instanceof Do ? FUNCTIONBLOCK : this.constructor.blocktype;
+        const blocktype = context instanceof Do ? FUNCTIONBLOCK : this.notes.at(0);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
     }

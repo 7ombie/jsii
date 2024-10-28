@@ -1114,7 +1114,7 @@ export class If extends PredicatedBlock {
 
     /* This concrete class implements if-statements. */
 
-    static blocktype = SIMPLEBLOCK;
+    notes = [SIMPLEBLOCK];
 }
 
 export class Import extends Keyword {
@@ -1727,7 +1727,7 @@ export class While extends PredicatedBlock {
 
     /* This concrete class implements the `while` keyword. */
 
-    static blocktype = LOOPBLOCK;
+    notes = [LOOPBLOCK];
 }
 
 export class XOR extends InfixOperator {
