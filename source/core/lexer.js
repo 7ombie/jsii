@@ -2,6 +2,15 @@ import { put, not } from "./helpers.js"
 import { LarkError } from "./error.js"
 
 import {
+    Delimiter,
+    NumberLiteral,
+    Operator,
+    StringLiteral,
+    Terminator,
+    Word,
+} from "../user/tokens.js"
+
+import {
     closeParen,
     comma,
     delimiters,
@@ -9,18 +18,14 @@ import {
     dot,
     empty,
     newline,
-    openParen,
     pound,
     quote,
     space,
     symbolics,
     terminators,
     whitespace,
-    wordInitials,
+    wordInitials
 } from "../core/ascii.js"
-
-import { Operator, Terminator, Delimiter, Word } from "../user/concrete.js"
-import { NumberLiteral, StringLiteral } from "../user/concrete.js"
 
 export function * lex(source, {dev=false}={}) {
 

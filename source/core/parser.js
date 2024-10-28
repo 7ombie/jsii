@@ -19,7 +19,7 @@ import {
     Terminator,
     Variable,
     Word
-} from "../user/concrete.js"
+} from "../user/tokens.js"
 
 export function * parse(source, {dev=false}={}) {
 

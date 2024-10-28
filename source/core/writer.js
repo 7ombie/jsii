@@ -2,7 +2,7 @@ import { empty, space, openBrace, closeBrace, semicolon, newline } from "./ascii
 import { put, lark } from "./helpers.js"
 import { parse } from "./parser.js"
 
-import { Token, Header, Label, Variable, Constant, NumberLiteral, Block } from "../user/concrete.js"
+import { Header, Label, Variable, Constant, NumberLiteral } from "../user/tokens.js"
 
 export function * write(source, {dev=false}={}) {
 
