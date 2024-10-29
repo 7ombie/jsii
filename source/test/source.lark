@@ -1,3 +1,5 @@
+"spam \(1, 2, 3) eggs"
+
 (do for item in items {
     if item.meets(requirements) { item0, item1 }
     spam
