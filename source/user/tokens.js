@@ -264,74 +264,6 @@ export class Opener extends Delimiter {
     /* This is an abstract base class for opening parens, brackets and braces. Subclasses implement
     grouped expressions, invocations, array literals, object literals and bracket notation. */
 
-    check({proto, skip = 0, singular, plain}={}) {
-
-        /* This helper is used to traverse, validate and modify the operands that represent the
-        items inside the compound-expressions that are implemented by its subclasses. It takes a
-        hash of arguments that specify which rules to apply, and which parameters to use, before
-        returning a hash of results, currently only containing `{prototyped: Bool}`:
-
-            + `proto Boolean`: When enabled, `__proto__` keys get converted to regular strings, so
-               they have no special meaning, and `as Prototype` expressions are noted (and later
-               expanded to JavaScript `__proto__: Prototype` pairs by their `js(writer)` methods).
-               If exactly one such expression is noted, the `prototyped` boolean result is set to
-               `true`. If more than one expression gets expanded, the helper complains instead.
-               The value of `proto` defaults to `false` (so none of the above applies by default).
-            + `skip Number`: When present, the check starts from (and includes) the indexed operand.
-            + `plain Boolean`: When truthy, the helper checks that all of the relevant operands are
-               plain expressions (without labels), complaining otherwise. Defaults to `false`.
-            + `singular Boolean`: When truthy, the helper ensures that there is only one relevant
-               operand. Defaults to `false`.
-
-        Note: Only top-level operands are checked (as children handle their own operands). */
-
-        const operands = this.slice(skip);
-
-        // next, if the `singular` rule applies, check that there is only one relevant operand...
-
-        if (singular) switch (operands.length) {
-            case 1: break;
-            case 0: throw new LarkError("expected an expression", this.location);
-            default: throw new LarkError("unexpected expression", operands[1].location);
-        }
-
-        // next, if either of the `plain` or `proto` rules apply, traverse the operands, and
-        // enforce whichever rules apply to each operand...
-
-        let prototyped = false;
-
-        if (plain || proto) for (const operand of operands) {
-
-            if (operand.is(Label)) { // key-value pairs...
-
-                // do not permit key-value pairs when the `plain` rule applies...
-
-                if (plain) throw new LarkError("unexpected label", operand.location);
-
-                // when the `proto` rule applies and the key is `__proto__`, wrap it in quotes...
-
-                if (proto && operand.at(0).is(Variable) && operand.at(0).value === "__proto__") {
-
-                    operand.at(0).value = quote + operand.at(0).value + quote;
-                }
-
-            } else if (proto && operand.is(As)) { // `as Type` expressions...
-
-                // when the `proto` rule applies, disallow more than one as-expression (within a
-                // given compound expression), updating `prototyped` to internally track whether
-                // an as-expression was encountered, and so the caller will know (externally)
-                // not to infer a `null` prototype...
-
-                if (prototyped) throw new LarkError("superfluous prototype", operand.location);
-                else prototyped = true;
-            }
-        }
-
-        // finally, instantiate and return the results hash...
-
-        return {__proto__: null, prototyped};
-    }
-
     js(writer, opener, closer) {
 
         /* Take a reference to the writer stage API, an opening string and a closing string, and use
@@ -1063,10 +995,12 @@ export class StringLiteral extends Terminal {
         /* Gather one or more pairs of operands, each containing an interpolation array, followed
         by a (required) `StringLiteral` substring (that the lexer ensures will be there). */
 
+        const rules = {closer: CloseInterpolation};
+
         while (parser.on(OpenInterpolation)) {
 
             parser.advance();
-            this.push(parser.gatherCompoundExpression(CloseInterpolation), parser.advance(false));
+            this.push(parser.gatherCompoundExpression(rules), parser.advance(false));
         }
 
         return this;
@@ -1746,7 +1680,7 @@ export class FunctionLiteral extends Functional {
         } else if (parser.on(OpenParen)) {
 
             parser.advance();
-            this.push(parser.gatherCompoundExpression(CloseParen));
+            this.push(parser.gatherCompoundExpression({closer: CloseParen}));
 
         } else this.push(new SkipAssignee(this.location));
 
@@ -2059,11 +1993,7 @@ export class OpenBrace extends Opener {
 
         /* This method gathers an object expression, noting when it specifies a prototype. */
 
-        this.push(parser.gatherCompoundExpression(CloseBrace));
-
-        if (this.check({proto: true}).prototyped) this.note("proto");
-
-        return this;
+        return this.push(parser.gatherCompoundExpression({closer: CloseBrace, objectify: true}));
     }
 
     validate(_) { return true }
@@ -2073,7 +2003,7 @@ export class OpenBrace extends Opener {
         /* Render an object literal. Infer a `null` prototype, unless it contains an `as Prototype`
         expression (indicated by having a "proto" note). */
 
-        const head = this.notes.includes("proto") ? openBrace : "{__proto__: null, ";
+        const head = this.at(0).notes.includes("proto") ? openBrace : "{__proto__: null, ";
         const body = this.at(0).map(operand => operand.js(writer)).join(comma + space);
 
         return head + body + closeBrace;
@@ -2089,20 +2019,16 @@ export class OpenBracket extends Caller {
 
         /* This method gathers an array expression. */
 
-        this.push(parser.gatherCompoundExpression(CloseBracket));
-        this.check({plain: true});
-
-        return this;
+        return this.push(parser.gatherCompoundExpression({closer: CloseBracket}));
     }
 
     infix(parser, left) {
 
         /* This method gathers bracket-notation. */
 
-        this.note("infix").push(left, parser.gatherCompoundExpression(CloseBracket));
-        this.check({skip: 1, singular: true, plain: true});
+        const rules = {closer: CloseBracket, singularize: true};
 
-        return this;
+        return this.note("infix").push(left, parser.gatherCompoundExpression(rules));
     }
 
     js(writer) {
@@ -2128,20 +2054,16 @@ export class OpenParen extends Caller {
 
         /* This method gathers and validates a grouped expression. */
 
-        this.push(parser.gatherCompoundExpression(CloseParen));
-        this.check({plain: true});
-
-        return this;
+        return this.push(parser.gatherCompoundExpression({closer: CloseParen}));
     }
 
     infix(parser, left) {
 
         /* This method gathers and validates an invocation. */
 
-        this.note("infix").push(left, parser.gatherCompoundExpression(CloseParen));
-        this.check({skip: 1, plain: true});
+        const rules = {closer: CloseParen};
 
-        return this;
+        return this.note("infix").push(left, parser.gatherCompoundExpression(rules));
     }
 
     js(writer) {
@@ -2288,7 +2210,7 @@ export class Spread extends Operator {
 
     prefix(parser) { return this.push(parser.gatherVariable()) }
 
-    infix(_, left) { return this.push(left) }
+    infix(_, left) { return this.note("infix").push(left) }
 
     js(writer) { return `...${this.at(0).js(writer)}` }
 }

@@ -1,8 +1,10 @@
 import { put, not, Stack } from "./helpers.js"
 import { LarkError } from "./error.js"
+import { quote } from "./ascii.js"
 import { lex } from "./lexer.js"
 
 import {
+    As,
     Block,
     CloseBrace,
     Comma,
@@ -10,6 +12,7 @@ import {
     EOF,
     Header,
     Keyword,
+    Label,
     LineFeed,
     OpenBrace,
     OpenBracket,
@@ -184,49 +187,94 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected an expression", candidate.location);
     }
 
-    function gatherCompoundExpression(Closer) {
+    function gatherCompoundExpression({closer, objectify=false, singularize=false}={}) {
 
-        /* This function takes a `Token` subclass which indicates which closing character to use to
-        gather a sequence of zero or more comma-separated expressions to form an instance of
-        `CompoundExpression`, which is returned.
+        /* This function takes a hash of arguments that requires a `closer`, which is a `Token`
+        subclass, indicating which closing character to use to gather a sequence of zero or more
+        comma-separated expressions to form and return an instance of `CompoundExpression`.
 
-        The compund expression may contain `null` operands, as adjacent commas can be used to imply
-        empty assignees in destructuring assignments.
+        The remaining arguments are optional booleans that all default to `false` and can be set to
+        `true` to enable the following validation rules, which the function to enforce as it parses
+        the compound expression (complaining if it finds any violation):
 
-        This API function is used whenever a parser method needs to parse any expresion wrapped in
-        parens, brackets or braces. The function implicitly updates the LIST state on the way in
-        and out. */
+          + `objectify`: When truthy, `__proto__` keys get converted to regular string keys (so
+             they have no special meaning) and `as Prototype` expressions are noted. The object
+             literal expressed by the compound expression then knows not to render an object
+             with a `null` prototype. If more than one `as Prototype` expression is noted,
+             the function complains. The `objectify` rules also makes labels valid.
+          + `singularize`: When truthy, the helper ensures that there is only one operand.
+
+        Note: The rules are only applied to top-level operands, as children are implicitly handled
+        by the recursion of the parser.
+        The compund expression may contain `SkipAssignee` operands, as adjacent commas can be used
+        to imply empty assignees in destructuring assignments.
+
+        This function is used whenever a parser method needs to parse any expresion that's wrapped
+        in parens, brackets or braces. That includes compound literals and grouped expressions, as
+        well as invocations and bracket notation, but does not include function parameters (which
+        are not wrapped in anything).
+
+        The function implicitly updates the LIST state on the way in and out. */
 
         whitespace.top = false;
 
-        // initialize the `block`, accounting for the possibility of a leading empty expression
-        // (which is legal in destructuring assignments)...
+        // initialize the compound expression, allowing for an initial empty assignee...
 
-        const block = new CompoundExpression(token.location)
+        const operands = new CompoundExpression(token.location)
 
-        if (on(Comma)) block.push(new SkipAssignee(token.location));
+        if (on(Comma)) operands.push(new SkipAssignee(token.location));
 
-        // now, loop until we find the closer, gathering the list of comma-separated, optionally
-        // labelled expressions that comprise the compound expression, while allowing for empty
-        // expressions to permit empty assignees in destructuring assignments...
+        // gather and validate the operands...
 
-        while (not(on(Closer))) if (on(Comma)) {
-
-             // this block handles an empty assignee...
+        while (not(on(closer))) if (on(Comma)) { // empty assignees...
 
             advance();
 
-            if (on(Comma, Closer)) block.push(new SkipAssignee(token.location));
+            if (on(Comma, closer)) operands.push(new SkipAssignee(token.location));
 
-        } else {
+        } else { // actual expressions...
 
-            // this block pushes an actual expression, then requires that it's terminated
-            // properly, complaining otherwise...
+            const operand = gatherExpression();
 
-            block.push(gatherExpression());
+            operands.push(operand);
 
-            if (on(Comma, Closer)) continue;
-            else throw new LarkError("required delimiter", token.location);
+            // enfore whichever rules are enabled...
+
+            if (singularize && operands.length > 1) { // apply the `singularize` rule...
+
+                throw new LarkError("unexpected second operand", operand.location);
+            }
+
+            if (operand.is(Label)) { // apply the `objectify` rule to labels...
+
+                if (objectify) {
+
+                    const rvalue = operand.at(0);
+
+                    if (rvalue.is(Variable) && rvalue.value === "__proto__") {
+
+                        rvalue.value = quote + rvalue.value + quote;
+                    }
+
+                } else throw new LarkError("unexpected label", operand.location);
+
+            } else if (operand.is(As)) { // apply the `objectify` rule to `as` expressions...
+
+                if (objectify) {
+
+                    if (operands.notes.includes("proto")) {
+
+                        throw new LarkError("superfluous prototype", operand.location);
+
+                    } else operands.note("proto");
+
+                } else throw new LarkError("unexpected as-expression", operand.location);
+            }
+
+            // validate that the expression is correctly terminated, complaining otherwise...
+
+            if (on(Comma, closer)) continue;
+            else throw new LarkError("required delimiter", operand.location);
         }
 
         // restore the previous significance of newlines *before* advancing to drop both the
@@ -235,7 +283,7 @@ export function * parse(source, {dev=false}={}) {
         whitespace.pop;
         advance();
 
-        return block;
+        return operands;
     }
 
     function gatherVariable() { // api function
