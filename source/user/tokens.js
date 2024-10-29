@@ -1088,22 +1088,12 @@ export class StringLiteral extends Terminal {
         have their own `js(writer)` method), reproducing the interpolations, and possibly including
         a tag-expression. */
 
-        if (this.notes.includes("tagged")) {
-
-            var prefix = this.at(0).js(writer)
-            var string = this.value;
-
-            this.splice(1);
-
-        } else {
-
-            var prefix = empty;
-            var string = this.value;
-        }
+        let string = this.value;
+        let prefix = this.notes.includes("tagged") ? this.shift().js(writer) : empty;
 
         for (const operand of this) {
 
-            if (operand instanceof CompoundExpression) for (const interpolation of operand) {
+            if (operand.is(CompoundExpression)) for (const interpolation of operand) {
 
                 string += "${" + interpolation.js(writer) + "}";
 
@@ -1125,48 +1115,38 @@ export class TextLiteral extends StringLiteral {
 
         const strip = string => string.replaceAll(indentation, newline);
 
-        const self = this, indentation = iife(function() {
+        const indentation = iife(() => {
 
-            /* This IIFE computes the indentation to remove from each line (as a string containing
-            a newline, followed by zero or more spaces), returning it, so it becomes `indentation`
-            in the outer scope. */
+            /* This IIFE closure computes the indentation to remove from each line (a string that
+            begins with a newline, followed by zero or more spaces), then returns it, so it gets
+            assigned to `indentation` in the outer scope. */
 
-            const value = (self.at(-1) ?? self).value;
+            const value = (this.at(-1) ?? this).value;
             const index = value.lastIndexOf(newline);
 
             return value.slice(index);
         });
 
-        if (this.notes.includes("tagged")) {
+        let string = strip(this.value);
+        let prefix = this.notes.includes("tagged") ? this.shift().js(writer) : empty;
 
-            var prefix = this.at(0).js(writer);
-            var string = strip(this.value);
-
-            this.splice(1);
-
-        } else {
-
-            var prefix = empty;
-            var string = strip(this.value);
-        }
-
-        // remove superfluous leading newline (from replacing each indent with a newline)...
+        // remove superfluous leading newline (`strip` replaces each indent with a newline)...
 
         string = string.slice(1);
 
-        // now, iterate over the token's (remaining) operands, convert them to js, wrapping
-        // any interpolations appropriately, and concatenating the results to `string`...
+        // now, iterate over the token's (remaining) operands, convert them to js, wrapping any
+        // interpolations appropriately, and concatenating the results to `string`...
 
         for (const operand of this) {
 
-            if (operand instanceof CompoundExpression) for (const interpolation of operand) {
+            if (operand.is(CompoundExpression)) for (const interpolation of operand) {
 
                 string += "${" + interpolation.js(writer) + "}";
 
             } else string += strip(operand.value);
         }
 
-        // finally, remove the superfluous trailing newline, then concatenate everything
+        // finally, remove the superfluous trailing newline (as well), then concatenate everything
         // together, and return the result...
 
         string = string.slice(0, -1);

@@ -1,4 +1,4 @@
-Lark: A Modern JavaScript Dialect 
+Lark: A Modern JavaScript Dialect
 =================================
 
 **IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
@@ -198,12 +198,6 @@ Lark has a `do` qualifier that allows that code to be written like this:
 
 Note: The `do` qualifier is described later, but it basically wraps the statement that follows
 it in a function literal (if it's not a function literal already), then immediately invokes it.
-
-Note: In Lark, blocks have the same semantics, whether they're wrapped in braces or not. This is
-unlike JavaScript, which only introduces a new scope when you use a (braced) block statement.
-However, Lark does not pick between JavaScript's semantics. It simply lacks the JavaScript
-features that make the distinction matter.
-
 With `do` statements, we can use arbitrarily complex initializers, so Lark declarations invariably
 require explicit initialization.
 
