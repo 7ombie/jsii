@@ -1,5 +1,5 @@
-/* This module exports various arrays of spelling-strings (operators, keywords, constants
-and reserved words). */
+/* This module exports various arrays of spelling-strings (operators, keywords, constants and
+reserved words). */
 
 export const operators = [
     ":",
@@ -100,8 +100,6 @@ export const keywords = [
     "while",
     "yield",
 ];
-
-// finish up by exporting an array containing all of the reserved words...
 
 export const reserved = [
     "abstract",

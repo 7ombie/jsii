@@ -29,17 +29,16 @@ import {
 
 export function * lex(source, {dev=false}={}) {
 
-    /* This function implements the lexer as a collection of helper functions, which
-    it shares with the `lex` generator methods of the classes exported by `objects.js`,
-    so they can handle the specifics of parsing the given token type, yielding one or
-    more tokens of that type. */
+    /* This function implements the lexer as a collection of helper functions, which it shares with
+    the `lex` generator methods of the classes exported by `objects.js`, so they can handle the
+    specifics of parsing the given token type, yielding one or more tokens of that type. */
 
     function advance(stride=1) { // api function
 
-        /* This function takes an optional number of characters to advance by, defaulting
-        to `1`, and advances that far. If the new character exists and is is legal, it's
-        returned. If the source becomes exhausted, `undefined` is returned, and if the
-        new character's illegal, and exception is raised. */
+        /* This function takes an optional number of characters to advance by, defaulting to `1`,
+        and advances that far. If the new character exists and is is legal, it's returned. If the
+        source becomes exhausted, `undefined` is returned, and if the new character's illegal,
+        an exception is raised. */
 
         index += stride;
         character = source[index];
@@ -83,26 +82,25 @@ export function * lex(source, {dev=false}={}) {
 
     function at(characters) { // api function
 
-        /* This function takes a string, representing a character or character set,
-        and returns `true` if the *next character* is in the set, else `false`. */
+        /* This function takes a string, representing a character or character set, and returns
+        `true` if the *next character* is in the set, else `false`. */
 
         return characters.includes(source[index + 1]);
     }
 
     function peek(offset, characters) { // api function
 
-        /* This function takes a string, representing a character or character set,
-        and returns `true` if the *character following the next character* is in the
-        set, else `false`. */
+        /* This function takes a string, representing a character or character set, and returns
+        `true` if the *character following the next character* is in the set, else `false`. */
 
         return characters.includes(source[index + offset]);
     }
 
     function terminate() { // api function
 
-        /* Update `lastNewline` to track the index of the most recent newline, before
-        updating the line number. Note: As new logical lines can be created by commas,
-        the function must also check for a proper newline. */
+        /* Update `lastNewline` to track the index of the most recent newline, before updating the
+        line number. Note: As new logical lines can be created by commas, the function must also
+        check for a proper newline. */
 
         if (not(on(newline))) return;
 

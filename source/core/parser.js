@@ -24,12 +24,12 @@ import {
 export function * parse(source, {dev=false}={}) {
 
     /* This generator implements the parser stage, and yields an AST node for each top-level
-    statement. Like the lexer stage, the specifics of parsing any given grammar are left to
-    the corresponding grammar object in `objects.js`.
+    statement. Like the lexer stage, the specifics of parsing any given grammar are left to the
+    corresponding grammar object in `objects.js`.
 
     The parser API object collects references to a subset of the functions defined below, and
-    every token has `prefix` and `infix` methods that take a reference to the parser API object.
-    The `infix` methods also take a reference to the lefthand production as a second argument. */
+    every token has `prefix` and `infix` methods that take a reference to the Parser API object.
+    The `infix` methods also take a reference to the lefthand operand as a second argument. */
 
     function * LIST(nested=true) { // internal
 
@@ -67,9 +67,9 @@ export function * parse(source, {dev=false}={}) {
 
     function advance(returnPrevious=false) { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token`, then
-        return a reference to it, unless the `returnPrevious` argument is truthy. In
-        that case, return the token that was current when the invocation was made. */
+        /* Advance the token stream by one token, updating the nonlocal `token`, then return a
+        reference to it, unless the `returnPrevious` argument is truthy. In that case, return the
+        token that was current when the invocation was made. */
 
         [previous, token] = [token, tokens.next().value];
 
@@ -80,9 +80,9 @@ export function * parse(source, {dev=false}={}) {
 
     function on(...Classes) { // api function
 
-        /* Optionally take one or more `Token` subclasses, if the current `token` is one of
-        them, return it. If none of the subclasses match, return `false`. If no arguments
-        are given, the function acts as a getter, just returning the current `token`. */
+        /* Optionally take one or more `Token` subclasses, if the current `token` is one of them,
+        return it. If none of the subclasses match, return `false`. If no arguments are given, the
+        function acts as a getter, just returning the current `token`. */
 
         if (Classes.length === 0) return token;
 
@@ -94,8 +94,8 @@ export function * parse(source, {dev=false}={}) {
     function ignoreInsignificantNewlines() { // internal
 
         /* Advance the parser state until the current token is significant. When newlines are
-        significant, all tokens are significant, so this is a noop. Otherwise, it skips over
-        any newlines, stopping on the first non-newline token. */
+        significant, all tokens are significant, so this is a noop. Otherwise, it skips over any
+        newlines, stopping on the first non-newline token. */
 
         if (whitespace.top === false) while (on(LineFeed)) advance();
     }
@@ -186,26 +186,21 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherCompoundExpression(Closer) {
 
-        /* This function takes a `Token` subclass which indicates which closing character to
-        use to gather a compound statement (a sequence of zero or more comma-separated expr-
-        essions, wrapped in parens, brackets or braces) into a `results` array, which is
-        returned.
+        /* This function takes a `Token` subclass which indicates which closing character to use to
+        gather a sequence of zero or more comma-separated expressions to form an instance of
+        `CompoundExpression`, which is returned.
 
-        The results array may contain `null` expressions, as adjacent commas can be used to
-        imply empty assignees in destructuring assignments.
+        The compund expression may contain `null` operands, as adjacent commas can be used to imply
+        empty assignees in destructuring assignments.
 
-        This API function is used whenever a parser method needs to parse an expresion that
-        is wrapped in parens, brackets or braces, and the function will implicitly update
-        the LIST state on the way in and out.
-
-        Note: The label-pseudo-operator (`:`) may be used to map one expression to another.
-
-        Note: This function is also used for bracketed notation, computed properties etc. */
+        This API function is used whenever a parser method needs to parse any expresion wrapped in
+        parens, brackets or braces. The function implicitly updates the LIST state on the way in
+        and out. */
 
         whitespace.top = false;
 
-        // initialize the `results` array, accounting for the possibility of a leading empty
-        // expression (which is legal in destructuring assignments)...
+        // initialize the `block`, accounting for the possibility of a leading empty expression
+        // (which is legal in destructuring assignments)...
 
         const block = new CompoundExpression(token.location)
 
@@ -266,8 +261,9 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherAssignee() { // api function
 
-        /* This function is used by the `For` class for gathering a single assignee, without
-        treating it as an expression (so the in-keyword is not parsed as an infix operator). */
+        /* This function is used by for gathering a single assignee, without treating it as an
+        expression (so for-loop can gather assignees without parsing the `in`, `of`, `on` or
+        `from` operator). */
 
         token.expression = false;
 
@@ -280,14 +276,14 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherParameters() { // api function
 
-        /* This function gathers the parameters for a function into a `Parameters` instance,
-        which is returned. The operands will all be valid expressions, with no empty values,
-        but are not otherwise validated (as function parameters).
+        /* This function gathers the parameters for a function into a `Parameters` instance, which
+        is returned. The operands will all be valid expressions, with no empty values, but are not
+        otherwise validated (as function parameters).
 
         Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 
-        Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will
-        not be encountered until the parameters have already been parsed). */
+        Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will not be
+        encountered until the parameters have already been parsed). */
 
         const result = new Parameters(token.location);
 
@@ -307,13 +303,12 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherBlock(type) { // api function
 
-        /* This function takes a block type (an integer, see `check`), and pushes it to the
-        block stack, before gathering a formal statement or an array of statements (of any
-        number and kind). Once the block has been parsed, the block type is popped from
-        the stack, and the parsed block is returned.
+        /* This function takes a blocktype, and pushes it to the block stack, before gathering a
+        formal statement or an array of statements (of any number and kind). Once the block has
+        been parsed, the block type is popped from the stack, and the parsed block is returned.
 
-        If the block type is functional, this function requires that the body is wrapped in
-        braces (as only control-flow statements can have unbraced blocks). */
+        If the blocktype is functional, this function requires that the body is wrapped in braces
+        (as only control-flow statements can have unbraced blocks). */
 
         function gatherFormalStatement() {
 
@@ -390,21 +385,21 @@ export function * parse(source, {dev=false}={}) {
 
     function label(name, value=undefined) { // api function
 
-        /* This function is a getter-setter, used to get and set the state of labels.
-        It takes a `Varaible` instance (`name`) and an optional ternary value (one of
-        `true`, `false` or `null`).
+        /* This function is a getter-setter, used to get and set the state of labels. It takes a
+        `Varaible` instance (`name`) and an optional ternary value (one of `true`, `false` or
+        `null`).
 
-        When the second argument is left undefined (getter mode), the function returns
-        `true` when the given label is active and bound to a loop block, `false` when
-        it is active and bound to a simple block, and `null` when it is inactive (as
-        it cannot be found in the hash of labels on top of the `labelspace` stack).
+        When the second argument is left undefined (getter mode), the function returns `true` when
+        the given label is active and bound to a loop block, `false` when it is active and bound
+        to a simple block, and `null` when it is inactive (as it cannot be found in the hash of
+        labels on top of the `labelspace` stack).
 
-        When the second argument is set (setter mode), its value is used to update the
-        state of the given label on the `labelspace` stack.
+        When the second argument is set (setter mode), its value is used to update the state of the
+        given label on the `labelspace` stack.
 
-        Note: The `labelspace` is a stack that has label-hashes pushed and popped auto-
-        matically (by `gatherBlock`) whenever entering or leaving a function body. The
-        hashes on the stack map label names (as strings) to their ternary state. */
+        Note: The `labelspace` is a stack that has label-hashes pushed and popped automatically (by
+        `gatherBlock`) whenever entering or leaving a function body. The hashes on the stack map
+        label names (as strings) to their ternary state. */
 
         if (value === undefined) return labelspace.top[name.value] ?? null;
         else if (value === null) delete labelspace.top[name.value];
@@ -431,7 +426,6 @@ export function * parse(source, {dev=false}={}) {
     };
 
     const blocktypes = new Stack();
-    const blockspace = new Stack({});
     const labelspace = new Stack({});
     const whitespace = new Stack(true).on(false, ignoreInsignificantNewlines);
 
