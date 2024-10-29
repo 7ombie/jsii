@@ -65,17 +65,17 @@ export function * parse(source, {dev=false}={}) {
         if (nested) throw new LarkError("nested end of file", token.location);
     }
 
-    function advance(returnPrevious=false) { // api function
+    function advance(returnNext=true) { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token`, then return a
-        reference to it, unless the `returnPrevious` argument is truthy. In that case, return the
+        /* Advance the token stream by one token, updating the nonlocal `token`, then return the
+        new token if the `returnNext` argument is truthy (the default). Otherwise, return the
         token that was current when the invocation was made. */
 
         [previous, token] = [token, tokens.next().value];
 
         ignoreInsignificantNewlines();
 
-        return returnPrevious ? previous : token;
+        return returnNext ? token : previous;
     }
 
     function on(...Classes) { // api function
@@ -244,7 +244,7 @@ export function * parse(source, {dev=false}={}) {
         returning the token (which is noted before advancing), complaining if the token is
         not a variable. */
 
-        if (on(Variable)) return advance(true);
+        if (on(Variable)) return advance(false);
         else throw new LarkError("required a variable", advance().location);
     }
 
@@ -255,7 +255,7 @@ export function * parse(source, {dev=false}={}) {
         the function advances the parser, then returns the token (noting it before advancing),
         and simply complaining otherwise. */
 
-        if (on(Word) || (on(Operator) && token.named)) return advance(true);
+        if (on(Word) || (on(Operator) && token.named)) return advance(false);
         else throw new LarkError("required a property", token.location);
     }
 

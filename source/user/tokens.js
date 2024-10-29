@@ -1066,7 +1066,7 @@ export class StringLiteral extends Terminal {
         while (parser.on(OpenInterpolation)) {
 
             parser.advance();
-            this.push(parser.gatherCompoundExpression(CloseInterpolation), parser.advance(true));
+            this.push(parser.gatherCompoundExpression(CloseInterpolation), parser.advance(false));
         }
 
         return this;
@@ -1683,7 +1683,7 @@ export class For extends Header {
 
         this.push(parser.gatherAssignee());
 
-        if (parser.on(In, Of, On, From)) this.note(parser.advance(true).value);
+        if (parser.on(In, Of, On, From)) this.note(parser.advance(false).value);
         else throw new LarkError("incomplete for-statement", this.location);
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
@@ -1863,9 +1863,9 @@ export class Is extends InfixOperator {
 
         this.push(left);
 
-        if (parser.on(Not)) { this.push(parser.advance(true)) }
+        if (parser.on(Not)) { this.push(parser.advance(false)) }
 
-        if (parser.on(Packed, Sealed, Frozen)) return this.push(parser.advance(true));
+        if (parser.on(Packed, Sealed, Frozen)) return this.push(parser.advance(false));
         else return this.push(parser.gatherExpression(this.LBP));
     }
 
@@ -1974,7 +1974,7 @@ export class Not extends GeneralOperator {
 
         if (parser.on(In)) {
 
-            parser.advance(true);
+            parser.advance();
 
             return this.note("infix").push(left, parser.gatherExpression(this.LBP));
 
@@ -2342,7 +2342,7 @@ export class SubclassLiteral extends Functional {
 
             return this.push(parser.gatherExpression(), parser.gatherBlock(CLASSBLOCK));
 
-        } else throw new LarkError("incomplete subclass", parser.advance(true).location);
+        } else throw new LarkError("incomplete subclass", parser.advance(false).location);
     }
 }
 
@@ -2446,7 +2446,7 @@ export class Yield extends Keyword {
 
         if (parser.on(From)) {
 
-            parser.advance(true);
+            parser.advance();
 
             return this.note("yield-from").push(parser.gatherExpression());
 
