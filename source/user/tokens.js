@@ -4,6 +4,7 @@ implements all of the language specifics. */
 import { constants, keywords, operators, reserved } from "./spellings.js"
 import { put, not, iife } from "../core/helpers.js"
 import { LarkError } from "../core/error.js"
+import { JS } from "./helpers.js"
 
 import {
     LOOPBLOCK,
@@ -40,7 +41,6 @@ import {
     symbolics,
     wordCharacters,
 } from "../core/ascii.js"
-import { parse } from "../core/parser.js"
 
 /* -------------------------------------------------------------------------------------------- */
 /* -------------------------------{ THE ABSTRACT TOKEN CLASSES }------------------------------- */
@@ -201,9 +201,9 @@ export class Token extends Array {
         return this;
     }
 
-    has(note) {  // internal helper
+    noted(note) {  // internal helper
 
-        /* Directly expose the `has` method of the `notes` set. */
+        /* Directly expose the `has` method of the `notes` set as `this.noted`. */
 
         return this.notes.has(note);
     }
@@ -280,7 +280,7 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
 
-        if (this.has("infix")) return this.at(0).js(writer) + opener + join(this.at(1)) + closer;
+        if (this.noted("infix")) return this.at(0).js(writer) + opener + join(this.at(1)) + closer;
         else return opener + join(this.at(0)) + closer;
     }
 }
@@ -410,7 +410,7 @@ export class BranchStatement extends Keyword {
 
         /* Render a `break` or `continue` statement with its optional label. */
 
-        return `${this.spelling}${this.has("label") ? space + this.at(0).js(writer) : empty}`;
+        return `${this.spelling}${this.noted("label") ? space + this.at(0).js(writer) : empty}`;
     }
 }
 
@@ -477,7 +477,7 @@ export class PredicatedBlock extends Header {
         const blocktype = iife(() => {
 
             if (context instanceof Do) return FUNCTIONBLOCK;
-            else return this.has("LOOPBLOCK") ? LOOPBLOCK : SIMPLEBLOCK;
+            else return this.noted("LOOPBLOCK") ? LOOPBLOCK : SIMPLEBLOCK;
         });
 
         return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
@@ -690,7 +690,7 @@ export class GeneralOperator extends Operator {
 
     js(writer) {
 
-        if (this.has("infix")) {
+        if (this.noted("infix")) {
 
             return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
         }
@@ -1029,7 +1029,7 @@ export class StringLiteral extends Terminal {
         a tag-expression. */
 
         let string = this.value;
-        let prefix = this.has("tag") ? this.shift().js(writer) : empty;
+        let prefix = this.noted("tag") ? this.shift().js(writer) : empty;
 
         for (const operand of this) {
 
@@ -1077,7 +1077,7 @@ export class TextLiteral extends StringLiteral {
         // there is one, else the `empty` string...
 
         let chunks = [strip(this.value).slice(1)];
-        let prefix = this.has("tag") ? this.shift().js(writer) : empty;
+        let prefix = this.noted("tag") ? this.shift().js(writer) : empty;
 
         // now, iterate over the token's (remaining) operands, convert them to js, and wrapping any
         // interpolations appropriately, before concatenating the results to `chunks`...
@@ -1302,7 +1302,7 @@ export class Break extends BranchStatement {
         simple blocks within the loop. Therefore, we handle unlabled breaks by climbing the stack,
         ignoring any simple blocks, and checking that the first non-simple block is a loop. */
 
-        if (this.has("label")) {
+        if (this.noted("label")) {
 
             if (not(parser.label(this.at(0)))) {
 
@@ -1414,7 +1414,7 @@ export class Continue extends BranchStatement {
         If there is a label, ensure it is active and bound to a loop, then (in either case) climb
         the stack, ignoring simple blocks, and check that the first non-simple block is a loop. */
 
-        if (this.has("label")) {
+        if (this.noted("label")) {
 
             let label = this.at(0);
             let state = parser.label(label);
@@ -1535,7 +1535,7 @@ export class Else extends PredicatedBlock {
 
         /* Render an `else` or an `else if` statement. */
 
-        if (this.has("if")) return `else ${this.at(0).js(writer)}`;
+        if (this.noted("if")) return `else ${this.at(0).js(writer)}`;
         else return `else ${writer.writeBlock(this.at(0))}`;
     }
 }
@@ -1619,14 +1619,14 @@ export class For extends Header {
         /* Render the appropriate for-loop, adding the extra code that implements the operator. */
 
         const assignees = this.at(0).js(writer);
-        const operator = this.has("on") ? "in" : "of";
-        const keyword = this.has("from") ? "for await" : "for";
+        const operator = this.noted("on") ? "in" : "of";
+        const keyword = this.noted("from") ? "for await" : "for";
         const block = writer.writeBlock(this.at(2));
 
         let target = writer.register(this.at(1));
 
-        if (this.has("in")) target = `${target}?.ƥvalues?.() ?? Object.values(${target} ?? [])`;
-        else if (this.has("of")) target = `${target}?.ƥkeys?.() ?? Object.keys(${target} ?? {})`;
+        if (this.noted("in")) target = JS.values(target);
+        else if (this.noted("of")) target = JS.keys(target);
 
         return `${keyword} (const ${assignees} ${operator} ${target}) ${block}`;
     }
@@ -1718,7 +1718,7 @@ export class FunctionLiteral extends Functional {
         // first, render the asterisk modifier if required, as well as the parameters and function
         // body, then interpolate them into a literal, and return the result...
 
-        const modifier = this.has("generator") ? asterisk : empty;
+        const modifier = this.noted("yield") ? asterisk : empty;
         const params = this.at(1).map(param => param.js(writer)).join(comma + space);
         const block = writer.writeBlock(this.at(2));
 
@@ -1754,10 +1754,7 @@ export class In extends InfixOperator {
 
     js(writer) {
 
-        const operand = this.at(0).js(writer);
-        const name = writer.register(this.at(1));
-
-        return `(${name}?.ƥvalues?.() ?? Object.values(${name} ?? [])).includes(${operand})`;
+        return `(${JS.values(writer.register(this.at(1)))}).includes(${this.at(0).js(writer)})`;
     }
 }
 
@@ -1899,12 +1896,11 @@ export class Not extends GeneralOperator {
 
         /* Render a `not` prefix operation or a `not in` infix operation. */
 
-        if (this.has("infix")) {
+        if (this.noted("infix")) {
 
-            const register = writer.register(this.at(1));
-            const values = `!((${register}?.ƥvalues?.() ?? Object.values(${register} ?? []))`;
+            const target = JS.values(writer.register(this.at(1)));
 
-            return values + `.includes(${this.at(0).js(writer)}))`;
+            return JS.invert(`(${target}).includes(${this.at(0).js(writer)})`);
 
         } else return super.js(writer);
     }
@@ -2003,7 +1999,7 @@ export class OpenBrace extends Opener {
         /* Render an object literal. Infer a `null` prototype, unless it contains an `as Prototype`
         expression (indicated by having a "proto" note). */
 
-        const head = this.at(0).has("proto") ? openBrace : "{__proto__: null, ";
+        const head = this.at(0).noted("proto") ? openBrace : "{__proto__: null, ";
         const body = this.at(0).map(operand => operand.js(writer)).join(comma + space);
 
         return head + body + closeBrace;
@@ -2350,7 +2346,7 @@ export class Yield extends Keyword {
 
             parser.advance();
 
-            return this.note("yield-from").push(parser.gatherExpression());
+            return this.note("from").push(parser.gatherExpression());
 
         } else if (not(parser.on(Terminator, Closer))) return this.push(parser.gatherExpression());
     }
@@ -2368,7 +2364,7 @@ export class Yield extends Keyword {
         /* Render a `yield` expression with its optional operand, or a `yield from` expression with
         its required operand. */
 
-        if (this.has("yield-from")) return `yield * ${this.at(0).js(writer)}`;
+        if (this.noted("from")) return `yield * ${this.at(0).js(writer)}`;
 
         const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
 
