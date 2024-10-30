@@ -262,7 +262,7 @@ export function * parse(source, {dev=false}={}) {
 
                 if (objectify) {
 
-                    if (operands.notes.has("proto")) {
+                    if (operands.has("proto")) {
 
                         throw new LarkError("superfluous prototype", operand.location);
 

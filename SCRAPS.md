@@ -3,6 +3,73 @@ Lark: A Modern JavaScript Dialect
 
 **IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
 
+Lark combines a very high-level, dynamically-typed dialect (optimized for productivity) with a very
+low-level, statically-typed dialect (optimized for performance and tight control over memory), in a
+single language.
+
+The high-level dialect is substantially higher-level than JavaScript (while retaining all of its
+important performance characteristics). The grammar and semantics are both less complicated, more
+consistent and more convenient.
+
+For example, in Lark, everything's an object, except `null` and `void` (which are the Lark spellings
+for `null` and `undefined`). The distinction between primitive types (like `number` and `string`)
+and OOP types (like `Number` and `String`) is an implementation detail. We think of primitive
+types like specialized functions: It's all done under the hood to improve performance.
+
+Lark replaces the `typeof` and `instanceof` operators with a single `is` operator that just works.
+For example, the expression `x is Array` equates to `Array.isArray(x)`, while `x is String` equates
+to `typeof x === "string" || x instanceof String`. You can even do stuff like `x is NaN`, which
+compiles to `Number.isNaN(x)`.
+
+Lark does have a `type` operator that returns the type of its only operand (like JavaScript's `typeof`),
+`type` is a suffix operator that compliments `is` by returning the constructor of its only operand. For
+example:
+
+    let numbers = [1, 2, 3, 4, 5]
+    put numbers is Array                        # true
+    put numbers type == Array                   # true
+
+There's also an `is not` operator that inverts the semantics of `is`, but doesn't introduce distinct
+semantics. For example, `x is not Array`
+
+The `put` operator just wraps `console.log` so it's easy to type.
+
+While prefix operators are normally restricted to only ever operating on a single operand, Lark has a
+form of Polish notation that allows you to supply any number of operands (as long as the number is
+greater than one). For example:
+
+    (put x, y, x)
+
+When a parenthesized expression contains a single operand, it just groups the expression (like every
+other formal language). However, when there's more than one operand, the compiler requires that the
+first operand is a prefix operation (at the top level), while the other one or more operands can
+be arbitrary expressions. All of the operands are passed to the operator, so the previous code
+would compile to this:
+
+    console.log(x, y, z);
+
+Note: Prefix operators are generally defined to operate on a single operand. However, Lark has a small
+set of prefix operators that are still able to operate on a single operand, but can also operate on more
+than one. For example, the `min` and `max` operators each operate on a single collection, except when
+they're used with Polish notation, where their operands form the collection they operate on:
+
+    put min numbers                             # 1
+    put max numbers                             # 5
+
+Naturally, the operand can be any arbitrary expression:
+
+    put min [2, 9, 3, 6, 8]                     # 2
+    put max [2, 9, 3, 6, 8]                     # 9
+
+Spreading the only operand also counts as more than one operand (no matter how many values the spread
+provides, if any):
+
+    put (min numbers...)                        # 1
+    put (max numbers...)                        # 5
+
+You cannot use the spread operator outside of a compound expression (so `put min numbers...` wouldn't
+even parse).
+
 Lark has two goals:
 
 + Design a nice, modern dialect of JavaScript that still looks, feels and acts like JavaScript.
@@ -1654,3 +1721,34 @@ asm multiply of x: i32, y: i32 returns i32 {
 }
 
 put multiply(1, 1)
+
+
+
+JavaScript Operator Precedence
+==============================
+
+18) Grouping: `(x + y) * z`
+17) Dot Operators: `foo.bar`, `foo?.bar`
+    Bracket Notation: `o[i]`,
+    Invocations: `f(x)`, `new Foo()`
+    Dynamic Imports: `import(item)`
+16) New	without argument list: `new Foo`
+15) Suffix Operators: `i++`, `i--`
+14) Prefix Operators: `++i`, `--i`, `!x`, `~x`, `+x` `-x`, `typeof primitive`, `void x`, `delete foo`, `await call`
+13) Exponentiation(right-associative): `x ** y`
+12) Multiplicative Operators: `x * y`, `x / y`, `x % y`
+11) Additive Operators: `x + y`, `x - y`
+10) Bitwise Shift Operators: `x << y`, `x >> y`, `x >>> y`
+09) Comparison Operators: `x < y`, `x <= y`, `x > y`, `x >= y`, `x in o`, `x instanceof T`
+08) Equality Operators: `x == y`, `x != y`, `x === y`, `x !== y`
+07) Bitwise AND: `x & y`
+06) Bitwise XOR: `x ^ y`
+05) Bitwise OR: `x | y`
+04) Logical AND: `x && y`
+03) Logical OR: `x || y`, `x ?? y`
+02) Assignment: `name = x`, `name += x`, `name ??= x` etc
+    Ternary Operator(right-associative): `x ? y : z`
+    Arrow Operator(right-associative): `x => 2 ** x`
+    Thread Operators: `yield tokens`, `yield * tokens`
+    Rest Operator: `...args`
+01) Comma: `x, y, z`

@@ -15,7 +15,7 @@ export function * write(source, {dev=false}={}) {
         were generated during the compilation of the statement, before yielding the JavaScript for
         the statement itself. */
 
-        for (const statement of statements) if (!statement.notes.has("ignore")) {
+        for (const statement of statements) if (!statement.has("ignore")) {
 
             const terminated = statement instanceof Header || statement instanceof Label;
             const source = indentation + statement.js(api) + (terminated ? empty : semicolon);
