@@ -1,10 +1,11 @@
 /* This module defines `Token` and all of its subclasses, forming a single token hierarchy that
 implements all of the language specifics. */
 
-import { constants, keywords, operators, reserved } from "./spellings.js"
+import { constants, keywords, operators, reserved } from "../user/spellings.js"
+import { JS } from "../user/helpers.js"
+
 import { put, not, iife } from "../core/helpers.js"
 import { LarkError } from "../core/error.js"
-import { JS } from "./helpers.js"
 
 import {
     LOOPBLOCK,

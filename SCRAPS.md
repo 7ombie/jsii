@@ -133,9 +133,10 @@ Keywords
 Every proper statement (every statement aside from expression statements) starts with a keyword.
 Block-statements use `do` (like `do { ... }`), and there's a `pass` statement that can be used
 to create explicitly empty statements. This eliminates any ambiguity between statements and
-expressions. For example, destructuring assignments never require extra parenthesis:
+expressions. The following statements are both valid expressions:
 
     {x, y, z} = object
+    {}
 
 Expression statements do not *generally* start with a keyword, but they're arbitrary expressions,
 so there are exceptions. For example, `yield` is a keyword and a valid expression. This is not
