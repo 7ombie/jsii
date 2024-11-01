@@ -1723,8 +1723,6 @@ asm multiply of x: i32, y: i32 returns i32 {
 
 put multiply(1, 1)
 
-
-
 JavaScript Operator Precedence
 ==============================
 

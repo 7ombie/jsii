@@ -477,7 +477,7 @@ export class PredicatedBlock extends Header {
 
         const blocktype = iife(() => {
 
-            if (context instanceof Do) return FUNCTIONBLOCK;
+            if (context?.is(Do)) return FUNCTIONBLOCK;
             else return this.noted("LOOPBLOCK") ? LOOPBLOCK : SIMPLEBLOCK;
         });
 
@@ -696,7 +696,7 @@ export class GeneralOperator extends Operator {
             return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
         }
 
-        let separator = lowers.includes(this.spelling[0]) ? space : empty;
+        const separator = lowers.includes(this.spelling[0]) ? space : empty;
 
         return `${this.spelling}${separator}${this.at(0).js(writer)}`;
     }
@@ -966,7 +966,7 @@ export class StringLiteral extends Terminal {
 
                 if (tailCount > headCount) {            // too many closing quotes...
 
-                    let message = `${headCount} opening quotes with ${tailCount} closing quotes`;
+                    const message = `${headCount} opening quotes with ${tailCount} closing quotes`;
 
                     throw new LarkError(message, location);
                 }
@@ -1029,19 +1029,19 @@ export class StringLiteral extends Terminal {
         have their own `js(writer)` method), reproducing the interpolations, and possibly including
         a tag-expression. */
 
-        let string = this.value;
-        let prefix = this.noted("tag") ? this.shift().js(writer) : empty;
+        const chunks = [this.value];
+        const prefix = this.noted("tag") ? this.shift().js(writer) : empty;
 
         for (const operand of this) {
 
             if (operand.is(CompoundExpression)) for (const interpolation of operand) {
 
-                string += "${" + interpolation.js(writer) + "}";
+                chunks.push("${" + interpolation.js(writer) + "}");
 
-            } else string += operand.value;
+            } else chunks.push(operand.value);
         }
 
-        return prefix + backtick + string + backtick;
+        return prefix + backtick + chunks.join(empty) + backtick;
     }
 }
 
@@ -1077,8 +1077,8 @@ export class TextLiteral extends StringLiteral {
         // superfluous leading newline), as well as the `prefix`, which is the tag-expression when
         // there is one, else the `empty` string...
 
-        let chunks = [strip(this.value).slice(1)];
-        let prefix = this.noted("tag") ? this.shift().js(writer) : empty;
+        const chunks = [strip(this.value).slice(1)];
+        const prefix = this.noted("tag") ? this.shift().js(writer) : empty;
 
         // now, iterate over the token's (remaining) operands, convert them to js, and wrapping any
         // interpolations appropriately, before concatenating the results to `chunks`...
@@ -1098,6 +1098,90 @@ export class TextLiteral extends StringLiteral {
         chunks.push(chunks.pop().slice(0, -1));
 
         return prefix + backtick + chunks.join(empty) + backtick;
+    }
+}
+
+export class FunctionLiteral extends Functional {
+
+    /* This class implements function literals. */
+
+    LBP = 1;
+    expression = true;
+
+    prefix(parser, context) {
+
+        /* This method parses functions, based on the given context (either `Async` or `undefined`,
+        with the later implying no qualifier). */
+
+        const blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
+
+        if (parser.on(Variable)) this.push(parser.gatherVariable());
+        else this.push(new SkipAssignee(this.location));
+
+        if (parser.on(Of)) {
+
+            parser.advance();
+
+            this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
+
+        } else this.push(new Parameters(this.location), parser.gatherBlock(blockType));
+
+        if (blockType === ASYNCFUNCTIONBLOCK) this.note("async");
+
+        if (false) this.note("yield"); // isGenerator(this.at(2))
+
+        return this;
+    }
+
+    js(writer) {
+
+        /* Render a function literal (arrow grammar is not handled here). */
+
+        const keyword = this.noted("async") ? "async function" : "function";
+        const modifier = this.noted("yield") ? asterisk : empty;
+        const name = this.at(0).is(Variable) ? space + this.at(0).js(writer) : empty;
+        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
+        const block = writer.writeBlock(this.at(2));
+
+        return `${keyword}${modifier}${name}(${params}) ${block}`;
+    }
+}
+
+export class ClassLiteral extends Functional {
+
+    /* This class implements `class` literals, which cannot extend anything, as we use `subclass`
+    for that. */
+
+    expression = true;
+
+    prefix(parser) {
+
+        /* Gather a class, with its optional name and required body. */
+
+        if (parser.on(OpenBrace)) return this.push(parser.gatherBlock(CLASSBLOCK));
+
+        return this.push(parser.gatherVariable(), parser.gatherBlock(CLASSBLOCK));
+    }
+}
+
+export class SubclassLiteral extends Functional {
+
+    /* This class implements `subclass` literals, which are used to extend one class with another
+    (`subclass of Foo {}` -> `class extends Foo {}`). */
+
+    expression = true;
+
+    prefix(parser) {
+
+        if (not(parser.on(Of))) this.note("named").push(parser.gatherVariable());
+
+        if (parser.on(Of)) {
+
+            parser.advance();
+
+            return this.push(parser.gatherExpression(), parser.gatherBlock(CLASSBLOCK));
+
+        } else throw new LarkError("incomplete subclass", parser.advance(false).location);
     }
 }
 
@@ -1316,23 +1400,6 @@ export class Break extends BranchStatement {
     }
 }
 
-export class ClassLiteral extends Functional {
-
-    /* This class implements `class` literals, which cannot extend anything, as we use `subclass`
-    for that. */
-
-    expression = true;
-
-    prefix(parser) {
-
-        /* Gather a class, with its optional name and required body. */
-
-        if (parser.on(OpenBrace)) return this.push(parser.gatherBlock(CLASSBLOCK));
-
-        return this.push(parser.gatherVariable(), parser.gatherBlock(CLASSBLOCK));
-    }
-}
-
 export class CloseBrace extends Closer {
 
     /* This class implements the `}` delimiter, which is used for closing blocks, as well as object
@@ -1417,8 +1484,8 @@ export class Continue extends BranchStatement {
 
         if (this.noted("label")) {
 
-            let label = this.at(0);
-            let state = parser.label(label);
+            const label = this.at(0);
+            const state = parser.label(label);
 
             if (state === null) throw new LarkError("undefined label", label.location);
             else if (state === false) throw new LarkError("must continue a loop", label.location);
@@ -1499,17 +1566,16 @@ export class Do extends PrefixOperator {
         statements, which compiles to an IIFE with the statement inside), or a function (which
         just gets dangling-dogballs appended). */
 
-        if (this.at(0) instanceof Block) return `function() ${writer.writeBlock(this.at(0))}()`;
+        if (this.at(0).is(Block)) return `function() ${writer.writeBlock(this.at(0))}()`;
 
         if (this.at(0).is(Functional)) return `${this.at(0).js(writer)}()`;
 
         const literal = new FunctionLiteral(this.location);
+        const name = new SkipAssignee(this.location);
         const parameters = new Parameters(this.location);
         const block = new Block(this.location).push(this.at(0))
 
-        literal.push(null, parameters, block);
-
-        return `${literal.js(writer)}()`;
+        return `${literal.push(name, parameters, block).js(writer)}()`;
     }
 }
 
@@ -1605,7 +1671,7 @@ export class For extends Header {
         /* This method parses all four for-loops. It uses `parser.gatherAssignee` to avoid parsing
         the operator (`in`, `of`, `on` or `from`) as an infix. */
 
-        const blocktype = context instanceof Do ? FUNCTIONBLOCK : LOOPBLOCK;
+        const blocktype = context?.is(Do) ? FUNCTIONBLOCK : LOOPBLOCK;
 
         this.push(parser.gatherAssignee());
 
@@ -1655,76 +1721,6 @@ export class Frozen extends Operator {
 
     /* This concrete class implements the `frozen` operator, used by `Is` to implement the
     `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
-}
-
-export class FunctionLiteral extends Functional {
-
-    /* This class implements function literals. */
-
-    LBP = 1;
-    expression = true;
-
-    prefix(parser, context) {
-
-        /* This method parses functions, based on the given context (either `Async` or `undefined`,
-        with the later implying no qualifier). */
-
-        let blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
-
-        // having established the blocktype, parse the optional function name, which when present,
-        // may use a computed (runtime) value...
-
-        if (parser.on(Variable)) {
-
-            this.push(parser.gatherVariable());
-
-        } else if (parser.on(OpenParen)) {
-
-            parser.advance();
-            this.push(parser.gatherCompoundExpression({closer: CloseParen}));
-
-        } else this.push(new SkipAssignee(this.location));
-
-        // now, handle the optional parameters and required function body...
-
-        if (parser.on(Of)) {
-
-            parser.advance();
-
-            this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
-
-        } else this.push(new Parameters(this.location), parser.gatherBlock(blockType));
-
-        if (/* isGenerator(this.at(2)) */ false) this.note("yield");
-
-        return this;
-    }
-
-    js(writer) {
-
-        /* Render a function literal (arrow grammar is not handled here). */
-
-        let name = empty;
-
-        // having assumed that `this.at(0)` is a `SkipAssignee` (indicating an anonymous function),
-        // now check if it is a `CompoundExpression` (indicating a computed name) or a `Variable`
-        // (indicating a regular named-function), and update `name` accordingly...
-
-        if (this.at(0) instanceof CompoundExpression) {
-
-            name = space + openBracket + this.at(0).at(0).js(writer) + closeBracket;
-
-        } else if (this.at(0) instanceof Variable) name = space + this.at(0).js(writer);
-
-        // first, render the asterisk modifier if required, as well as the parameters and function
-        // body, then interpolate them into a literal, and return the result...
-
-        const modifier = this.noted("yield") ? asterisk : empty;
-        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
-        const block = writer.writeBlock(this.at(2));
-
-        return `function${modifier}${name}(${params}) ${block}`;
-    }
 }
 
 export class Greater extends InfixOperator {
@@ -1792,18 +1788,14 @@ export class Is extends InfixOperator {
             if (this.at(2).is(Sealed)) return `(!Object.isSealed(${this.at(0).js(writer)}))`;
             if (this.at(2).is(Frozen)) return `(!Object.isFrozen(${this.at(0).js(writer)}))`;
 
-            const [value, type] = [writer.register(this.at(0)), writer.register(this.at(2))];
-
-            return `(!(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type}))`;
+            return JS.invert(JS.is(writer.register(this.at(0)), writer.register(this.at(2))));
         }
 
         if (this.at(1).is(Packed)) return `(!Object.isExtensible(${this.at(0).js(writer)}))`;
         if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(writer)})`;
         if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(writer)})`;
 
-        const [value, type] = [writer.register(this.at(0)), writer.register(this.at(1))];
-
-        return `(${value}?.ƥis?.(${type}) ?? ${value} instanceof ${type})`;
+        return JS.is(writer.register(this.at(0)), writer.register(this.at(1)));
     }
 }
 
@@ -2222,27 +2214,6 @@ export class Star extends InfixOperator {
 export class Static extends ClassQualifier {
 
     /* This class implements static-statements, used inside classes. */
-}
-
-export class SubclassLiteral extends Functional {
-
-    /* This class implements `subclass` literals, which are used to extend one class with another
-    (`subclass of Foo {}` -> `class extends Foo {}`). */
-
-    expression = true;
-
-    prefix(parser) {
-
-        if (not(parser.on(Of))) this.note("named").push(parser.gatherVariable());
-
-        if (parser.on(Of)) {
-
-            parser.advance();
-
-            return this.push(parser.gatherExpression(), parser.gatherBlock(CLASSBLOCK));
-
-        } else throw new LarkError("incomplete subclass", parser.advance(false).location);
-    }
 }
 
 export class SuperConstant extends Constant {
