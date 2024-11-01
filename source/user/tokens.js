@@ -76,15 +76,15 @@ export class Token extends Array {
     Tokens that should not have any precedence (plain keywords, terminals, terminators etc) must
     have an LBP of zero, so they can just inherit their binding-powers from this class.
 
-    Tokens that implement an `infix(parser)` method (infix, suffix and mixfix operators) must set
-    LBP to the precedence of that operator, and will reuse the same value in any recursive calls
-    to the Parser Stage API (when gathering any righthand operands), except for right-associtive
+    Tokens that implement an `infix` method (infix, suffix and mixfix operators) must set LBP to
+    the precedence of that operator, and will reuse the same value in any recursive calls to the
+    Parser Stage API (when gathering any righthand operands), except for right-associtive
     operators, which pass `LBP - 1` instead.
 
-    Tokens that implement a `prefix(parser)` method (prefix operators) are not *required* to set
-    a binding-power property, but will need to pass the precedence of the operator in recursive
-    calls to the Parser Stage API. RBP is used to store that binding-power, as there are many
-    tokens that implement both prefix operators and infix/suffix operators.
+    Tokens that implement a `prefix` method (prefix operators) are not *required* to set a binding-
+    power property, but will need to pass the precedence of the operator in recursive calls to the
+    Parser Stage API. RBP is used to store that binding-power, as there are many tokens that
+    implement both prefix operators and infix/suffix operators.
 
     The `notes` property is an (initially empty) set of strings that subclasses use to note the
     details of variations and corner-cases.
@@ -113,17 +113,6 @@ export class Token extends Array {
         this.value = value;
     }
 
-    static * token(lexer) { // api method
-
-        /* This method instantiates tokens, based on the source. It is the only API method that
-        is invoked by the Lexer Stage. It is static as it wraps the constructor method to allow
-        it to yield zero or more tokens (potentially including instances of a subclass) to the
-        token stream. This naturally requires that `token(lexer)` is generator too.
-
-        This method is invariably redefined by the lower classes, so the default implementation
-        only contains this docstring. */
-    }
-
     get spelling() {
 
         /* This API property specifies the JavaScript spelling for the given token, defaulting
@@ -132,7 +121,18 @@ export class Token extends Array {
         return this.value;
     }
 
-    prefix(parser, context=undefined) { // api method
+    static * token(l) { // api method
+
+        /* This method instantiates tokens, based on the source. It is the only API method that
+        is invoked by the Lexer Stage. It is static as it wraps the constructor method to allow
+        it to yield zero or more tokens (potentially including instances of a subclass) to the
+        token stream. This naturally requires that `token` is a generator too.
+
+        This method is invariably redefined by the lower classes, so the default implementation
+        only contains this docstring. */
+    }
+
+    prefix(p, context=undefined) { // api method
 
         /* This method takes a reference to the Parser API and an optional `context`, ignores both
         and throws an exception. However, tokens that implement prefix-grammars override this with
@@ -149,7 +149,7 @@ export class Token extends Array {
         throw new LarkError("invalid token (in prefix position)", this.location);
     }
 
-    infix(parser, left) { // api method
+    infix(p, left) { // api method
 
         /* This method is very similar to `prefix` above, except that it is invoked on tokens in
         the infix position (with something before them), and takes its `left` operand (as an AST
@@ -158,7 +158,7 @@ export class Token extends Array {
         throw new LarkError("invalid token (in infix position)", this.location);
     }
 
-    validate(parser) { // api method
+    validate(p) { // api method
 
         /* This method takes a reference to the Parser API (mainly to access the `check` function,
         which is used to validate the statement, based on the types of blocks it is nested within.
@@ -171,7 +171,7 @@ export class Token extends Array {
         return false;
     }
 
-    js(writer) { // api method
+    js(w) { // api method
 
         /* This method takes a reference to the Writer API, and is used to generate the JavaScript
         output for the token, which it returns as a string, defaulting to the `spelling` property.
@@ -233,13 +233,10 @@ export class Terminator extends Terminal {
     imported by the Lexer Stage to tokenize terminators, as well as the Parser Stage, which
     uses it to classify them. */
 
-    static * lex(lexer, location) {
+    static * lex(l, location) {
 
-        /* Instantiate and yield the type that corresponds to the current character (which will be
-        one of `LineFeed`, `Comma` or `EOF`). */
-
-        if (lexer.on(newline)) yield new LineFeed(location, "<LF>");
-        else if (lexer.on(comma)) yield new Comma(location, comma);
+        if (l.on(newline)) yield new LineFeed(location, "<LF>");
+        else if (l.on(comma)) yield new Comma(location, comma);
         else yield new EOF(location, "<EOF>");
     }
 }
@@ -249,18 +246,15 @@ export class Delimiter extends Terminal {
     /* This is the abstract base class for all delimiters. The class is also imported by the
     Lexer Stage for tokenizing delimiters. */
 
-    static * lex(lexer, location) {
+    static * lex(l, location) {
 
-        const value = lexer.read();
+        const value = l.read();
 
         switch (value) {
-
             case openParen: yield new OpenParen(location, value); break;
             case closeParen: yield new CloseParen(location, value); break;
-
             case openBracket: yield new OpenBracket(location, value); break;
             case closeBracket: yield new CloseBracket(location, value); break;
-
             case openBrace: yield new OpenBrace(location, value); break;
             case closeBrace: yield new CloseBrace(location, value); break;
         }
@@ -272,16 +266,16 @@ export class Opener extends Delimiter {
     /* This is an abstract base class for opening parens, brackets and braces. Subclasses implement
     grouped expressions, invocations, array literals, object literals and bracket notation. */
 
-    js(writer, opener, closer) {
+    js(w, opener, closer) {
 
-        /* Take a reference to the writer stage API, an opening string and a closing string, and use
+        /* Take a reference to the Writer Stage API, an opening string and a closing string, and use
         them to output a compound expression, optionally prefixed by an expression. This is used by
         the `OpenParen` and `OpenBracket` classes to write grouped expressions, invocations, array
         literals and bracketed notation. */
 
-        const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
+        const join = operands => operands.map(operand => operand.js(w)).join(comma + space);
 
-        if (this.noted("infix")) return this.at(0).js(writer) + opener + join(this.at(1)) + closer;
+        if (this.noted("infix")) return this.at(0).js(w) + opener + join(this.at(1)) + closer;
         else return opener + join(this.at(0)) + closer;
     }
 }
@@ -309,13 +303,11 @@ export class Word extends Terminal {
     /* This is the abstract base class for every type of word and name. It is also imported by the
     Lexer Stage for word-tokenization. */
 
-    static * lex(lexer, location) {
+    static * lex(l, location) {
 
-        /* Tokenize and yield a single word token. */
+        let value = l.read();
 
-        let value = lexer.read();
-
-        while (lexer.at(wordCharacters)) value += lexer.advance();
+        while (l.at(wordCharacters)) value += l.advance();
 
         if (keywords.includes(value)) yield Keyword.subclass(location, value);
         else if (operators.includes(value)) yield Operator.subclass(location, value);
@@ -338,8 +330,6 @@ export class Constant extends Word {
 
     static subclass(location, value) {
 
-        /* Return the appropriate subclass, based on the value. */
-
         switch (value) {
             case "false": return new FalseConstant(location, value);
             case "Infinity": return new InfinityConstant(location, value);
@@ -358,8 +348,6 @@ export class Keyword extends Word {
     by the `Word` class (see `subclass`). */
 
     static subclass(location, value) {
-
-        /* Return the appropriate subclass, based on the value. */
 
         switch (value) {
             case "assert": return new Assert(location, value);
@@ -398,21 +386,14 @@ export class BranchStatement extends Keyword {
     /* This is the abstract base class for statements that are used to branch from loops (in
     practice, just `break` and `continue`) and accept an optional (`Variable`) label. */
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* If the parser is on a label, note and gather it. */
-
-        if (parser.on(Variable)) this.note("label").push(parser.gatherVariable());
+        if (p.on(Variable)) this.note("label").push(p.gatherVariable());
 
         return this;
     }
 
-    js(writer) {
-
-        /* Render a `break` or `continue` statement with its optional label. */
-
-        return `${this.spelling}${this.noted("label") ? space + this.at(0).js(writer) : empty}`;
-    }
+    js(w) { return `${this.spelling}${this.noted("label") ? space + this.at(0).js(w) : empty}` }
 }
 
 export class CommandStatement extends Keyword {
@@ -420,10 +401,7 @@ export class CommandStatement extends Keyword {
     /* This is the abstract class for keywords that are followed by a required, arbitrary
     expression (`await`, `delete` and `throw`). */
 
-    prefix(parser) {
-
-        return this.push(parser.gatherExpression());
-    }
+    prefix(p) { return this.push(p.gatherExpression()) }
 }
 
 export class Declaration extends Keyword {
@@ -441,20 +419,20 @@ export class ClassQualifier extends Declaration {
     /* This is the abstract base class for the `static` and `private` qualifiers that prefix
     declarations inside classes. */
 
-    prefix(parser) {
+    prefix(p) {
 
         /* When present, gather an optionally asynchronous function, and parse a regular
         declaration otherwise. */
 
-        if (parser.on(Async, FunctionLiteral)) return this.push(parser.gather());
-        else return super.prefix(parser);
+        if (p.on(Async, FunctionLiteral)) return this.push(p.gather());
+        else return super.prefix(p);
     }
 
-    validate(parser) {
+    validate(p) {
 
         /* This method checks that the statement is directly contained by the body of a class. */
 
-        return parser.check($ => true, $ => $ === CLASSBLOCK);
+        return p.check($ => true, $ => $ === CLASSBLOCK);
     }
 }
 
@@ -469,7 +447,7 @@ export class PredicatedBlock extends Header {
     /* This is the abstract base class for the predicated blocks (`if`, `else if`, and `while`,
     but not `else` on its own, as it has no predicate). */
 
-    prefix(parser, context=undefined) {
+    prefix(p, context=undefined) {
 
         /* Gather the predicate, then the block. If the `context` is `do`, use a functional
         block (so `return` becomes legal). Otherwise, infer the blocktype from the `notes`
@@ -481,15 +459,10 @@ export class PredicatedBlock extends Header {
             else return this.noted("LOOPBLOCK") ? LOOPBLOCK : SIMPLEBLOCK;
         });
 
-        return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
+        return this.push(p.gatherExpression(), p.gatherBlock(blocktype));
     }
 
-    js(writer) {
-
-        /* Render a predicated control-flow statement and its a block. */
-
-        return `${this.value} (${this.at(0).js(writer)}) ${writer.writeBlock(this.at(1))}`;
-    }
+    js(w) { return `${this.value} (${this.at(0).js(w)}) ${w.writeBlock(this.at(1))}` }
 }
 
 export class Operator extends Token {
@@ -526,9 +499,6 @@ export class Operator extends Token {
     }
 
     static subclass(location, value) {
-
-        /* Take a value and its location, and use them to instantiate and return an appropriate
-        operator instance. */
 
         switch (value) {
             case ":": return new Label(location, value);
@@ -591,14 +561,14 @@ export class Operator extends Token {
         }
     }
 
-    static * lex(lexer, location) {
+    static * lex(l, location) {
 
         /* This API method tokenizes and yields as many operators as it can gather (refer to the
         `Operator.slice` method above for an explanation of how it works). */
 
-        let values = lexer.read();
+        let values = l.read();
 
-        while (lexer.at(symbolics)) values += lexer.advance();
+        while (l.at(symbolics)) values += l.advance();
 
         for (const value of Operator.slice(values, 1, location)) {
 
@@ -625,15 +595,9 @@ export class PrefixOperator extends Operator {
     /* This abstract class provides general functionality for operators that are only valid in the
     prefix denotation. */
 
-    prefix(parser) {
+    prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-        return this.push(parser.gatherExpression(this.RBP));
-    }
-
-    js(writer) {
-
-        return `${this.spelling} ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `${this.spelling} ${this.at(0).js(w)}` }
 }
 
 export class InfixOperator extends Operator {
@@ -643,15 +607,9 @@ export class InfixOperator extends Operator {
 
     initial = false;
 
-    infix(parser, left) {
+    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP)) }
 
-        return this.push(left, parser.gatherExpression(this.LBP));
-    }
-
-    js(writer) {
-
-        return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
-    }
+    js(w) { return `${this.at(0).js(w)} ${this.spelling} ${this.at(1).js(w)}` }
 }
 
 export class DotOperator extends InfixOperator {
@@ -662,15 +620,9 @@ export class DotOperator extends InfixOperator {
     LBP = 17;
     initial = false;
 
-    infix(parser, left) {
+    infix(p, left) { return this.push(left, p.gatherProperty()) }
 
-        return this.push(left, parser.gatherProperty());
-    }
-
-    js(writer) {
-
-        return `${this.at(0).js(writer)}${this.spelling}${this.at(1).js(writer)}`;
-    }
+    js(w) { return `${this.at(0).js(w)}${this.spelling}${this.at(1).js(w)}` }
 }
 
 export class GeneralOperator extends Operator {
@@ -679,26 +631,20 @@ export class GeneralOperator extends Operator {
     prefix and infix denotation. It combines (by repeating the code) the functionality of both the
     `PrefixOperator` and `InfixOperator` base classes (as we cannot use multiple-inheritance) */
 
-    prefix(parser) {
+    prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-        return this.push(parser.gatherExpression(this.RBP));
-    }
+    infix(p, left) { return this.note("infix").push(left, p.gatherExpression(this.LBP)) }
 
-    infix(parser, left) {
-
-        return this.note("infix").push(left, parser.gatherExpression(this.LBP));
-    }
-
-    js(writer) {
+    js(w) {
 
         if (this.noted("infix")) {
 
-            return `${this.at(0).js(writer)} ${this.spelling} ${this.at(1).js(writer)}`;
+            return `${this.at(0).js(w)} ${this.spelling} ${this.at(1).js(w)}`;
         }
 
         const separator = lowers.includes(this.spelling[0]) ? space : empty;
 
-        return `${this.spelling}${separator}${this.at(0).js(writer)}`;
+        return `${this.spelling}${separator}${this.at(0).js(w)}`;
     }
 }
 
@@ -709,16 +655,16 @@ export class ArrowOperator extends GeneralOperator {
 
     LBP = 2;
 
-    infix(parser, left) {
+    infix(p, left) {
 
         /* This method overrides the inherited version to ensure that the `left` parameter
         (when present) is wrapped in parens, and that the operator is right-associative. */
 
         const message = "arrow operators require parenthesized arguments";
 
-        if (!left.is(OpenParen)) throw new LarkError(message, left.location);
+        if (not(left.is(OpenParen))) throw new LarkError(message, left.location);
 
-        return this.note("infix").push(left, parser.gatherExpression(this.LBP - 1));
+        return this.note("infix").push(left, p.gatherExpression(this.LBP - 1));
     }
 }
 
@@ -730,10 +676,7 @@ export class AssignmentOperator extends InfixOperator {
     LBP = 2;
     initial = false;
 
-    infix(parser, left) {
-
-        return this.push(left, parser.gatherExpression(this.LBP - 1));
-    }
+    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP - 1)) }
 }
 
 export class GeneralDotOperator extends DotOperator {
@@ -743,10 +686,7 @@ export class GeneralDotOperator extends DotOperator {
 
     RBP = 14;
 
-    prefix(parser) {
-
-        return this.push(parser.gatherExpression(this.RBP));
-    }
+    prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -803,27 +743,27 @@ export class NumberLiteral extends Terminal {
 
     static * lex(...args) { yield new NumberLiteral(...args) }
 
-    constructor(lexer, location) {
+    constructor(l, location) {
 
         /* This generator tokenizes a number literal, ensuring that dots are only included when
         they are valid (permitting number literals to be followed by a dot-operator without any
         parens), and handling unit prefixes and exponentiation. */
 
-        super(location, lexer.read());
+        super(location, l.read());
 
         // establish the base, and create a reference to the appropriate digit-set...
 
-        if (lexer.on("0") && lexer.at(bases)) {
+        if (l.on("0") && l.at(bases)) {
 
-            this.value += lexer.advance();
+            this.value += l.advance();
 
-            var [digits, isDecimal] = [lexer.on("xX") ? hexadecimal : binary, false];
+            var [digits, isDecimal] = [l.on("xX") ? hexadecimal : binary, false];
 
         } else var [digits, isDecimal] = [decimal, true];
 
         // gather as many digits as possible from the appropriate set...
 
-        lexer.gatherWhile(digits, this);
+        l.gatherWhile(digits, this);
 
         // validate the value so far, requiring that it does not start with a zero, unless it is
         // the start of a base-prefix, or it is just a single zero, as well as checking that it's
@@ -836,7 +776,7 @@ export class NumberLiteral extends Terminal {
 
         if (not(isDecimal) && this.value.length === 2) { // incomplete base-prefix...
 
-            if (lexer.at(decimal)) throw new LarkError("invalid digit for notation", location);
+            if (l.at(decimal)) throw new LarkError("invalid digit for notation", location);
             else throw new LarkError("incomplete base-prefix", location);
         }
 
@@ -845,13 +785,13 @@ export class NumberLiteral extends Terminal {
 
         let float = false;
 
-        if (lexer.at(dot)) {
+        if (l.at(dot)) {
 
-            if (isDecimal && this.value[0] !== dot && lexer.peek(2, decimal)) {
+            if (isDecimal && this.value[0] !== dot && l.peek(2, decimal)) {
 
                 float = true;
-                this.value += lexer.advance();
-                lexer.gatherWhile(digits, this);
+                this.value += l.advance();
+                l.gatherWhile(digits, this);
 
             } else throw new LarkError("fractional numbers must use decimal notation", location);
         }
@@ -861,22 +801,22 @@ export class NumberLiteral extends Terminal {
         // on operators, lex the characters and convert to JavaScript exponentiation notation - in
         // either case, update the `value` property with the result...
 
-        const atDouble = character => lexer.at(character) && lexer.peek(2, character);
+        const atDouble = character => l.at(character) && l.peek(2, character);
 
-        if (lexer.at(alphas)) { // units...
+        if (l.at(alphas)) { // units...
 
             const unit = new Token(location);
 
-            lexer.gatherWhile(alphas, unit);
+            l.gatherWhile(alphas, unit);
             this.value = NumberLiteral.units[unit.value](parseFloat(this.value), float, location);
 
         } else if (atDouble(slash) || atDouble(backslash)) { // exponentiation...
 
-            const operator = lexer.at(slash) ? "e-" : "e";
+            const operator = l.at(slash) ? "e-" : "e";
             const exponent = new Token(location);
 
-            lexer.advance(2);
-            lexer.gatherWhile(digits, exponent);
+            l.advance(2);
+            l.gatherWhile(digits, exponent);
             this.value += operator + exponent.value;
         }
     }
@@ -904,7 +844,7 @@ export class StringLiteral extends Terminal {
     LBP = 16;
     expression = true;
 
-    static * lex(lexer, location) {
+    static * lex(l, location) {
 
         /* Lex and yield a string literal as a token stream that contains a `StringLiteral`, plus
         for every interpolation, an `OpenInterpolation` token, followed by each token within the
@@ -927,7 +867,7 @@ export class StringLiteral extends Terminal {
             any number of contiguous instances of the same given character, concatenating them to
             the value, then return the result. */
 
-            while (lexer.at(character) && lexer.advance()) value += lexer.read();
+            while (l.at(character) && l.advance()) value += l.read();
 
             return value;
         }
@@ -935,27 +875,27 @@ export class StringLiteral extends Terminal {
         const [head, characters] = [match(quote, quote), []];
         const StringClass = head.length > 1 ? TextLiteral : StringLiteral;
 
-        lexer.advance();
+        l.advance();
 
-        while (lexer.read()) {
+        while (l.read()) {
 
             // this loop can yield any number of tokens, as it yields every token within each
             // interpolation, as well any number of substrings...
 
-            if (lexer.on(backslash) && lexer.at(openParen)) {
+            if (l.on(backslash) && l.at(openParen)) {
 
                 // this block handles streams of interpolated tokens...
 
                 yield new StringClass(location, characters.join(empty));
 
-                lexer.advance(2);
+                l.advance(2);
                 characters.length = 0;
 
-                yield new OpenInterpolation(lexer.locate());
-                yield * lexer.gather(true);
-                yield new CloseInterpolation(lexer.locate());
+                yield new OpenInterpolation(l.locate());
+                yield * l.gather(true);
+                yield new CloseInterpolation(l.locate());
 
-            } else if (lexer.on(quote)) {
+            } else if (l.on(quote)) {
 
                 // this block handles one or more quotes, which may close the literal, may be
                 // part of the literal, or may just be too many quotes for the literal...
@@ -977,66 +917,58 @@ export class StringLiteral extends Terminal {
 
                 } else characters.push(candidate);      // too few quotes (part of the string)
 
-            } else if (lexer.on(newline)) {
+            } else if (l.on(newline)) {
 
                 // this block handles newlines, followed by zero or more spaces...
 
-                lexer.terminate();
-                characters.push(lexer.read() + match(space));
+                l.terminate();
+                characters.push(l.read() + match(space));
 
-            } else if (lexer.on(backtick) || (lexer.on(dollar) && lexer.at(openBrace))) {
+            } else if (l.on(backtick) || (l.on(dollar) && l.at(openBrace))) {
 
                 // this block handles characters that are meaningful in a js template-literal, but
                 // have no special meaning in a lark string or text literal...
 
-                characters.push(backslash, lexer.read());
+                characters.push(backslash, l.read());
 
-            } else characters.push(lexer.read()); // this block handles a regular character
+            } else characters.push(l.read()); // this block handles a regular character
 
-            lexer.advance();
+            l.advance();
         }
     }
 
-    prefix(parser) {
+    prefix(p) {
 
         /* Gather one or more pairs of operands, each containing an interpolation array, followed
         by a (required) `StringLiteral` substring (that the lexer ensures will be there). */
 
-        const rules = {closer: CloseInterpolation};
+        while (p.on(OpenInterpolation)) {
 
-        while (parser.on(OpenInterpolation)) {
-
-            parser.advance();
-            this.push(parser.gatherCompoundExpression(rules), parser.advance(false));
+            p.advance();
+            this.push(p.gatherCompoundExpression({closer: CloseInterpolation}), p.advance(false));
         }
 
         return this;
     }
 
-    infix(parser, left) {
-
-        /* Take the left operand, push it to the token and note that this literal is tagged, before
-        deferring parsing to the `prefix(parser)` method. */
-
-        return this.note("tag").push(left).prefix(parser);
-    }
+    infix(p, left) { return this.note("tag").push(left).prefix(p) }
 
     validate(_) { return true }
 
-    js(writer) {
+    js(w) {
 
         /* Generate a template literal from the various parts of the string literal (text literals
-        have their own `js(writer)` method), reproducing the interpolations, and possibly including
-        a tag-expression. */
+        have their own `js` method), reproducing the interpolations, and possibly also including a
+        tag-expression. */
 
         const chunks = [this.value];
-        const prefix = this.noted("tag") ? this.shift().js(writer) : empty;
+        const prefix = this.noted("tag") ? this.shift().js(w) : empty;
 
         for (const operand of this) {
 
             if (operand.is(CompoundExpression)) for (const interpolation of operand) {
 
-                chunks.push("${" + interpolation.js(writer) + "}");
+                chunks.push("${" + interpolation.js(w) + "}");
 
             } else chunks.push(operand.value);
         }
@@ -1049,7 +981,7 @@ export class TextLiteral extends StringLiteral {
 
     /* This class implements text literals, inheriting a lot from `StringLiteral`. */
 
-    js(writer) {
+    js(w) {
 
         /* Generate a template literal from the various parts of the text literal, reproducing
         the interpolations, and possibly including a tag-expression. */
@@ -1078,7 +1010,7 @@ export class TextLiteral extends StringLiteral {
         // there is one, else the `empty` string...
 
         const chunks = [strip(this.value).slice(1)];
-        const prefix = this.noted("tag") ? this.shift().js(writer) : empty;
+        const prefix = this.noted("tag") ? this.shift().js(w) : empty;
 
         // now, iterate over the token's (remaining) operands, convert them to js, and wrapping any
         // interpolations appropriately, before concatenating the results to `chunks`...
@@ -1087,7 +1019,7 @@ export class TextLiteral extends StringLiteral {
 
             if (operand.is(CompoundExpression)) for (const interpolation of operand) {
 
-                chunks.push("${" + interpolation.js(writer) + "}");
+                chunks.push("${" + interpolation.js(w) + "}");
 
             } else chunks.push(strip(operand.value));
         }
@@ -1108,23 +1040,22 @@ export class FunctionLiteral extends Functional {
     LBP = 1;
     expression = true;
 
-    prefix(parser, context) {
+    prefix(p, context) {
 
         /* This method parses functions, based on the given context (either `Async` or `undefined`,
         with the later implying no qualifier). */
 
         const blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
 
-        if (parser.on(Variable)) this.push(parser.gatherVariable());
+        if (p.on(Variable)) this.push(p.gatherVariable());
         else this.push(new SkipAssignee(this.location));
 
-        if (parser.on(Of)) {
+        if (p.on(Of)) {
 
-            parser.advance();
+            p.advance();
+            this.push(p.gatherParameters(), p.gatherBlock(blockType));
 
-            this.push(parser.gatherParameters(), parser.gatherBlock(blockType));
-
-        } else this.push(new Parameters(this.location), parser.gatherBlock(blockType));
+        } else this.push(new Parameters(this.location), p.gatherBlock(blockType));
 
         if (blockType === ASYNCFUNCTIONBLOCK) this.note("async");
 
@@ -1133,15 +1064,13 @@ export class FunctionLiteral extends Functional {
         return this;
     }
 
-    js(writer) {
-
-        /* Render a function literal (arrow grammar is not handled here). */
+    js(w) {
 
         const keyword = this.noted("async") ? "async function" : "function";
         const modifier = this.noted("yield") ? asterisk : empty;
-        const name = this.at(0).is(Variable) ? space + this.at(0).js(writer) : empty;
-        const params = this.at(1).map(param => param.js(writer)).join(comma + space);
-        const block = writer.writeBlock(this.at(2));
+        const name = this.at(0).is(Variable) ? space + this.at(0).js(w) : empty;
+        const params = this.at(1).map(param => param.js(w)).join(comma + space);
+        const block = w.writeBlock(this.at(2));
 
         return `${keyword}${modifier}${name}(${params}) ${block}`;
     }
@@ -1154,13 +1083,10 @@ export class ClassLiteral extends Functional {
 
     expression = true;
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* Gather a class, with its optional name and required body. */
-
-        if (parser.on(OpenBrace)) return this.push(parser.gatherBlock(CLASSBLOCK));
-
-        return this.push(parser.gatherVariable(), parser.gatherBlock(CLASSBLOCK));
+        if (p.on(OpenBrace)) return this.push(p.gatherBlock(CLASSBLOCK));
+        else return this.push(p.gatherVariable(), p.gatherBlock(CLASSBLOCK));
     }
 }
 
@@ -1171,17 +1097,17 @@ export class SubclassLiteral extends Functional {
 
     expression = true;
 
-    prefix(parser) {
+    prefix(p) {
 
-        if (not(parser.on(Of))) this.note("named").push(parser.gatherVariable());
+        if (not(p.on(Of))) this.note("named").push(p.gatherVariable());
 
-        if (parser.on(Of)) {
+        if (p.on(Of)) {
 
-            parser.advance();
+            p.advance();
 
-            return this.push(parser.gatherExpression(), parser.gatherBlock(CLASSBLOCK));
+            return this.push(p.gatherExpression(), p.gatherBlock(CLASSBLOCK));
 
-        } else throw new LarkError("incomplete subclass", parser.advance(false).location);
+        } else throw new LarkError("incomplete subclass", p.advance(false).location);
     }
 }
 
@@ -1214,10 +1140,7 @@ export class As extends PrefixOperator {
 
     LBP = Infinity;
 
-    js(writer) {
-
-        return `__proto__: ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `__proto__: ${this.at(0).js(w)}` }
 }
 
 export class Ask extends GeneralDotOperator {
@@ -1311,21 +1234,13 @@ export class Async extends Functional {
 
     expression = true;
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* This method checks that the next token is a function literal, and if so, gathers it as
-        an operand, complaining otherwise. */
-
-        if (parser.on(FunctionLiteral)) return this.push(parser.gather(0, this));
+        if (p.on(FunctionLiteral)) return this.push(p.gather(0, this));
         else throw new LarkError("`async` qualifier without `function` keyword", this.location);
     }
 
-    js(writer) {
-
-        /* Render the function operand with the `async` qualifier. */
-
-        return `async ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `async ${this.at(0).js(w)}` }
 }
 
 export class Await extends CommandStatement {
@@ -1335,37 +1250,27 @@ export class Await extends CommandStatement {
     RBP = 14;
     expression = true;
 
-    prefix(parser) {
+    prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-        /* This method gathers `await` expressions. */
-
-        return this.push(parser.gatherExpression(this.RBP));
-    }
-
-    validate(parser) {
+    validate(p) {
 
         /* Climb the block stack till something functional is found, then return `true` if
         it is an asynchronous function block, and `false` otherwise. If nothing functional
         is found, the validation *succeeds* (note the third argument), as top-level await
         is valid. */
 
-        return parser.check($ => $ > SIMPLEBLOCK, $ => ASYNCFUNCTIONBLOCK, true);
+        return p.check($ => $ > SIMPLEBLOCK, $ => ASYNCFUNCTIONBLOCK, true);
     }
 
-    js(writer) {
-
-        /* Render an `await` expression. */
-
-        return `await ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `await ${this.at(0).js(w)}` }
 }
 
 export class Bang extends GeneralDotOperator {
 
-    spelling = ".#";
-
     /* This class implements the `!` operator, which compiles to the bitwise `~` operator in a
     prefix context, and JavaScript's `.#` pseudo-dot-operator in an infix context. */
+
+    spelling = ".#";
 }
 
 export class Block extends Token {
@@ -1377,7 +1282,7 @@ export class Break extends BranchStatement {
 
     /* This class implements the `break` statement. */
 
-    validate(parser) {
+    validate(p) {
 
         /* Labled break-statements are valid inside any control-flow block, so we can simply check
         the immediate context to establish that it is not the body of anything functional, while
@@ -1389,14 +1294,10 @@ export class Break extends BranchStatement {
 
         if (this.noted("label")) {
 
-            if (not(parser.label(this.at(0)))) {
+            if (p.label(this.at(0))) return p.check($ => true, $ => $ < FUNCTIONBLOCK);
+            else throw new LarkError(`undefined label '${this.at(0).value}'`, this.at(0).location);
 
-                throw new LarkError(`undefined label '${this.at(0).value}'`, this.at(0).location);
-            }
-
-            return parser.check($ => true, $ => $ < FUNCTIONBLOCK);
-
-        } else return parser.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        } else return p.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 
@@ -1436,32 +1337,27 @@ export class Label extends InfixOperator {
 
     LBP = 1;
 
-    infix(parser, left) {
+    infix(p, left) {
 
         /* If this colon is part of a label, update the parser to note whether the label is bound
         to a loop statement or a simple block statement. Then, gather the statement, before
         nullifying the label. Otherwise, just treat the colon like a normal infix operator. */
 
-        if (parser.on(If, Else, While, For)) { // a label...
+        if (p.on(If, Else, While, For)) { // a label...
 
-            if (parser.label(left) === null) parser.label(left, parser.on(For, While));
+            if (p.label(left) === null) p.label(left, p.on(For, While));
             else throw new LarkError("cannot reassign an active label", left.location);
 
             this.expression = false;
-            this.push(left, parser.gather());
-            parser.label(left, null);
+            this.push(left, p.gather());
+            p.label(left, null);
 
-        } else super.infix(parser, left); // a key-value pair
+        } else super.infix(p, left); // a key-value pair
 
         return this;
     }
 
-    js(writer) {
-
-        /* Render a labelled operand (knowing that it was validated during the parser stage). */
-
-        return `${this.at(0).js(writer)}: ${this.at(1).js(writer)}`;
-    }
+    js(w) { return `${this.at(0).js(w)}: ${this.at(1).js(w)}` }
 }
 
 export class Comma extends Terminator {
@@ -1474,7 +1370,7 @@ export class Continue extends BranchStatement {
 
     /* This class implements the `continue` statement, just like JavaScript. */
 
-    validate(parser) {
+    validate(p) {
 
         /* A continue-statement is only valid inside a loop (whether the statement has a label or
         not), though it may be nested inside simple blocks within the loop.
@@ -1485,13 +1381,13 @@ export class Continue extends BranchStatement {
         if (this.noted("label")) {
 
             const label = this.at(0);
-            const state = parser.label(label);
+            const state = p.label(label);
 
             if (state === null) throw new LarkError("undefined label", label.location);
             else if (state === false) throw new LarkError("must continue a loop", label.location);
         }
 
-        return parser.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        return p.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
 }
 
@@ -1511,12 +1407,7 @@ export class Delete extends CommandStatement {
     LBP = 14;
     expression = true;
 
-    js(writer) {
-
-        /* Render a `delete` expression. */
-
-        return `delete ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `delete ${this.at(0).js(w)}` }
 }
 
 export class Dev extends Keyword {
@@ -1525,24 +1416,18 @@ export class Dev extends Keyword {
     informal, ensuring it will only be included in the compiled JavaScript when the `dev` flag
     (which is `false` by default) is truthy. */
 
-    prefix(parser) {
+    prefix(p) {
 
         /* Gather an arbitrary statement, while noting the `dev` flag, so this statement can be
-        omitted from the output correctly (without the semicolon we would get if `js(writer)`
-        simply returned an empty string). */
+        omitted from the output correctly (without the semicolon we would get if `js` simply
+        returned an empty string). */
 
-        if (parser.dev) this.note("ignore");
+        if (p.dev) this.note("ignore");
 
-        return this.push(parser.gather());
+        return this.push(p.gather());
     }
 
-    js(writer) {
-
-        /* Render the only operand and return the result, leaving it to the writer stage to omit
-        the result when `ignore` was noted by `prefix(parser)`. */
-
-        return this.at(0).js(writer);
-    }
+    js(w) { return this.at(0).js(w) }
 }
 
 export class Do extends PrefixOperator {
@@ -1550,32 +1435,29 @@ export class Do extends PrefixOperator {
     /* This class implements the `do` keyword, which prefixes blocks and functions to create IIFEs
     (which Lark uses as a more flexible version of block-statements). */
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* If the next token is `async` or `function`, make this instance valid as an expression,
-        then gather whatever follows. Otherwise, gather a do-block. */
-
-        if (parser.on(If, While, For, Functional)) return this.push(parser.gather(0, this));
-        else return this.push(parser.gatherBlock(FUNCTIONBLOCK));
+        if (p.on(If, While, For, Functional)) return this.push(p.gather(0, this));
+        else return this.push(p.gatherBlock(FUNCTIONBLOCK));
     }
 
-    js(writer) {
+    js(w) {
 
         /* Render a statement with a `do` qualifier, which can be a do-block (which compiles to an
         IIFE with no name or arguments etc), a control-flow block (optionally containing `return`
         statements, which compiles to an IIFE with the statement inside), or a function (which
         just gets dangling-dogballs appended). */
 
-        if (this.at(0).is(Block)) return `function() ${writer.writeBlock(this.at(0))}()`;
+        if (this.at(0).is(Block)) return `function() ${w.writeBlock(this.at(0))}()`;
 
-        if (this.at(0).is(Functional)) return `${this.at(0).js(writer)}()`;
+        if (this.at(0).is(Functional)) return `${this.at(0).js(w)}()`;
 
         const literal = new FunctionLiteral(this.location);
         const name = new SkipAssignee(this.location);
         const parameters = new Parameters(this.location);
         const block = new Block(this.location).push(this.at(0))
 
-        return `${literal.push(name, parameters, block).js(writer)}()`;
+        return `${literal.push(name, parameters, block).js(w)}()`;
     }
 }
 
@@ -1589,22 +1471,13 @@ export class Else extends PredicatedBlock {
 
     /* This concrete class implements `else` and `else if` clauses. */
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* Gather an else-clause (with its block) or an else-if clause (with its predicate before
-        its block). */
-
-        if (parser.on(If)) return this.note("if").push(parser.gather());
-        else return this.push(parser.gatherBlock(SIMPLEBLOCK));
+        if (p.on(If)) return this.note("if").push(p.gather());
+        else return this.push(p.gatherBlock(SIMPLEBLOCK));
     }
 
-    js(writer) {
-
-        /* Render an `else` or an `else if` statement. */
-
-        if (this.noted("if")) return `else ${this.at(0).js(writer)}`;
-        else return `else ${writer.writeBlock(this.at(0))}`;
-    }
+    js(w) { return `else ${this.noted("if") ? this.at(0).js(w) : w.writeBlock(this.at(0))}` }
 }
 
 export class SkipAssignee extends Token {
@@ -1618,12 +1491,7 @@ export class Equal extends InfixOperator {
 
     LBP = 8;
 
-    js(writer) {
-
-        /* Render an equality operation. */
-
-        return `Object.is(${this.at(0).js(writer)}, ${this.at(1).js(writer)})`;
-    }
+    js(w) { return JS.equals(this.at(0).js(w), this.at(1).js(w)) }
 }
 
 export class EOF extends Terminator {
@@ -1653,12 +1521,7 @@ export class Floor extends InfixOperator {
 
     LBP = 12;
 
-    js(writer) {
-
-        /* Render a floor-division operation. */
-
-        return `Math.floor(${this.at(0).js(writer)} / ${this.at(1).js(writer)})`;
-    }
+    js(w) { return `Math.floor(${this.at(0).js(w)} / ${this.at(1).js(w)})` }
 }
 
 export class For extends Header {
@@ -1666,31 +1529,31 @@ export class For extends Header {
     /* This class implements for-loops (old school for-loops have not been designed yet, but will
     be added in some form). */
 
-    prefix(parser, context=undefined) {
+    prefix(p, context=undefined) {
 
-        /* This method parses all four for-loops. It uses `parser.gatherAssignee` to avoid parsing
-        the operator (`in`, `of`, `on` or `from`) as an infix. */
+        /* This method parses all four for-loops. It uses `p.gatherAssignee` to avoid parsing the
+        operator (`in`, `of`, `on` or `from`) as an infix. */
 
         const blocktype = context?.is(Do) ? FUNCTIONBLOCK : LOOPBLOCK;
 
-        this.push(parser.gatherAssignee());
+        this.push(p.gatherAssignee());
 
-        if (parser.on(In, Of, On, From)) this.note(parser.advance(false).value);
+        if (p.on(In, Of, On, From)) this.note(p.advance(false).value);
         else throw new LarkError("incomplete for-statement", this.location);
 
-        return this.push(parser.gatherExpression(), parser.gatherBlock(blocktype));
+        return this.push(p.gatherExpression(), p.gatherBlock(blocktype));
     }
 
-    js(writer) {
+    js(w) {
 
         /* Render the appropriate for-loop, adding the extra code that implements the operator. */
 
-        const assignees = this.at(0).js(writer);
+        const assignees = this.at(0).js(w);
         const operator = this.noted("on") ? "in" : "of";
         const keyword = this.noted("from") ? "for await" : "for";
-        const block = writer.writeBlock(this.at(2));
+        const block = w.writeBlock(this.at(2));
 
-        let target = writer.register(this.at(1));
+        let target = w.register(this.at(1));
 
         if (this.noted("in")) target = JS.values(target);
         else if (this.noted("of")) target = JS.keys(target);
@@ -1706,10 +1569,7 @@ export class Freeze extends PrefixOperator {
 
     RBP = 1;
 
-    js(writer) {
-
-        return `Object.freeze(${this.at(0).js(writer)})`;
-    }
+    js(w) { return `Object.freeze(${this.at(0).js(w)})` }
 }
 
 export class From extends Keyword {
@@ -1749,10 +1609,7 @@ export class In extends InfixOperator {
 
     LBP = 8;
 
-    js(writer) {
-
-        return `(${JS.values(writer.register(this.at(1)))}).includes(${this.at(0).js(writer)})`;
-    }
+    js(w) { return `(${JS.values(w.register(this.at(1)))}).includes(${this.at(0).js(w)})` }
 }
 
 export class InfinityConstant extends Constant {
@@ -1767,35 +1624,35 @@ export class Is extends InfixOperator {
 
     LBP = 8;
 
-    infix(parser, left) {
+    infix(p, left) {
 
         this.push(left);
 
-        if (parser.on(Not)) { this.push(parser.advance(false)) }
+        if (p.on(Not)) { this.push(p.advance(false)) }
 
-        if (parser.on(Packed, Sealed, Frozen)) return this.push(parser.advance(false));
-        else return this.push(parser.gatherExpression(this.LBP));
+        if (p.on(Packed, Sealed, Frozen)) return this.push(p.advance(false));
+        else return this.push(p.gatherExpression(this.LBP));
     }
 
-    js(writer) {
+    js(w) {
 
         /* Render an `is` or `is not`, `is packed`, `is not packed`, `is sealed`, `is not sealed`,
         `is frozen` or `is not frozen` operation. */
 
         if (this.at(1).is(Not)) {
 
-            if (this.at(2).is(Packed)) return `Object.isExtensible(${this.at(0).js(writer)})`;
-            if (this.at(2).is(Sealed)) return `(!Object.isSealed(${this.at(0).js(writer)}))`;
-            if (this.at(2).is(Frozen)) return `(!Object.isFrozen(${this.at(0).js(writer)}))`;
+            if (this.at(2).is(Packed)) return `Object.isExtensible(${this.at(0).js(w)})`;
+            if (this.at(2).is(Sealed)) return `(!Object.isSealed(${this.at(0).js(w)}))`;
+            if (this.at(2).is(Frozen)) return `(!Object.isFrozen(${this.at(0).js(w)}))`;
 
-            return JS.invert(JS.is(writer.register(this.at(0)), writer.register(this.at(2))));
+            return JS.invert(JS.is(w.register(this.at(0)), w.register(this.at(2))));
         }
 
-        if (this.at(1).is(Packed)) return `(!Object.isExtensible(${this.at(0).js(writer)}))`;
-        if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(writer)})`;
-        if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(writer)})`;
+        if (this.at(1).is(Packed)) return `(!Object.isExtensible(${this.at(0).js(w)}))`;
+        if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(w)})`;
+        if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(w)})`;
 
-        return JS.is(writer.register(this.at(0)), writer.register(this.at(1)));
+        return JS.is(w.register(this.at(0)), w.register(this.at(1)));
     }
 }
 
@@ -1817,15 +1674,9 @@ export class LineFeed extends Terminator {
     not be significant, depending on the current LIST state, which is maintained by the parser
     implicitly (removing line-feed instances from the token stream as required). */
 
-    prefix(parser) {
+    prefix(_) { throw new LarkError("unexpected newline", this.location) }
 
-        throw new LarkError("unexpected newline", this.location);
-    }
-
-    infix(parser) {
-
-        throw new LarkError("unexpected newline", this.location);
-    }
+    infix(_) { throw new LarkError("unexpected newline", this.location) }
 }
 
 export class LSHIFT extends InfixOperator {
@@ -1871,31 +1722,26 @@ export class Not extends GeneralOperator {
     RBP = 14;
     spelling = "!";
 
-    infix(parser, left) {
+    infix(p, left) {
 
-        /* If the parser is on the `in` operator, note the infix denotation, push the left operand,
-        then gather and push the right operand. Otherwise, throw an error. */
+        if (p.on(In)) {
 
-        if (parser.on(In)) {
+            p.advance();
 
-            parser.advance();
-
-            return this.note("infix").push(left, parser.gatherExpression(this.LBP));
+            return this.note("infix").push(left, p.gatherExpression(this.LBP));
 
         } else throw new LarkError("unexpected not-operator", this.location);
     }
 
-    js(writer) {
-
-        /* Render a `not` prefix operation or a `not in` infix operation. */
+    js(w) {
 
         if (this.noted("infix")) {
 
-            const target = JS.values(writer.register(this.at(1)));
+            const target = JS.values(w.register(this.at(1)));
 
-            return JS.invert(`(${target}).includes(${this.at(0).js(writer)})`);
+            return JS.invert(`(${target}).includes(${this.at(0).js(w)})`);
 
-        } else return super.js(writer);
+        } else return super.js(w);
     }
 }
 
@@ -1905,10 +1751,7 @@ export class NotEqual extends InfixOperator {
 
     LBP = 8;
 
-    js(writer) {
-
-        return `!Object.is(${this.at(0).js(writer)}, ${this.at(1).js(writer)})`;
-    }
+    js(w) { return JS.invert(JS.equals(this.at(0).js(w), this.at(1).js(w))) }
 }
 
 export class NotGreater extends InfixOperator {
@@ -1978,22 +1821,17 @@ export class OpenBrace extends Opener {
 
     expression = true;
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* This method gathers an object expression, noting when it specifies a prototype. */
-
-        return this.push(parser.gatherCompoundExpression({closer: CloseBrace, objectify: true}));
+        return this.push(p.gatherCompoundExpression({closer: CloseBrace, objectify: true}));
     }
 
     validate(_) { return true }
 
-    js(writer) {
-
-        /* Render an object literal. Infer a `null` prototype, unless it contains an `as Prototype`
-        expression (indicated by having a "proto" note). */
+    js(w) {
 
         const head = this.at(0).noted("proto") ? openBrace : "{__proto__: null, ";
-        const body = this.at(0).map(operand => operand.js(writer)).join(comma + space);
+        const body = this.at(0).map(operand => operand.js(w)).join(comma + space);
 
         return head + body + closeBrace;
     }
@@ -2004,32 +1842,20 @@ export class OpenBracket extends Caller {
     /* This class implements the open-bracket delimiter, which is used for array expressions and
     bracket-notation. */
 
-    prefix(parser) {
+    prefix(p) { return this.push(p.gatherCompoundExpression({closer: CloseBracket})) }
 
-        /* This method gathers an array expression. */
-
-        return this.push(parser.gatherCompoundExpression({closer: CloseBracket}));
-    }
-
-    infix(parser, left) {
-
-        /* This method gathers bracket-notation. */
+    infix(p, left) {
 
         const rules = {closer: CloseBracket, singularize: true};
 
-        return this.note("infix").push(left, parser.gatherCompoundExpression(rules));
+        return this.note("infix").push(left, p.gatherCompoundExpression(rules));
     }
 
-    js(writer) {
-
-        /* Render an array literal or bracket-notation. */
-
-        return super.js(writer, openBracket, closeBracket);
-    }
+    js(w) { return super.js(w, openBracket, closeBracket) }
 }
 
 export class OpenInterpolation extends Opener {
-    
+
     /* This class is used by `StringLiteral` for delimiting the tokens within string interpolations
     (allowing them to be parsed as compound expressions). */
 }
@@ -2039,28 +1865,14 @@ export class OpenParen extends Caller {
     /* This class implements the open-paren delimiter, which is used for grouped expressions and
     invocations. */
 
-    prefix(parser) {
+    prefix(p) { return this.push(p.gatherCompoundExpression({closer: CloseParen})) }
 
-        /* This method gathers and validates a grouped expression. */
+    infix(p, left) {
 
-        return this.push(parser.gatherCompoundExpression({closer: CloseParen}));
+        return this.note("infix").push(left, p.gatherCompoundExpression({closer: CloseParen}));
     }
 
-    infix(parser, left) {
-
-        /* This method gathers and validates an invocation. */
-
-        const rules = {closer: CloseParen};
-
-        return this.note("infix").push(left, parser.gatherCompoundExpression(rules));
-    }
-
-    js(writer) {
-
-        /* Render a grouped expression or an invocation. */
-
-        return super.js(writer, openParen, closeParen);
-    }
+    js(w) { return super.js(w, openParen, closeParen) }
 }
 
 export class Pack extends PrefixOperator {
@@ -2070,7 +1882,7 @@ export class Pack extends PrefixOperator {
 
     RBP = 1;
 
-    js(writer) { return `Object.preventExtensions(${this.at(0).js(writer)})` }
+    js(w) { return `Object.preventExtensions(${this.at(0).js(w)})` }
 }
 
 export class Packed extends Operator {
@@ -2111,7 +1923,7 @@ export class Raise extends InfixOperator {
 
     LBP = 13;
 
-    infix(parser, left) { return this.push(left, parser.gatherExpression(this.LBP - 1)) }
+    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP - 1)) }
 }
 
 export class Reserved extends Word {
@@ -2128,28 +1940,21 @@ export class Return extends Keyword {
 
     /* This class implements the `return` keyword, which is followed by an optional expression. */
 
-    prefix(parser) {
+    prefix(p) {
 
-        if (parser.on(Terminator, Closer)) return this;
-        else return this.push(parser.gatherExpression());
+        if (p.on(Terminator, Closer)) return this;
+        else return this.push(p.gatherExpression());
     }
 
-    validate(parser) {
+    validate(p) {
 
         /* Climb the block stack till something functional is found, then return `true` if it's
         anything other than a class block, and `false` if it is one. */
 
-        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+        return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 
-    js(writer) {
-
-        /* Render a `return` statement with its optional expression. */
-
-        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
-
-        return `return${expression}`;
-    }
+    js(w) { return `return${this.length > 0 ? space + this.at(0).js(w) : empty}` }
 }
 
 export class RSHIFT extends InfixOperator {
@@ -2165,10 +1970,7 @@ export class Seal extends PrefixOperator {
 
     RBP = 1;
 
-    js(writer) {
-
-        return `Object.seal(${this.at(0).js(writer)})`;
-    }
+    js(w) { return `Object.seal(${this.at(0).js(w)})` }
 }
 
 export class Sealed extends Operator {
@@ -2197,11 +1999,11 @@ export class Spread extends Operator {
 
     LBP = 2;
 
-    prefix(parser) { return this.push(parser.gatherVariable()) }
+    prefix(p) { return this.push(p.gatherVariable()) }
 
     infix(_, left) { return this.note("infix").push(left) }
 
-    js(writer) { return `...${this.at(0).js(writer)}` }
+    js(w) { return `...${this.at(0).js(w)}` }
 }
 
 export class Star extends InfixOperator {
@@ -2229,12 +2031,7 @@ export class Throw extends CommandStatement {
 
     expresssion = true;
 
-    js(writer) {
-
-        /* Render a `throw new` expression. */
-
-        return `throw new ${this.at(0).js(writer)}`;
-    }
+    js(w) { return `throw new ${this.at(0).js(w)}` }
 }
 
 export class TrueConstant extends Constant {
@@ -2269,22 +2066,17 @@ export class When extends Operator {
     LBP = 2;
     initial = false;
 
-    infix(parser, left) {
+    infix(p, left) {
 
-        /* Gather and validate a ternary expression. */
+        this.push(left, p.gatherExpression());
 
-        this.push(left, parser.gatherExpression());
-
-        if (parser.on(Else)) parser.advance();
+        if (p.on(Else)) p.advance();
         else throw new LarkError("incomplete when-operation", this.location);
 
-        return this.push(parser.gatherExpression(this.LBP - 1));
+        return this.push(p.gatherExpression(this.LBP - 1));
     }
 
-    js(writer) {
-
-        return `${this.at(1).js(writer)} ? ${this.at(0).js(writer)} : ${this.at(2).js(writer)}`;
-    }
+    js(w) { return `${this.at(1).js(w)} ? ${this.at(0).js(w)} : ${this.at(2).js(w)}` }
 }
 
 export class While extends PredicatedBlock {
@@ -2309,37 +2101,28 @@ export class Yield extends Keyword {
     LBP = 2;
     expression = true;
 
-    prefix(parser) {
+    prefix(p) {
 
-        /* Gather an *optional* expression, unless the parser is on `from`. In that case, gather
-        the `from` keyword, then gather a *required* expression. */
+        if (p.on(From)) {
 
-        if (parser.on(From)) {
+            p.advance();
 
-            parser.advance();
+            return this.note("from").push(p.gatherExpression());
 
-            return this.note("from").push(parser.gatherExpression());
-
-        } else if (not(parser.on(Terminator, Closer))) return this.push(parser.gatherExpression());
+        } else if (not(p.on(Terminator, Closer))) return this.push(p.gatherExpression());
     }
 
-    validate(parser) {
+    validate(p) {
 
         /* Climb the block stack till something functional is found, then return `true` if it is
         anything other than a class block, and `false` if it is one. */
 
-        return parser.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+        return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 
-    js(writer) {
+    js(w) {
 
-        /* Render a `yield` expression with its optional operand, or a `yield from` expression with
-        its required operand. */
-
-        if (this.noted("from")) return `yield * ${this.at(0).js(writer)}`;
-
-        const expression = this.at(0) ? space + this.at(0).js(writer) : empty;
-
-        return `yield${expression}`;
+        if (this.noted("from")) return `yield * ${this.at(0).js(w)}`;
+        else return `yield${this.length > 0 ? space + this.at(0).js(w) : empty}`;
     }
 }
