@@ -4,7 +4,6 @@ import { closeParen, empty, quote } from "./ascii.js"
 import { lex } from "./lexer.js"
 
 import {
-    As,
     Block,
     CloseBrace,
     CloseBracket,
@@ -230,27 +229,26 @@ export function * parse(source, {dev=false}={}) {
 
                 throw new LarkError("unexpected operand", operand.location);
 
-            } else if (operand.is(Label) && not(braced)) {
+            } else if (operand.is(Label)) {
 
-                throw new LarkError("unexpected label", operand.location);
+                if (not(braced)) throw new LarkError("unexpected label", operand.location);
+
+                if (operand.at(1).is(SkipAssignee)) {
+
+                    throw new LarkError("unexpected skip operator", operand.at(1).location);
+
+                } else if (operand.at(0).is(Variable) && operand.at(0).value === "__proto__") {
+
+                    if (operands.noted("proto")) {
+
+                        throw new LarkError("superfluous prototype", operand.location);
+
+                    } else operands.note("proto");
+                }
 
             } else if (operand.is(SkipAssignee) && (not(bracketed) || singular)) {
 
                 throw new LarkError("unexpected skip operator", operand.location);
-
-            } else if (operand.is(Label) && operand.at(1).is(SkipAssignee)) {
-
-                throw new LarkError("unexpected skip operator", operand.at(1).location);
-
-            } else if (operand.is(As)) {
-
-                if (not(braced)) throw new LarkError("unexpected prototype", operand.location);
-
-                if (operands.noted("proto")) {
-
-                    throw new LarkError("superfluous prototype", operand.location);
-
-                } else operands.note("proto");
             }
 
             if (on(Comma)) advance();

@@ -544,7 +544,6 @@ export class Operator extends Token {
             case ">>=": return new AssignRSHIFT(location, value);
             case ">>>=": return new AssignARSHIFT(location, value);
             case "and": return new And(location, value);
-            case "as": return new As(location, value);
             case "freeze": return new Freeze(location, value);
             case "frozen": return new Frozen(location, value);
             case "is": return new Is(location, value);
@@ -1133,16 +1132,6 @@ export class ARSHIFT extends InfixOperator {
     /* This class implements the `>>>` infix operator (bitwise arithmetic-shift-right). */
 
     LBP = 10;
-}
-
-export class As extends PrefixOperator {
-
-    /* This class implements the `as` prefix-operator, used to specify prototypes in object
-    literals: `let oo = {as Object, x: 1, y: 2}` */
-
-    LBP = Infinity;
-
-    js(w) { return `__proto__: ${this.at(0).js(w)}` }
 }
 
 export class Ask extends GeneralDotOperator {

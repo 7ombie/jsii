@@ -89,7 +89,7 @@ puss of boots
 puss on boots
 
 {x: 4, y: 5, z, __proto__: Bar}
-{as Object, __proto__: Array, name: "Bob", salary: 20000}
+{__proto__: Array, name: "Bob", salary: 20000}
 
 foo[1 + 2]
 bar(1, 2, 3 + 3)
