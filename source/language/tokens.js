@@ -632,7 +632,7 @@ export class GeneralOperator extends Operator {
 
     prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-    infix(p, left) { return this.note("infix").push(left, p.gatherExpression(this.LBP)) }
+    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP)) }
 
     js(w) {
 
@@ -660,7 +660,7 @@ export class ArrowOperator extends GeneralOperator {
 
         if (not(left.is(OpenParen))) throw new LarkError(message, left.location);
 
-        return this.note("infix").push(left, p.gatherExpression(this.LBP - 1));
+        return this.push(left, p.gatherExpression(this.LBP - 1));
     }
 }
 
@@ -686,7 +686,11 @@ export class AssignmentOperator extends InfixOperator {
 
         if (this.spelling === "=" && left.is(Variable, DotOperator, OpenBracket, OpenBrace)) {
 
-            if (left.is(OpenBrace)) { this.note("ambiguous"); left[0].note("proto") }
+            if (left.is(OpenBrace)) {
+
+                this.note("ambiguous");
+                left[0].note("proto");
+            }
 
             return this.push(left, p.gatherExpression(this.LBP - 1));
 
@@ -980,7 +984,7 @@ export class StringLiteral extends Terminal {
         while (p.on(OpenInterpolation)) {
 
             p.advance();
-            this.push(p.gatherCompoundExpression(this), p.advance(false));
+            this.push(p.gatherCompoundExpression(CloseInterpolation), p.advance(false));
         }
 
         return this;
@@ -1767,7 +1771,7 @@ export class Not extends GeneralOperator {
 
             p.advance();
 
-            return this.note("infix").push(left, p.gatherExpression(this.LBP));
+            return this.push(left, p.gatherExpression(this.LBP));
 
         } else throw new LarkError("unexpected not-operator", this.location);
     }
@@ -1863,15 +1867,11 @@ export class OpenBrace extends Opener {
     notes = new Set(["braced"]);
     expression = true;
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
+    prefix(p) { return this.push(p.gatherCompoundExpression(CloseBrace)) }
 
     validate(_) { return true }
 
     js(w) {
-
-        /* Unless the `CompoundExpression` instance noted "proto" (see `gatherCompoundExpression`
-        in `/core/parser.js`), infer a `null` prototype (leaving it to the internal `__proto__`
-        expression we know must be amongst the operands otherwise). */
 
         const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
         const body = this[0].map(operand => operand.js(w)).join(comma + space);
@@ -1887,9 +1887,9 @@ export class OpenBracket extends Caller {
 
     notes = new Set(["bracketed"]);
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
+    prefix(p) { return this.push(p.gatherCompoundExpression(CloseBracket)) }
 
-    infix(p, left) { return this.note("infix").push(left, p.gatherCompoundExpression(this)) }
+    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseBracket)) }
 
     js(w) { return super.js(w, openBracket, closeBracket) }
 }
@@ -1907,9 +1907,9 @@ export class OpenParen extends Caller {
 
     notes = new Set(["parenthesized"]);
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
+    prefix(p) { return this.push(p.gatherCompoundExpression(CloseParen)) }
 
-    infix(p, left) { return this.note("infix").push(left, p.gatherCompoundExpression(this)) }
+    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseParen)) }
 
     js(w) { return super.js(w, openParen, closeParen) }
 }

@@ -135,14 +135,14 @@ export function * parse(source, {dev=false}={}) {
         function statement that follows (`Async.prefix` checks the next token begins a
         function literal before it invokes this function). */
 
-        function validate(result) {
+        function validate(result, note) {
 
             /* Use the `validate` method of the token instance to check it, and complain if
-            it is not valid (given the blocks it is nested within). */
+            it is not valid (given the blocks it is nested within), also noting whether it's
+            in the prefix or infix denotation. */
 
-            if (result.validate(api)) return result;
-
-            throw new LarkError(`unexpected ${result.value} statement`, result.location);
+            if (result.validate(api)) return result.note(note);
+            else throw new LarkError(`unexpected ${result.value} statement`, result.location);
         }
 
         let current, result;
@@ -155,7 +155,7 @@ export function * parse(source, {dev=false}={}) {
 
         current = token;
         token = advance();
-        result = validate(current.prefix(api, context));
+        result = validate(current.prefix(api, context), "prefix");
 
         if (result.expression) while (RBP < token.LBP) {
 
@@ -172,7 +172,7 @@ export function * parse(source, {dev=false}={}) {
             // `result` with whatever it returns (assuming it also validates)...
 
             token = advance();
-            result = validate(current.infix(api, result));
+            result = validate(current.infix(api, result), "infix");
         }
 
         return result;
@@ -189,96 +189,23 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected an expression", candidate.location);
     }
 
-    function gatherCompoundExpression(token) { // api function
+    function gatherCompoundExpression(closer) { // api function
 
-        /* This function takes an instance of an `Opener` subclass, which it uses to infer various
-        requirements, including the closing token to stop at while gathering a sequence of zero or
-        more comma-separated expressions that it uses to return a `CompoundExpression`.
+        /* This function takes a subclass of `Closer` (not an instance), which it uses to gather a
+        sequence of zero or more comma-separated expressions in to a `CompoundExpression` that it
+        returns. */
 
-        If the function infers that it's parsing an object literal, it accepts labels, and at most
-        one `as Proto` expression (which is also noted on the `CompoundExpression`). When parsing
-        array literals (but not bracketed notation), `SkipAssignee` tokens (`~`) are permissible.
-        When parsing bracketed notation, the result must contain exactly one expression. Unless
-        all current requirements are met, an error is thrown instead.
-
-        This function is used by every parsing method that needs to parse anything that is wrapped
-        in parens, brackets or braces, except control-flow blocks and function bodies. It disables
-        significant whitespace as it gathers (and validates) the compound expression.
-
-        Note: Validation only applies to top-level operands, as children are implicitly handled by
-        the recursion of the parser. */
-
-        const parenthesized = token.noted("parenthesized") ? "parenthesized" : empty;
-        const interpolated = token.noted("interpolated") ? "interpolated" : empty;
-        const bracketed = token.noted("bracketed") ? "bracketed" : empty;
-        const braced = token.noted("braced") ? "braced" : empty;
-
-        const closer = closers[parenthesized || interpolated || bracketed || braced];
-        const parsingBracketNotation = bracketed && token.noted("infix");
         const operands = new CompoundExpression(token.location);
 
         whitespace.top = false;
 
         while (not(on(closer))) {
 
-            // begin by gathering an `operand` expression and pushing it to the `operands` array...
-
-            const operand = gatherExpression();
-
-            operands.push(operand);
-
-            // now validate that `operand` is valid (and does not invalidate `operands`) within the
-            // current literal...
-
-            if (parsingBracketNotation && operands.length > 1) {
-
-                // this block complains when there are multiple operands in bracket notation...
-
-                throw new LarkError("unexpected operand", operand.location);
-
-            } else if (operand.is(Label)) {
-
-                // this block handles labels, checking that the container is braced and the value
-                // is not a `SkipAssignee` token, while noting any `__proto__` key, and raising an
-                // error if this is the second `__proto__` key in the current compound literal...
-
-                if (not(braced)) throw new LarkError("unexpected label", operand.location);
-
-                if (operand[1].is(SkipAssignee)) {
-
-                    throw new LarkError("unexpected skip operator", operand[1].location);
-
-                } else if (operand[0].is(Variable) && operand[0].value === "__proto__") {
-
-                    if (operands.noted("proto")) {
-
-                        throw new LarkError("superfluous prototype", operand[0].location);
-
-                    } else operands.note("proto");
-                }
-
-            } else if (operand.is(SkipAssignee) && (not(bracketed) || parsingBracketNotation)) {
-
-                // this block complains when skipped assignees occur ouside of an array literal or
-                // array breakdown (requiring brackets, but not bracket notation)...
-
-                throw new LarkError("unexpected skip operator", operand.location);
-            }
-
-            // if the `operand` is valid (it made it this far), require that it is also properly
-            // terminated, consuming the comma when present, before reiterating, breaking or just
-            // complaining, as appropriate...
+            operands.push(gatherExpression());
 
             if (on(Comma)) advance();
             else if (on(closer)) break;
-            else throw new LarkError("expected a comma or closer", operand.location);
-        }
-
-        if (parsingBracketNotation && operands.length === 0) {
-
-            // this block complains when bracketed notation is left empty...
-
-            throw new LarkError("expected an operand", token.location);
+            else throw new LarkError("expected a comma or closer", operands.at(-1).location);
         }
 
         // restore the previous significance of newlines *before* advancing, to drop both the
