@@ -21,7 +21,7 @@ import {
     pound,
     quote,
     space,
-    symbolics,
+    operationals,
     terminators,
     whitespace,
     wordInitials
@@ -150,7 +150,7 @@ export function * lex(source, {dev=false}={}) {
 
                 yield * NumberLiteral.lex(api, location);
 
-            } else if (on(symbolics)) {
+            } else if (on(operationals)) {
 
                 yield * Operator.lex(api, location);
 

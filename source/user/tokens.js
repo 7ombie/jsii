@@ -39,7 +39,7 @@ import {
     quote,
     slash,
     space,
-    symbolics,
+    operationals,
     wordCharacters,
 } from "../core/ascii.js"
 
@@ -569,7 +569,7 @@ export class Operator extends Token {
 
         let values = l.read();
 
-        while (l.at(symbolics)) values += l.advance();
+        while (l.at(operationals)) values += l.advance();
 
         for (const value of Operator.slice(values, 1, location)) {
 

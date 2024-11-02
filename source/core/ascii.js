@@ -22,7 +22,7 @@ export const binary = "01";
 export const decimal = binary + "23456789";
 export const hexadecimal = decimal + "ABCDEF";
 
-export const symbolics =
+export const operationals =
     dot + questionmark + bang + modulo + ampersand +
     asterisk + bar + equals + plus + minus + slash +
     backslash + lesser + greater + colon + tilde
