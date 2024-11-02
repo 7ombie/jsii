@@ -214,49 +214,69 @@ export function * parse(source, {dev=false}={}) {
         const braced = token.noted("braced") ? "braced" : empty;
 
         const closer = closers[parenthesized || interpolated || bracketed || braced];
+        const parsingBracketNotation = bracketed && token.noted("infix");
         const operands = new CompoundExpression(token.location);
-        const singular = bracketed && token.noted("infix");
 
         whitespace.top = false;
 
-        while (not(on(closer))) { // gather each expression, save it, then validate it...
+        while (not(on(closer))) {
+
+            // begin by gathering an `operand` expression and pushing it to the `operands` array...
 
             const operand = gatherExpression();
 
             operands.push(operand);
 
-            if (singular && operands.length > 1) {
+            // now validate that `operand` is valid (and does not invalidate `operands`) within the
+            // current literal...
+
+            if (parsingBracketNotation && operands.length > 1) {
+
+                // this block complains when there are multiple operands in bracket notation...
 
                 throw new LarkError("unexpected operand", operand.location);
 
             } else if (operand.is(Label)) {
 
+                // this block handles labels, checking that the container is braced and the value
+                // is not a `SkipAssignee` token, while noting any `__proto__` key, and raising an
+                // error if this is the second `__proto__` key in the current compound literal...
+
                 if (not(braced)) throw new LarkError("unexpected label", operand.location);
 
-                if (operand.at(1).is(SkipAssignee)) {
+                if (operand[1].is(SkipAssignee)) {
 
-                    throw new LarkError("unexpected skip operator", operand.at(1).location);
+                    throw new LarkError("unexpected skip operator", operand[1].location);
 
-                } else if (operand.at(0).is(Variable) && operand.at(0).value === "__proto__") {
+                } else if (operand[0].is(Variable) && operand[0].value === "__proto__") {
 
                     if (operands.noted("proto")) {
 
-                        throw new LarkError("superfluous prototype", operand.location);
+                        throw new LarkError("superfluous prototype", operand[0].location);
 
                     } else operands.note("proto");
                 }
 
-            } else if (operand.is(SkipAssignee) && (not(bracketed) || singular)) {
+            } else if (operand.is(SkipAssignee) && (not(bracketed) || parsingBracketNotation)) {
+
+                // this block complains when skipped assignees occur ouside of an array literal or
+                // array breakdown (requiring brackets, but not bracket notation)...
 
                 throw new LarkError("unexpected skip operator", operand.location);
             }
+
+            // if the `operand` is valid (it made it this far), require that it is also properly
+            // terminated, consuming the comma when present, before reiterating, breaking or just
+            // complaining, as appropriate...
 
             if (on(Comma)) advance();
             else if (on(closer)) break;
             else throw new LarkError("expected a comma or closer", operand.location);
         }
 
-        if (singular && operands.length === 0) { // ensure bracketed notation is not left empty...
+        if (parsingBracketNotation && operands.length === 0) {
+
+            // this block complains when bracketed notation is left empty...
 
             throw new LarkError("expected an operand", token.location);
         }
