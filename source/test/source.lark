@@ -164,5 +164,5 @@ freeze 1 + 2 when x * y else spam + eggs
 [1, 2, 3]
 (not 1, 2, 3)
 {x: 1, y: 2, x}
-[x, 1]
+[x, 1, ~, ~]
 spam!eggs...

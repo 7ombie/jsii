@@ -520,6 +520,8 @@ export class Operator extends Token {
             case "->": return new SkinnyArrow(location, value);
             case "=>": return new FatArrow(location, value);
             case "??": return new Nullish(location, value);
+            case "...": return new Spread(location, value);
+            case "~": return new SkipAssignee(location, value);
             case "&": return new AND(location, value);
             case "|": return new OR(location, value);
             case "||": return new XOR(location, value);
@@ -541,7 +543,6 @@ export class Operator extends Token {
             case "<<=": return new AssignLSHIFT(location, value);
             case ">>=": return new AssignRSHIFT(location, value);
             case ">>>=": return new AssignARSHIFT(location, value);
-            case "...": return new Spread(location, value);
             case "and": return new And(location, value);
             case "as": return new As(location, value);
             case "freeze": return new Freeze(location, value);
@@ -843,6 +844,7 @@ export class StringLiteral extends Terminal {
 
     LBP = 16;
     expression = true;
+    notes = new Set(["interpolated"]);
 
     static * lex(l, location) {
 
@@ -945,7 +947,7 @@ export class StringLiteral extends Terminal {
         while (p.on(OpenInterpolation)) {
 
             p.advance();
-            this.push(p.gatherCompoundExpression({closer: CloseInterpolation}), p.advance(false));
+            this.push(p.gatherCompoundExpression(this), p.advance(false));
         }
 
         return this;
@@ -1480,9 +1482,14 @@ export class Else extends PredicatedBlock {
     js(w) { return `else ${this.noted("if") ? this.at(0).js(w) : w.writeBlock(this.at(0))}` }
 }
 
-export class SkipAssignee extends Token {
+export class SkipAssignee extends PrefixOperator {
 
-    /* This class is used to represent an empty slot in an unpacking assignment (just a comma). */
+    /* This class is used to represent an empty slot in an array literal or empty assignee in
+    a sequence. Lark uses a tilde instead of an empty space: `[x, ~, ~, y]` */
+
+    prefix(_) { return this }
+
+    js(_) { return empty }
 }
 
 export class Equal extends InfixOperator {
@@ -1531,12 +1538,12 @@ export class For extends Header {
 
     prefix(p, context=undefined) {
 
-        /* This method parses all four for-loops. It uses `p.gatherAssignee` to avoid parsing the
+        /* This method parses all four for-loops. It uses `p.gatherAssignees` to avoid parsing the
         operator (`in`, `of`, `on` or `from`) as an infix. */
 
         const blocktype = context?.is(Do) ? FUNCTIONBLOCK : LOOPBLOCK;
 
-        this.push(p.gatherAssignee());
+        this.push(p.gatherAssignees());
 
         if (p.on(In, Of, On, From)) this.note(p.advance(false).value);
         else throw new LarkError("incomplete for-statement", this.location);
@@ -1785,10 +1792,12 @@ export class Nullish extends GeneralOperator {
 
 export class Of extends InfixOperator {
 
-    /* This class implements the infix of-operator, which is also used by functions to prefix their
+    /* This class implements the `of` infix operator, and is also used by functions to prefix their
     (optional) arguments, as well as `for-of` loops. */
 
     LBP = 8;
+
+    js(w) { return `Object.hasOwn(${this.at(1).js(w)}, ${this.at(0).js(w)})` }
 }
 
 export class On extends InfixOperator {
@@ -1819,16 +1828,18 @@ export class OpenBrace extends Opener {
     /* This class implements the open-brace delimiter, which is used for blocks and object
     expressions. */
 
+    notes = new Set(["braced"]);
     expression = true;
 
-    prefix(p) {
-
-        return this.push(p.gatherCompoundExpression({closer: CloseBrace, objectify: true}));
-    }
+    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
 
     validate(_) { return true }
 
     js(w) {
+
+        /* Unless the `CompoundExpression` instance noted "proto" (see `gatherCompoundExpression`
+        in `/core/parser.js`), infer a `null` prototype (leaving it to the internal `__proto__`
+        expression we know must be amongst the operands otherwise). */
 
         const head = this.at(0).noted("proto") ? openBrace : "{__proto__: null, ";
         const body = this.at(0).map(operand => operand.js(w)).join(comma + space);
@@ -1842,14 +1853,11 @@ export class OpenBracket extends Caller {
     /* This class implements the open-bracket delimiter, which is used for array expressions and
     bracket-notation. */
 
-    prefix(p) { return this.push(p.gatherCompoundExpression({closer: CloseBracket})) }
+    notes = new Set(["bracketed"]);
 
-    infix(p, left) {
+    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
 
-        const rules = {closer: CloseBracket, singularize: true};
-
-        return this.note("infix").push(left, p.gatherCompoundExpression(rules));
-    }
+    infix(p, left) { return this.note("infix").push(left, p.gatherCompoundExpression(this)) }
 
     js(w) { return super.js(w, openBracket, closeBracket) }
 }
@@ -1865,11 +1873,13 @@ export class OpenParen extends Caller {
     /* This class implements the open-paren delimiter, which is used for grouped expressions and
     invocations. */
 
-    prefix(p) { return this.push(p.gatherCompoundExpression({closer: CloseParen})) }
+    notes = new Set(["parenthesized"]);
+
+    prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
 
     infix(p, left) {
 
-        return this.note("infix").push(left, p.gatherCompoundExpression({closer: CloseParen}));
+        return this.note("infix").push(left, p.gatherCompoundExpression(this));
     }
 
     js(w) { return super.js(w, openParen, closeParen) }

@@ -15,13 +15,13 @@ export function * write(source, {dev=false}={}) {
         were generated during the compilation of the statement, before yielding the JavaScript for
         the statement itself. */
 
-        for (const statement of statements) if (!statement.noted("ignore")) {
+        for (const statement of statements) if (statement.noted("ignore") === false) {
 
-            const terminated = statement instanceof Header || statement instanceof Label;
-            const source = indentation + statement.js(api) + (terminated ? empty : semicolon);
+            const terminated = statement.is(Header, Label);
+            const javascript = statement.js(api, Infinity);
 
             yield * preambles;
-            yield source;
+            yield indentation + javascript + (terminated ? empty : semicolon);
 
             preambles.length = 0;
         }

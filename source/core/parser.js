@@ -1,12 +1,15 @@
 import { put, not, Stack } from "./helpers.js"
 import { LarkError } from "./error.js"
-import { quote } from "./ascii.js"
+import { closeParen, empty, quote } from "./ascii.js"
 import { lex } from "./lexer.js"
 
 import {
     As,
     Block,
     CloseBrace,
+    CloseBracket,
+    CloseInterpolation,
+    CloseParen,
     Comma,
     CompoundExpression,
     EOF,
@@ -187,89 +190,83 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected an expression", candidate.location);
     }
 
-    function gatherCompoundExpression({closer, objectify=false, singularize=false}={}) {
+    function gatherCompoundExpression(token) { // api function
 
-        /* This function takes a hash of arguments that requires a `closer`, which is a `Token`
-        subclass, indicating which closing character to use to gather a sequence of zero or more
-        comma-separated expressions to form and return an instance of `CompoundExpression`.
+        /* This function takes an instance of an `Opener` subclass, which it uses to infer various
+        requirements, including the closing token to stop at while gathering a sequence of zero or
+        more comma-separated expressions that it uses to return a `CompoundExpression`.
 
-        The remaining arguments are optional booleans that all default to `false` and can be set to
-        `true` to enable the following validation rules, which the function to enforce as it parses
-        the compound expression (complaining if it finds any violation):
+        If the function infers that it's parsing an object literal, it accepts labels, and at most
+        one `as Proto` expression (which is also noted on the `CompoundExpression`). When parsing
+        array literals (but not bracketed notation), `SkipAssignee` tokens (`~`) are permissible.
+        When parsing bracketed notation, the result must contain exactly one expression. Unless
+        all current requirements are met, an error is thrown instead.
 
-          + `objectify`: When truthy, `__proto__` keys get converted to regular string keys (so
-             they have no special meaning) and `as Prototype` expressions are noted. The object
-             literal expressed by the compound expression then knows not to render an object
-             with a `null` prototype. If more than one `as Prototype` expression is noted,
-             the function complains. The `objectify` rules also makes labels valid.
-          + `singularize`: When truthy, the helper ensures that there is only one operand.
+        This function is used by every parsing method that needs to parse anything that is wrapped
+        in parens, brackets or braces, except control-flow blocks and function bodies. It disables
+        significant whitespace as it gathers (and validates) the compound expression.
 
-        Note: The rules are only applied to top-level operands, as children are implicitly handled
-        by the recursion of the parser.
-        The compund expression may contain `SkipAssignee` operands, as adjacent commas can be used
-        to imply empty assignees in destructuring assignments.
+        Note: Validation only applies to top-level operands, as children are implicitly handled by
+        the recursion of the parser. */
 
-        This function is used whenever a parser method needs to parse any expresion that's wrapped
-        in parens, brackets or braces. That includes compound literals and grouped expressions, as
-        well as invocations and bracket notation, but does not include function parameters (which
-        are not wrapped in anything).
+        const parenthesized = token.noted("parenthesized") ? "parenthesized" : empty;
+        const interpolated = token.noted("interpolated") ? "interpolated" : empty;
+        const bracketed = token.noted("bracketed") ? "bracketed" : empty;
+        const braced = token.noted("braced") ? "braced" : empty;
 
-        The function implicitly updates the LIST state on the way in and out. */
+        const closer = closers[parenthesized || interpolated || bracketed || braced];
+        const operands = new CompoundExpression(token.location);
+        const singular = bracketed && token.noted("infix");
 
         whitespace.top = false;
 
-        // initialize the compound expression, allowing for an initial empty assignee...
-
-        const operands = new CompoundExpression(token.location)
-
-        if (on(Comma)) operands.push(new SkipAssignee(token.location));
-
-        // gather and validate the operands...
-
-        while (not(on(closer))) if (on(Comma)) { // empty assignees...
-
-            advance();
-
-            if (on(Comma, closer)) operands.push(new SkipAssignee(token.location));
-
-        } else { // actual expressions...
+        while (not(on(closer))) { // gather each expression, save it, then validate it...
 
             const operand = gatherExpression();
 
             operands.push(operand);
 
-            if (singularize && operands.length > 1) { // apply the `singularize` rule...
+            if (singular && operands.length > 1) {
 
-                throw new LarkError("unexpected second operand", operand.location);
-            }
+                throw new LarkError("unexpected operand", operand.location);
 
-            if (operand.is(Label) && not(objectify)) { // labels are only valid in objects...
+            } else if (operand.is(Label) && not(braced)) {
 
                 throw new LarkError("unexpected label", operand.location);
+
+            } else if (operand.is(SkipAssignee) && (not(bracketed) || singular)) {
+
+                throw new LarkError("unexpected skip operator", operand.location);
+
+            } else if (operand.is(Label) && operand.at(1).is(SkipAssignee)) {
+
+                throw new LarkError("unexpected skip operator", operand.at(1).location);
+
+            } else if (operand.is(As)) {
+
+                if (not(braced)) throw new LarkError("unexpected prototype", operand.location);
+
+                if (operands.noted("proto")) {
+
+                    throw new LarkError("superfluous prototype", operand.location);
+
+                } else operands.note("proto");
             }
 
-            if (operand.is(As)) { // apply the `objectify` rule to `as` expressions...
-
-                if (objectify) {
-
-                    if (operands.noted("proto")) {
-
-                        throw new LarkError("superfluous as-expression", operand.location);
-
-                    } else operands.note("proto");
-
-                } else throw new LarkError("unexpected as-expression", operand.location);
-            }
-
-            if (on(Comma, closer)) continue;
-            else throw new LarkError("expected a delimiter", operand.location);
+            if (on(Comma)) advance();
+            else if (on(closer)) break;
+            else throw new LarkError("expected a comma or closer", operand.location);
         }
 
-        // restore the previous significance of newlines *before* advancing to drop both the
-        // the `Closer` instance and any insignificant newlines, then return the results...
+        if (singular && operands.length === 0) { // ensure bracketed notation is not left empty...
 
-        whitespace.pop;
-        advance();
+            throw new LarkError("expected an operand", token.location);
+        }
+
+        // restore the previous significance of newlines *before* advancing, to drop both the
+        // the closing token and any insignificant newlines, before returning the results...
+
+        whitespace.pop; advance();
 
         return operands;
     }
@@ -295,11 +292,11 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected a property", token.location);
     }
 
-    function gatherAssignee() { // api function
+    function gatherAssignees() { // api function
 
-        /* This function is used by for gathering a single assignee, without treating it as an
-        expression (so for-loop can gather assignees without parsing the `in`, `of`, `on` or
-        `from` operator). */
+        /* This function is used for gathering a single group of one or more assignees, which
+        need to be parsed carefully, as assignments, declarations and the various for-loops
+        use grammars with an operator after the assignees. */
 
         token.expression = false;
 
@@ -442,6 +439,16 @@ export function * parse(source, {dev=false}={}) {
         else labelspace.top[name.value] = value;
     }
 
+    // initialze a hash, mapping the four notes used by compound expressions to the corresponding
+    // closing token class (used internally, see `gatherCompoundExpression`)...
+
+    const closers = Object.create(null);
+
+    closers.parenthesized = CloseParen;
+    closers.interpolated = CloseInterpolation;
+    closers.bracketed = CloseBracket;
+    closers.braced = CloseBrace;
+
     // gather the api functions and flags to form the parser api object, initialize the internal
     // state, then invoke `LIST` to yield the resulting top-level statements, one by one...
 
@@ -455,7 +462,7 @@ export function * parse(source, {dev=false}={}) {
         gatherExpression,
         gatherCompoundExpression,
         gatherParameters,
-        gatherAssignee,
+        gatherAssignees,
         gatherBlock,
         label,
         on
