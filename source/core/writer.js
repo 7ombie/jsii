@@ -18,7 +18,7 @@ export function * write(source, {dev=false}={}) {
         for (const statement of statements) if (statement.noted("ignore") === false) {
 
             const terminated = statement.is(Header, Label);
-            const javascript = statement.js(api, Infinity);
+            const javascript = statement.js(api);
 
             yield * preambles;
             yield indentation + javascript + (terminated ? empty : semicolon);

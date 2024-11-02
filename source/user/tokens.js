@@ -275,8 +275,8 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(w)).join(comma + space);
 
-        if (this.noted("infix")) return this.at(0).js(w) + opener + join(this.at(1)) + closer;
-        else return opener + join(this.at(0)) + closer;
+        if (this.noted("infix")) return this[0].js(w) + opener + join(this[1]) + closer;
+        else return opener + join(this[0]) + closer;
     }
 }
 
@@ -388,12 +388,11 @@ export class BranchStatement extends Keyword {
 
     prefix(p) {
 
-        if (p.on(Variable)) this.note("label").push(p.gatherVariable());
-
-        return this;
+        if (p.on(Variable)) return this.note("label").push(p.gatherVariable());
+        else return this;
     }
 
-    js(w) { return `${this.spelling}${this.noted("label") ? space + this.at(0).js(w) : empty}` }
+    js(w) { return `${this.spelling}${this.noted("label") ? space + this[0].js(w) : empty}` }
 }
 
 export class CommandStatement extends Keyword {
@@ -462,7 +461,7 @@ export class PredicatedBlock extends Header {
         return this.push(p.gatherExpression(), p.gatherBlock(blocktype));
     }
 
-    js(w) { return `${this.value} (${this.at(0).js(w)}) ${w.writeBlock(this.at(1))}` }
+    js(w) { return `${this.value} (${this[0].js(w)}) ${w.writeBlock(this[1])}` }
 }
 
 export class Operator extends Token {
@@ -597,7 +596,7 @@ export class PrefixOperator extends Operator {
 
     prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-    js(w) { return `${this.spelling} ${this.at(0).js(w)}` }
+    js(w) { return `${this.spelling} ${this[0].js(w)}` }
 }
 
 export class InfixOperator extends Operator {
@@ -609,7 +608,7 @@ export class InfixOperator extends Operator {
 
     infix(p, left) { return this.push(left, p.gatherExpression(this.LBP)) }
 
-    js(w) { return `${this.at(0).js(w)} ${this.spelling} ${this.at(1).js(w)}` }
+    js(w) { return `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}` }
 }
 
 export class DotOperator extends InfixOperator {
@@ -622,7 +621,7 @@ export class DotOperator extends InfixOperator {
 
     infix(p, left) { return this.push(left, p.gatherProperty()) }
 
-    js(w) { return `${this.at(0).js(w)}${this.spelling}${this.at(1).js(w)}` }
+    js(w) { return `${this[0].js(w)}${this.spelling}${this[1].js(w)}` }
 }
 
 export class GeneralOperator extends Operator {
@@ -637,14 +636,11 @@ export class GeneralOperator extends Operator {
 
     js(w) {
 
-        if (this.noted("infix")) {
-
-            return `${this.at(0).js(w)} ${this.spelling} ${this.at(1).js(w)}`;
-        }
+        if (this.noted("infix")) return `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
 
         const separator = lowers.includes(this.spelling[0]) ? space : empty;
 
-        return `${this.spelling}${separator}${this.at(0).js(w)}`;
+        return `${this.spelling}${separator}${this[0].js(w)}`;
     }
 }
 
@@ -676,7 +672,45 @@ export class AssignmentOperator extends InfixOperator {
     LBP = 2;
     initial = false;
 
-    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP - 1)) }
+    infix(p, left) {
+
+        /* Check that the lvalue is valid: When the operator is `=`, the lvalue can be a variable,
+        dot-operation, bracketed notation or assignees in a bracketed or braced compound literal.
+        The in-place assignment operators cannot unpack, so they're limited to accepting a name,
+        expressed as a variable, dot-operation or bracketed notation.
+
+        Note: When the operator is `=`, this method notes "ambiguous" if its lvalue is an unpacking
+        assignment that uses curly braces (which JavaScript could confuse for a block statement),
+        and ensures that the lvalue notes "proto" for its `CompoundExpression` operand, so the
+        compound expression's `js` method will not infer and render a `null` prototype. */
+
+        if (this.spelling === "=" && left.is(Variable, DotOperator, OpenBracket, OpenBrace)) {
+
+            if (left.is(OpenBrace)) { this.note("ambiguous"); left[0].note("proto") }
+
+            return this.push(left, p.gatherExpression(this.LBP - 1));
+
+        } else if (left.is(Variable, DotOperator, OpenBracket)) {
+
+            if (left.is(OpenBracket) && not(left.noted("infix"))) {
+
+                throw new LarkError("invalid lvalue", left.location);
+
+            } else return this.push(left, p.gatherExpression(this.LBP - 1));
+
+        } else throw new LarkError("invalid lvalue", left.location);
+    }
+
+    js(w) {
+
+        /* Render an assignment, making sure ambiguous unpacking assignees (that JavaScript would
+        confuse with a block statement) get wrapped in parens. */
+
+        const expression = `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
+
+        if (this.noted("ambiguous")) return JS.wrap(expression);
+        else return expression;
+    }
 }
 
 export class GeneralDotOperator extends DotOperator {
@@ -1060,7 +1094,7 @@ export class FunctionLiteral extends Functional {
 
         if (blockType === ASYNCFUNCTIONBLOCK) this.note("async");
 
-        if (false) this.note("yield"); // isGenerator(this.at(2))
+        if (false) this.note("yield"); // isGenerator(this[2])
 
         return this;
     }
@@ -1069,9 +1103,9 @@ export class FunctionLiteral extends Functional {
 
         const keyword = this.noted("async") ? "async function" : "function";
         const modifier = this.noted("yield") ? asterisk : empty;
-        const name = this.at(0).is(Variable) ? space + this.at(0).js(w) : empty;
-        const params = this.at(1).map(param => param.js(w)).join(comma + space);
-        const block = w.writeBlock(this.at(2));
+        const name = this[0].is(Variable) ? space + this[0].js(w) : empty;
+        const params = this[1].map(param => param.js(w)).join(comma + space);
+        const block = w.writeBlock(this[2]);
 
         return `${keyword}${modifier}${name}(${params}) ${block}`;
     }
@@ -1231,7 +1265,7 @@ export class Async extends Functional {
         else throw new LarkError("`async` qualifier without `function` keyword", this.location);
     }
 
-    js(w) { return `async ${this.at(0).js(w)}` }
+    js(w) { return `async ${this[0].js(w)}` }
 }
 
 export class Await extends CommandStatement {
@@ -1253,7 +1287,7 @@ export class Await extends CommandStatement {
         return p.check($ => $ > SIMPLEBLOCK, $ => ASYNCFUNCTIONBLOCK, true);
     }
 
-    js(w) { return `await ${this.at(0).js(w)}` }
+    js(w) { return `await ${this[0].js(w)}` }
 }
 
 export class Bang extends GeneralDotOperator {
@@ -1285,8 +1319,8 @@ export class Break extends BranchStatement {
 
         if (this.noted("label")) {
 
-            if (p.label(this.at(0))) return p.check($ => true, $ => $ < FUNCTIONBLOCK);
-            else throw new LarkError(`undefined label '${this.at(0).value}'`, this.at(0).location);
+            if (p.label(this[0])) return p.check($ => true, $ => $ < FUNCTIONBLOCK);
+            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
 
         } else return p.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
     }
@@ -1348,7 +1382,7 @@ export class Label extends InfixOperator {
         return this;
     }
 
-    js(w) { return `${this.at(0).js(w)}: ${this.at(1).js(w)}` }
+    js(w) { return `${this[0].js(w)}: ${this[1].js(w)}` }
 }
 
 export class Comma extends Terminator {
@@ -1371,7 +1405,7 @@ export class Continue extends BranchStatement {
 
         if (this.noted("label")) {
 
-            const label = this.at(0);
+            const label = this[0];
             const state = p.label(label);
 
             if (state === null) throw new LarkError("undefined label", label.location);
@@ -1398,7 +1432,7 @@ export class Delete extends CommandStatement {
     LBP = 14;
     expression = true;
 
-    js(w) { return `delete ${this.at(0).js(w)}` }
+    js(w) { return `delete ${this[0].js(w)}` }
 }
 
 export class Dev extends Keyword {
@@ -1418,7 +1452,7 @@ export class Dev extends Keyword {
         return this.push(p.gather());
     }
 
-    js(w) { return this.at(0).js(w) }
+    js(w) { return this[0].js(w) }
 }
 
 export class Do extends PrefixOperator {
@@ -1439,14 +1473,14 @@ export class Do extends PrefixOperator {
         statements, which compiles to an IIFE with the statement inside), or a function (which
         just gets dangling-dogballs appended). */
 
-        if (this.at(0).is(Block)) return `function() ${w.writeBlock(this.at(0))}()`;
+        if (this[0].is(Block)) return `function() ${w.writeBlock(this[0])}()`;
 
-        if (this.at(0).is(Functional)) return `${this.at(0).js(w)}()`;
+        if (this[0].is(Functional)) return `${this[0].js(w)}()`;
 
         const literal = new FunctionLiteral(this.location);
         const name = new SkipAssignee(this.location);
         const parameters = new Parameters(this.location);
-        const block = new Block(this.location).push(this.at(0))
+        const block = new Block(this.location).push(this[0])
 
         return `${literal.push(name, parameters, block).js(w)}()`;
     }
@@ -1468,7 +1502,7 @@ export class Else extends PredicatedBlock {
         else return this.push(p.gatherBlock(SIMPLEBLOCK));
     }
 
-    js(w) { return `else ${this.noted("if") ? this.at(0).js(w) : w.writeBlock(this.at(0))}` }
+    js(w) { return `else ${this.noted("if") ? this[0].js(w) : w.writeBlock(this[0])}` }
 }
 
 export class SkipAssignee extends PrefixOperator {
@@ -1487,7 +1521,7 @@ export class Equal extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return JS.equals(this.at(0).js(w), this.at(1).js(w)) }
+    js(w) { return JS.equals(this[0].js(w), this[1].js(w)) }
 }
 
 export class EOF extends Terminator {
@@ -1517,7 +1551,7 @@ export class Floor extends InfixOperator {
 
     LBP = 12;
 
-    js(w) { return `Math.floor(${this.at(0).js(w)} / ${this.at(1).js(w)})` }
+    js(w) { return `Math.floor(${this[0].js(w)} / ${this[1].js(w)})` }
 }
 
 export class For extends Header {
@@ -1544,12 +1578,12 @@ export class For extends Header {
 
         /* Render the appropriate for-loop, adding the extra code that implements the operator. */
 
-        const assignees = this.at(0).js(w);
+        const assignees = this[0].js(w);
         const operator = this.noted("on") ? "in" : "of";
         const keyword = this.noted("from") ? "for await" : "for";
-        const block = w.writeBlock(this.at(2));
+        const block = w.writeBlock(this[2]);
 
-        let target = w.register(this.at(1));
+        let target = w.register(this[1]);
 
         if (this.noted("in")) target = JS.values(target);
         else if (this.noted("of")) target = JS.keys(target);
@@ -1565,7 +1599,7 @@ export class Freeze extends PrefixOperator {
 
     RBP = 1;
 
-    js(w) { return `Object.freeze(${this.at(0).js(w)})` }
+    js(w) { return `Object.freeze(${this[0].js(w)})` }
 }
 
 export class From extends Keyword {
@@ -1605,7 +1639,7 @@ export class In extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return `(${JS.values(w.register(this.at(1)))}).includes(${this.at(0).js(w)})` }
+    js(w) { return `(${JS.values(w.register(this[1]))}).includes(${this[0].js(w)})` }
 }
 
 export class InfinityConstant extends Constant {
@@ -1635,20 +1669,20 @@ export class Is extends InfixOperator {
         /* Render an `is` or `is not`, `is packed`, `is not packed`, `is sealed`, `is not sealed`,
         `is frozen` or `is not frozen` operation. */
 
-        if (this.at(1).is(Not)) {
+        if (this[1].is(Not)) {
 
-            if (this.at(2).is(Packed)) return `Object.isExtensible(${this.at(0).js(w)})`;
-            if (this.at(2).is(Sealed)) return `(!Object.isSealed(${this.at(0).js(w)}))`;
-            if (this.at(2).is(Frozen)) return `(!Object.isFrozen(${this.at(0).js(w)}))`;
+            if (this[2].is(Packed)) return `Object.isExtensible(${this[0].js(w)})`;
+            if (this[2].is(Sealed)) return `(!Object.isSealed(${this[0].js(w)}))`;
+            if (this[2].is(Frozen)) return `(!Object.isFrozen(${this[0].js(w)}))`;
 
-            return JS.invert(JS.is(w.register(this.at(0)), w.register(this.at(2))));
+            return JS.invert(JS.is(w.register(this[0]), w.register(this[2])));
         }
 
-        if (this.at(1).is(Packed)) return `(!Object.isExtensible(${this.at(0).js(w)}))`;
-        if (this.at(1).is(Sealed)) return `Object.isSealed(${this.at(0).js(w)})`;
-        if (this.at(1).is(Frozen)) return `Object.isFrozen(${this.at(0).js(w)})`;
+        if (this[1].is(Packed)) return `(!Object.isExtensible(${this[0].js(w)}))`;
+        if (this[1].is(Sealed)) return `Object.isSealed(${this[0].js(w)})`;
+        if (this[1].is(Frozen)) return `Object.isFrozen(${this[0].js(w)})`;
 
-        return JS.is(w.register(this.at(0)), w.register(this.at(1)));
+        return JS.is(w.register(this[0]), w.register(this[1]));
     }
 }
 
@@ -1733,9 +1767,9 @@ export class Not extends GeneralOperator {
 
         if (this.noted("infix")) {
 
-            const target = JS.values(w.register(this.at(1)));
+            const target = JS.values(w.register(this[1]));
 
-            return JS.invert(`(${target}).includes(${this.at(0).js(w)})`);
+            return JS.invert(`(${target}).includes(${this[0].js(w)})`);
 
         } else return super.js(w);
     }
@@ -1747,7 +1781,7 @@ export class NotEqual extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return JS.invert(JS.equals(this.at(0).js(w), this.at(1).js(w))) }
+    js(w) { return JS.invert(JS.equals(this[0].js(w), this[1].js(w))) }
 }
 
 export class NotGreater extends InfixOperator {
@@ -1786,7 +1820,7 @@ export class Of extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return `Object.hasOwn(${this.at(1).js(w)}, ${this.at(0).js(w)})` }
+    js(w) { return `Object.hasOwn(${this[1].js(w)}, ${this[0].js(w)})` }
 }
 
 export class On extends InfixOperator {
@@ -1830,8 +1864,8 @@ export class OpenBrace extends Opener {
         in `/core/parser.js`), infer a `null` prototype (leaving it to the internal `__proto__`
         expression we know must be amongst the operands otherwise). */
 
-        const head = this.at(0).noted("proto") ? openBrace : "{__proto__: null, ";
-        const body = this.at(0).map(operand => operand.js(w)).join(comma + space);
+        const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
+        const body = this[0].map(operand => operand.js(w)).join(comma + space);
 
         return head + body + closeBrace;
     }
@@ -1866,10 +1900,7 @@ export class OpenParen extends Caller {
 
     prefix(p) { return this.push(p.gatherCompoundExpression(this)) }
 
-    infix(p, left) {
-
-        return this.note("infix").push(left, p.gatherCompoundExpression(this));
-    }
+    infix(p, left) { return this.note("infix").push(left, p.gatherCompoundExpression(this)) }
 
     js(w) { return super.js(w, openParen, closeParen) }
 }
@@ -1881,7 +1912,7 @@ export class Pack extends PrefixOperator {
 
     RBP = 1;
 
-    js(w) { return `Object.preventExtensions(${this.at(0).js(w)})` }
+    js(w) { return `Object.preventExtensions(${this[0].js(w)})` }
 }
 
 export class Packed extends Operator {
@@ -1953,7 +1984,7 @@ export class Return extends Keyword {
         return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
     }
 
-    js(w) { return `return${this.length > 0 ? space + this.at(0).js(w) : empty}` }
+    js(w) { return `return${this.length > 0 ? space + this[0].js(w) : empty}` }
 }
 
 export class RSHIFT extends InfixOperator {
@@ -1969,7 +2000,7 @@ export class Seal extends PrefixOperator {
 
     RBP = 1;
 
-    js(w) { return `Object.seal(${this.at(0).js(w)})` }
+    js(w) { return `Object.seal(${this[0].js(w)})` }
 }
 
 export class Sealed extends Operator {
@@ -2002,7 +2033,7 @@ export class Spread extends Operator {
 
     infix(_, left) { return this.note("infix").push(left) }
 
-    js(w) { return `...${this.at(0).js(w)}` }
+    js(w) { return `...${this[0].js(w)}` }
 }
 
 export class Star extends InfixOperator {
@@ -2030,7 +2061,7 @@ export class Throw extends CommandStatement {
 
     expresssion = true;
 
-    js(w) { return `throw new ${this.at(0).js(w)}` }
+    js(w) { return `throw new ${this[0].js(w)}` }
 }
 
 export class TrueConstant extends Constant {
@@ -2075,7 +2106,7 @@ export class When extends Operator {
         return this.push(p.gatherExpression(this.LBP - 1));
     }
 
-    js(w) { return `${this.at(1).js(w)} ? ${this.at(0).js(w)} : ${this.at(2).js(w)}` }
+    js(w) { return `${this[1].js(w)} ? ${this[0].js(w)} : ${this[2].js(w)}` }
 }
 
 export class While extends PredicatedBlock {
@@ -2121,7 +2152,7 @@ export class Yield extends Keyword {
 
     js(w) {
 
-        if (this.noted("from")) return `yield * ${this.at(0).js(w)}`;
-        else return `yield${this.length > 0 ? space + this.at(0).js(w) : empty}`;
+        if (this.noted("from")) return `yield * ${this[0].js(w)}`;
+        else return `yield${this.length > 0 ? space + this[0].js(w) : empty}`;
     }
 }
