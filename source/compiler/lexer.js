@@ -1,14 +1,5 @@
-import { put, not } from "./helpers.js"
-import { LarkError } from "./error.js"
-
-import {
-    Delimiter,
-    NumberLiteral,
-    Operator,
-    StringLiteral,
-    Terminator,
-    Word,
-} from "../user/tokens.js"
+import { put, not } from "../compiler/helpers.js"
+import { LarkError } from "../compiler/error.js"
 
 import {
     closeParen,
@@ -25,7 +16,16 @@ import {
     terminators,
     whitespace,
     wordInitials
-} from "../core/ascii.js"
+} from "../compiler/ascii.js"
+
+import {
+    Delimiter,
+    NumberLiteral,
+    Operator,
+    StringLiteral,
+    Terminator,
+    Word,
+} from "../language/tokens.js"
 
 export function * lex(source, {dev=false}={}) {
 

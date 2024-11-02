@@ -1,8 +1,8 @@
-import { empty, space, openBrace, closeBrace, semicolon, newline } from "./ascii.js"
-import { put, lark } from "./helpers.js"
-import { parse } from "./parser.js"
+import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
+import { put, lark } from "../compiler/helpers.js"
+import { parse } from "../compiler/parser.js"
 
-import { Header, Label, Variable, Constant, NumberLiteral } from "../user/tokens.js"
+import { Header, Label, Variable, Constant, NumberLiteral } from "../language/tokens.js"
 
 export function * write(source, {dev=false}={}) {
 

@@ -1,11 +1,11 @@
 /* This module defines `Token` and all of its subclasses, forming a single token hierarchy that
 implements all of the language specifics. */
 
-import { constants, keywords, operators, reserved } from "../user/spellings.js"
-import { JS } from "../user/helpers.js"
+import { constants, keywords, operators, reserved } from "../language/spellings.js"
+import { JS } from "../language/helpers.js"
 
-import { put, not, iife } from "../core/helpers.js"
-import { LarkError } from "../core/error.js"
+import { put, not, iife } from "../compiler/helpers.js"
+import { LarkError } from "../compiler/error.js"
 
 import {
     LOOPBLOCK,
@@ -13,7 +13,7 @@ import {
     FUNCTIONBLOCK,
     ASYNCFUNCTIONBLOCK,
     CLASSBLOCK,
-} from "../core/blocktypes.js"
+} from "../compiler/blocktypes.js"
 
 import {
     alphas,
@@ -41,7 +41,7 @@ import {
     space,
     operationals,
     wordCharacters,
-} from "../core/ascii.js"
+} from "../compiler/ascii.js"
 
 /* -------------------------------------------------------------------------------------------- */
 /* -------------------------------{ THE ABSTRACT TOKEN CLASSES }------------------------------- */

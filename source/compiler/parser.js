@@ -1,7 +1,7 @@
-import { put, not, Stack } from "./helpers.js"
-import { LarkError } from "./error.js"
-import { closeParen, empty, quote } from "./ascii.js"
-import { lex } from "./lexer.js"
+import { put, not, Stack } from "../compiler/helpers.js"
+import { LarkError } from "../compiler/error.js"
+import { empty } from "../compiler/ascii.js"
+import { lex } from "../compiler/lexer.js"
 
 import {
     Block,
@@ -24,7 +24,7 @@ import {
     Terminator,
     Variable,
     Word
-} from "../user/tokens.js"
+} from "../language/tokens.js"
 
 export function * parse(source, {dev=false}={}) {
 

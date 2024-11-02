@@ -211,7 +211,7 @@ declared with `let`, or a variable, declared with `var`.
     let pi = 3.141
     var xp = 0
 
-The grammar for unpacking is copied directly from JS (`<assignees>` is pure JavaScript):
+The grammar for destructuring is copied directly from JS (`<assignees>` is pure JavaScript):
 
     let|var <assignees> = <expression>
 
@@ -533,7 +533,7 @@ respective keywords:
     generator <params> <body>
 
 There are no parens around parameters (the `<params>` construct can just be an empty string).
-Otherwise, parameters use the same unpacking grammar as JavaScript.
+Otherwise, parameters use the same destructuring grammar as JavaScript.
 
 The `<body>` must be wrapped in curly braces, and does not support any form of implicit-return
 (see the skinny-arrow-operator below).
@@ -1232,91 +1232,7 @@ just plain operators in any context. Likewise for suffix operators (like `is pac
 
 Note: The distinction between formal and informal statements is purely lexical (only determining when
 curly braces are optional around control-flow blocks). Beyond that sugar, keywords and operators just
-do the correct thing implicitly. 
-
-Labelled Parameters
--------------------
-
-# THIS IS A MAYBE...
-
-When accepting and unpacking an object into one or more parameters, you can usually omit the
-braces, as Lark will group any sequence of one or more adjacent labelled parameters into a
-single object parameter (implicitly unpacking the object, assigning the labelled arguments
-to the given parameter names). For example, take this Lark code:
-
-    let range = (from: start, to: end) -> Array(end - start).keys().map(=> @0 + start)
-
-That will compile to the following JavaScript:
-
-    const range = ({from: start, to: end}) => Array(end - start).keys().map(function() {
-        return arguments[0] + start;
-    });
-
-We can then invoke the function as shown in the previous section:
-
-    for n in range(from: 1, to: 10) { use(n) }
-
-This helps to reduce noise when working with APIs that use a lot of arg-hashes, like WebGPU:
-
-    let pipeline = device.createRenderPipeline(
-        label: "Pixel Shader", layout: "auto", vertex: {module}, fragment: {module, targets}
-    )
-
-    const pipeline = device.createRenderPipeline({
-        label: "Pixel Shader", layout: "auto", vertex: {module}, fragment: {module, targets}
-    });
-
-Note: As shown above, Lark recommends indenting arguments that are too long to be passed inline,
-but short enough that they can fit on a new, indented line. If there is not even enough space for
-that approach, indent each argument on its own line:
-
-    let pipeline = device.createRenderPipeline(
-        label: "Pixel Shader",
-        layout: "auto",
-        vertex: {module},
-        fragment: {module, targets}
-    )
-
-In any case, please, never do this:
-
-    let pipeline = device.createRenderPipeline(label: "Pixel Shader",
-                                               layout: "auto",
-                                               vertex: {module},
-                                               fragment: {module, targets})
-
-Note: Lark also recommends starting every indented block with an empty line. It looks better,
-and allows you to easily distinguish indented blocks from indented expressions, as any indented
-expression will always be one contiguous chunk of code, while control flow blocks and function
-bodies always start with an empty line. For example:
-
-    if result.expression while RBP < token.LBP {
-
-        current = token
-        
-        if current is Keyword return result
-        
-        token = advance()
-        result = validate(current.infix(api, result))
-    }
-
-In short, prefer longer lines that do more, while also using more vertical whitespace to keep
-things from getting too noisey. You should also leave a line before and after docstrings.
-
-Note: Nobody needs two whitelines.
-
-Note: Inline blocks are generally preferred over indented blocks. Within braces, you can also use
-commas to group multiple statements on the same line, so always try that first. For example, the
-following two statements are the same, but the top one is preferred:
-
-    if predicate { doSomething(with: x), doSomething(with: y) }
-
-    if predicate {
-
-        doSomething(with: x)
-        doSomething(with: y)
-    }
-
-Note: 100 columns is better than 80.
+do the correct thing implicitly.
 
 ### Operators
 
