@@ -1574,7 +1574,11 @@ export class For extends Header {
 
         const expression = p.gatherExpression();
 
-        if (this.noted("in") && expression.is(Spread)) expression.note("for");
+        if (expression.is(Spread)) {
+
+            if (this.noted("in")) expression.note("for");
+            else throw new LarkError("unexpected spread operator", expression.location);
+        }
 
         return this.push(expression, p.gatherBlock(blocktype));
     }
