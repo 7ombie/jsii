@@ -165,8 +165,10 @@ freeze 1 + 2 when x * y else spam + eggs
 (not 1, 2, 3)
 {x: 1, y: 2, x}
 [x, 1, ~, ~]
-spam!eggs...
+spam!eggs
 
-[x, y, z] = foo
+[x, y, z...] = foo
 {x, y, z} = bar
 a[1] *= 1
+
+for [index, value] in array... { put(index, value) }

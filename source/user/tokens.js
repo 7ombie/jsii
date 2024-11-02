@@ -1562,7 +1562,8 @@ export class For extends Header {
     prefix(p, context=undefined) {
 
         /* This method parses all four for-loops. It uses `p.gatherAssignees` to avoid parsing the
-        operator (`in`, `of`, `on` or `from`) as an infix. */
+        operator (`in`, `of`, `on` or `from`) as an infix. When the loop is a for-in and the target
+        uses a spread operation, the spread token gets a "for" note. */
 
         const blocktype = context?.is(Do) ? FUNCTIONBLOCK : LOOPBLOCK;
 
@@ -1571,7 +1572,11 @@ export class For extends Header {
         if (p.on(In, Of, On, From)) this.note(p.advance(false).value);
         else throw new LarkError("incomplete for-statement", this.location);
 
-        return this.push(p.gatherExpression(), p.gatherBlock(blocktype));
+        const expression = p.gatherExpression();
+
+        if (this.noted("in") && expression.is(Spread)) expression.note("for");
+
+        return this.push(expression, p.gatherBlock(blocktype));
     }
 
     js(w) {
@@ -2023,17 +2028,14 @@ export class Slash extends InfixOperator {
 
 export class Spread extends Operator {
 
-    /* This class implements the spread-operator (`...`), which can be a prefix operator (used to
-    slurp a sequence into a variable) or a suffix operator (used to splat an arbitrary expression
-    into a sequence). */
+    /* This class implements the spread-operator (`...`), which is a suffix operator in Lark, and
+    doubles as the `Object.entries` operator in for-loops. */
 
     LBP = 2;
 
-    prefix(p) { return this.push(p.gatherVariable()) }
+    infix(_, left) { return this.push(left) }
 
-    infix(_, left) { return this.note("infix").push(left) }
-
-    js(w) { return `...${this[0].js(w)}` }
+    js(w) { return this.noted("for") ? `Object.entries(${this[0].js(w)})` : `...${this[0].js(w)}` }
 }
 
 export class Star extends InfixOperator {
