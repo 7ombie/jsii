@@ -1249,23 +1249,23 @@ do the correct thing implicitly.
 ++ Bitwise XOR assignment (^=)
 ++ Comma operator (,)
 ++ Ternary (when-else) operator
-+ Decrement (--)
-+ delete operator
-+ Destructuring assignment
+--- Decrement (++)
+++ delete operator
+++ Destructuring assignment
 ++ Division (/)
 ++ Floor Division
-+ Division assignment (/=)
+++ Division assignment (/=)
 --- Equality (==)
 ++ Exponentiation (**)
-+ Exponentiation assignment (**=)
+++ Exponentiation assignment (**=)
 ++ Greater than (>)
 ++ Greater than or equal (>=)
 ++ Grouping operator ( )
 ++ import.meta
 + import()
-+ in operator
-+ of operator
-+ Increment (++)
+++ in operator
+++ of operator
+--- Increment (++)
 --- Inequality (!=)
 + is       `x is Type     -> x instanceof Type`
 + is not   `x is not Type -> !(x instanceof Type)`
@@ -1533,28 +1533,6 @@ All of the concrete classes in the token hierarchy:
 // XOR,
 // Yield,
 
-    {as <prototype>}
-    (splat <container>)
-    [splat <sequence>]
-    {splat <mapping>}
-    (pre splat <container>)
-    [pre splat <sequence>]
-    {pre splat <mapping>}
-    (fill <count> with <value>)
-    [fill <count> with <value>]
-    (pre fill <count> with <value>)
-    [pre fill <count> with <value>]
-    (range <start> to <end>)
-    (range <start> to <end> by <step>)
-    [range <start> to <end>]
-    [range <start> to <end> by <step>]
-    (pre range <start> to <end>)
-    (pre range <start> to <end> by <step>)
-    [pre range <start> to <end>]
-    [pre range <start> to <end> by <step>]
-
-    foo::xyxz -> const ƥ0 = foo; [ƥ0.x, ƥ0.y, ƥ0.x, ƥ0.z]
-
 Import Directives
 -----------------
 
@@ -1647,6 +1625,32 @@ JavaScript Operator Precedence
     Bracket Notation: `o[i]`,
     Invocations: `f(x)`, `new Foo()`
     Dynamic Imports: `import(item)`
+16) New	without argument list: `new Foo`
+15) Suffix Operators: `i++`, `i--`
+14) Prefix Operators: `++i`, `--i`, `!x`, `~x`, `+x` `-x`, `typeof primitive`, `void x`, `delete foo`, `await call`
+13) Exponentiation(right-associative): `x ** y`
+12) Multiplicative Operators: `x * y`, `x / y`, `x % y`
+11) Additive Operators: `x + y`, `x - y`
+10) Bitwise Shift Operators: `x << y`, `x >> y`, `x >>> y`
+09) Comparison Operators: `x < y`, `x <= y`, `x > y`, `x >= y`, `x in o`, `x instanceof T`
+08) Equality Operators: `x == y`, `x != y`, `x === y`, `x !== y`
+07) Bitwise AND: `x & y`
+06) Bitwise XOR: `x ^ y`
+05) Bitwise OR: `x | y`
+04) Logical AND: `x && y`
+03) Logical OR: `x || y`, `x ?? y`
+02) Assignment: `name = x`, `name += x`, `name ??= x` etc
+    Ternary Operator(right-associative): `x ? y : z`
+    Arrow Operator(right-associative): `x => 2 ** x`
+    Thread Operators: `yield tokens`, `yield * tokens`
+    Rest Operator: `...args`
+01) Comma: `x, y, z`
+
+Lark Operator Precedence
+========================
+
+18) Grouping: `(x + y) * z`
+17) Accessors: `foo.bar`, `foo?bar`, `foo!bar`, `o[i]`, `f(x)`, `new Foo()`, `import(item)`
 16) New	without argument list: `new Foo`
 15) Suffix Operators: `i++`, `i--`
 14) Prefix Operators: `++i`, `--i`, `!x`, `~x`, `+x` `-x`, `typeof primitive`, `void x`, `delete foo`, `await call`

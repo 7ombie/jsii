@@ -20,6 +20,7 @@ import {
     asterisk,
     backslash,
     backtick,
+    bang,
     bases,
     binary,
     closeBrace,
@@ -398,7 +399,7 @@ export class BranchStatement extends Keyword {
 export class CommandStatement extends Keyword {
 
     /* This is the abstract class for keywords that are followed by a required, arbitrary
-    expression (`await`, `delete` and `throw`). */
+    expression (`await` and `throw`). */
 
     prefix(p) { return this.push(p.gatherExpression()) }
 }
@@ -981,10 +982,13 @@ export class StringLiteral extends Terminal {
         /* Gather one or more pairs of operands, each containing an interpolation array, followed
         by a (required) `StringLiteral` substring (that the lexer ensures will be there). */
 
+        const options = {spreadable: true, spreadDenotation: true};
+
         while (p.on(OpenInterpolation)) {
 
             p.advance();
-            this.push(p.gatherCompoundExpression(CloseInterpolation), p.advance(false));
+            this.push(p.gatherCompoundExpression(CloseInterpolation, options));
+            this.push(p.advance(false));
         }
 
         return this;
@@ -1429,14 +1433,28 @@ export class Debug extends Keyword {
     prefix(_) { return this }
 }
 
-export class Delete extends CommandStatement {
+export class Delete extends Keyword {
 
     /* This class implements the `delete` operator, exactly like JavaScript. */
 
     LBP = 14;
     expression = true;
 
-    js(w) { return `delete ${this[0].js(w)}` }
+    prefix(p) {
+
+        const expression = p.gatherExpression();
+
+        if (expression.is(Dot, OpenBracket) && expression.noted("infix")) {
+
+            return this.push(expression);
+
+        } else throw new LarkError("can only delete properties, keys and indices", this.location);
+    }
+
+    js(w) {
+
+        return `delete ${this[0].js(w)}`;
+    }
 }
 
 export class Dev extends Keyword {
@@ -1794,7 +1812,7 @@ export class NotEqual extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return JS.invert(JS.equals(this[0].js(w), this[1].js(w))) }
+    js(w) { return bang + JS.equals(this[0].js(w), this[1].js(w)) }
 }
 
 export class NotGreater extends InfixOperator {
@@ -1861,37 +1879,69 @@ export class OR extends InfixOperator {
 
 export class OpenBrace extends Opener {
 
-    /* This class implements the open-brace delimiter, which is used for blocks and object
-    expressions. */
+    /* This class implements the open-brace delimiter, which is used for control-flow blocks
+    and function bodies, as well as set and object literals. */
 
-    notes = new Set(["braced"]);
     expression = true;
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(CloseBrace)) }
+    prefix(p) {
+
+        const options = {labels: null, spreadable: true, spreadDenotation: true};
+
+        return this.push(p.gatherCompoundExpression(CloseBrace, options));
+    }
 
     validate(_) { return true }
 
     js(w) {
 
-        const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
-        const body = this[0].map(operand => operand.js(w)).join(comma + space);
+        if (this[0].noted("labelled-item")) {
 
-        return head + body + closeBrace;
+            if (this[0].noted("empty")) return `new Set()`;
+
+            const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
+            const body = this[0].map(operand => operand.js(w)).join(comma + space);
+
+            return head + body + closeBrace;
+
+        } else return `new Set([${this[0].map(operand => operand.js(w)).join(comma + space)}])`;
     }
 }
 
 export class OpenBracket extends Caller {
 
-    /* This class implements the open-bracket delimiter, which is used for array expressions and
-    bracket-notation. */
+    /* This class implements the open-bracket delimiter, which is used for array literals, map
+    literals and bracket notation. */
 
-    notes = new Set(["bracketed"]);
+    prefix(p) {
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(CloseBracket)) }
+        /* Parse an arbitrary compound expression (in square brackets), which may be an array or
+        map literal, or an array breakdown. */
 
-    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseBracket)) }
+        const options = {labels: null, skipable: true, spreadable: true, spreadDenotation: null};
 
-    js(w) { return super.js(w, openBracket, closeBracket) }
+        return this.push(p.gatherCompoundExpression(CloseBracket, options));
+    }
+
+    infix(p, left) {
+
+        /* Parse bracket notation, rejecting labels, and requiring exactly one operand. */
+
+        return this.push(left, p.gatherCompoundExpression(CloseBracket, {singular: true}));
+    }
+
+    js(w) {
+
+        if (this[0].noted("labelled-item")) {
+
+            if (this[0].noted("empty")) return `new Map()`;
+
+            const compile = operand => `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
+
+            return `new Map([${this[0].map(compile).join(comma + space)}])`;
+
+        } else return super.js(w, openBracket, closeBracket);
+    }
 }
 
 export class OpenInterpolation extends Opener {
@@ -1905,11 +1955,15 @@ export class OpenParen extends Caller {
     /* This class implements the open-paren delimiter, which is used for grouped expressions and
     invocations. */
 
-    notes = new Set(["parenthesized"]);
+    prefix(p) {
 
-    prefix(p) { return this.push(p.gatherCompoundExpression(CloseParen)) }
+        return this.push(p.gatherCompoundExpression(CloseParen, {singular: true}));
+    }
 
-    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseParen)) }
+    infix(p, left) {
+
+        return this.push(left, p.gatherCompoundExpression(CloseParen));
+     }
 
     js(w) { return super.js(w, openParen, closeParen) }
 }
@@ -2032,14 +2086,29 @@ export class Slash extends InfixOperator {
 
 export class Spread extends Operator {
 
-    /* This class implements the spread-operator (`...`), which is a suffix operator in Lark, and
-    doubles as the `Object.entries` operator in for-loops. */
+    /* This class implements the *slurp* (or *rest*) operator (`...`), which is a prefix operator
+    in Lark (like JavaScript), used to gather otherwise superfluous values into an array. It also
+    implements the *spread* operator, which is spelt the same (`...`), but is a suffix operator
+    in Lark, used to spread the contents of an object or array across a range of slots.
+
+    Lark also uses the spread operator to invoke the static `Object.entries` function on the target
+    of a for-in loop. */
 
     LBP = 2;
 
+    prefix(p) { return this.push(p.gatherVariable()) }
+
     infix(_, left) { return this.push(left) }
 
-    js(w) { return this.noted("for") ? `Object.entries(${this[0].js(w)})` : `...${this[0].js(w)}` }
+    js(w) {
+
+        if (this.noted("for")) {
+
+            if (this.noted("prefix")) throw new LarkError("cannot gather a loop", this.location);
+            else return `Object.entries(${this[0].js(w)})`;
+
+        } else return `...${this[0].js(w)}`;
+    }
 }
 
 export class Star extends InfixOperator {
