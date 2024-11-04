@@ -8,14 +8,6 @@ import { put, not, iife } from "../compiler/helpers.js"
 import { LarkError } from "../compiler/error.js"
 
 import {
-    LOOPBLOCK,
-    SIMPLEBLOCK,
-    FUNCTIONBLOCK,
-    ASYNCFUNCTIONBLOCK,
-    CLASSBLOCK,
-} from "../compiler/blocktypes.js"
-
-import {
     alphas,
     asterisk,
     backslash,
@@ -418,26 +410,10 @@ export class Functional extends Keyword {
     /* Used to group `Async`, `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
 }
 
-export class ClassQualifier extends Declaration {
+export class ClassQualifier extends Keyword {
 
     /* This is the abstract base class for the `static` and `private` qualifiers that prefix
     declarations inside classes. */
-
-    prefix(p) {
-
-        /* When present, gather an optionally asynchronous function, and parse a regular
-        declaration otherwise. */
-
-        if (p.on(Async, FunctionLiteral)) return this.push(p.gather());
-        else return super.prefix(p);
-    }
-
-    validate(p) {
-
-        /* This method checks that the statement is directly contained by the body of a class. */
-
-        return p.check($ => true, $ => $ === CLASSBLOCK);
-    }
 }
 
 export class Header extends Keyword {
@@ -457,13 +433,7 @@ export class PredicatedBlock extends Header {
         block (so `return` becomes legal). Otherwise, infer the blocktype from the `notes`
         (the subclasses note either "SIMPLEBLOCK" or "LOOPBLOCK", as appropriate). */
 
-        const blocktype = iife(() => {
-
-            if (context?.is(Do)) return FUNCTIONBLOCK;
-            else return this.noted("LOOPBLOCK") ? LOOPBLOCK : SIMPLEBLOCK;
-        });
-
-        return this.push(p.gatherExpression(), p.gatherBlock(blocktype));
+        return this.push(p.gatherExpression(), p.gatherBlock(context?.is(Do)));
     }
 
     js(w) { return `${this.value} (${this[0].js(w)}) ${w.writeBlock(this[1])}` }
@@ -1093,7 +1063,7 @@ export class FunctionLiteral extends Functional {
         /* This method parses functions, based on the given context (either `Async` or `undefined`,
         with the later implying no qualifier). */
 
-        const blockType = context?.is(Async) ? ASYNCFUNCTIONBLOCK : FUNCTIONBLOCK;
+        if (context?.is(Async)) this.note("async");
 
         if (p.on(Variable)) this.push(p.gatherVariable());
         else this.push(new SkipAssignee(this.location));
@@ -1101,13 +1071,10 @@ export class FunctionLiteral extends Functional {
         if (p.on(Of)) {
 
             p.advance();
-            this.push(p.gatherParameters(), p.gatherBlock(blockType));
 
-        } else this.push(new Parameters(this.location), p.gatherBlock(blockType));
+            return this.push(p.gatherParameters(), p.gatherBlock(true));
 
-        if (blockType === ASYNCFUNCTIONBLOCK) this.note("async");
-
-        return this;
+        } else return this.push(new Parameters(this.location), p.gatherBlock(true));
     }
 
     fix(f, parent) {
@@ -1118,10 +1085,11 @@ export class FunctionLiteral extends Functional {
         statements know they're inside a function, and the block and loop stacks, to ensure
         that any nested `break` and `continue` statements know where they are. */
 
-        f.loopstack.top = false;
-        f.blockstack.top = false;
+        f.awaitstack.top = this.noted("async");
         f.closurestack.top = true;
         f.yieldstack.top = false;
+        f.blockstack.top = false;
+        f.loopstack.top = false;
 
         this.affix(f);
 
@@ -1129,6 +1097,7 @@ export class FunctionLiteral extends Functional {
 
         f.closurestack.pop;
         f.blockstack.pop;
+        f.awaitstack.pop;
         f.loopstack.pop;
     }
 
@@ -1152,12 +1121,6 @@ export class ClassLiteral extends Functional {
     for that. */
 
     expression = true;
-
-    prefix(p) {
-
-        if (p.on(OpenBrace)) return this.push(p.gatherBlock(CLASSBLOCK));
-        else return this.push(p.gatherVariable(), p.gatherBlock(CLASSBLOCK));
-    }
 }
 
 export class SubclassLiteral extends Functional {
@@ -1166,19 +1129,6 @@ export class SubclassLiteral extends Functional {
     (`subclass of Foo {}` -> `class extends Foo {}`). */
 
     expression = true;
-
-    prefix(p) {
-
-        if (not(p.on(Of))) this.note("named").push(p.gatherVariable());
-
-        if (p.on(Of)) {
-
-            p.advance();
-
-            return this.push(p.gatherExpression(), p.gatherBlock(CLASSBLOCK));
-
-        } else throw new LarkError("incomplete subclass", p.advance(false).location);
-    }
 }
 
 export class And extends InfixOperator {
@@ -1312,14 +1262,10 @@ export class Await extends CommandStatement {
 
     prefix(p) { return this.push(p.gatherExpression(this.RBP)) }
 
-    validate(p) {
+    fix(f) {
 
-        /* Climb the block stack till something functional is found, then return `true` if
-        it is an asynchronous function block, and `false` otherwise. If nothing functional
-        is found, the validation *succeeds* (note the third argument), as top-level await
-        is valid. */
-
-        return p.check($ => $ > SIMPLEBLOCK, $ => ASYNCFUNCTIONBLOCK, true);
+        if (f.awaitstack.top) this.affix(f);
+        else throw new LarkError("unexpected `await` expression", this.location);
     }
 
     js(w) { return `await ${this[0].js(w)}` }
@@ -1358,10 +1304,9 @@ export class Break extends BranchStatement {
 
         /* Validate this `break` statement. */
 
-        if (this.noted("label") && (f.blockstack.top || f.loopstack.top)) return this.affix(f);
-        else if (f.loopstack.top) return this.affix(f);
-
-        if (f.loopstack.top !== true) throw new LarkError("unexpected `break`", this.location);
+        if (this.noted("label") && (f.blockstack.top || f.loopstack.top)) return;
+        else if (f.loopstack.top) return;
+        else throw new LarkError( "unexpected `break` statement", this.location);
     }
 }
 
@@ -1450,8 +1395,8 @@ export class Continue extends BranchStatement {
 
         const location = this.location;
 
-        if (f.loopstack.top) return this.affix(f);
-        else if (f.loopstack.top !== true) throw new LarkError("unexpected `continue`", location);
+        if (f.loopstack.top) return;
+        else throw new LarkError("unexpected `continue` statement", location);
     }
 }
 
@@ -1516,19 +1461,23 @@ export class Do extends PrefixOperator {
     prefix(p) {
 
         if (p.on(If, While, For, Functional)) return this.push(p.gather(0, this));
-        else return this.push(p.gatherBlock(FUNCTIONBLOCK));
+        else return this.push(p.gatherBlock(true));
     }
 
     fix (f) {
 
         /* Synthesize the effect of a functional block. */
 
+        f.awaitstack.top = false;
         f.yieldstack.top = false;
         f.closurestack.top = true;
+
         this.affix(f);
-        f.closurestack.pop;
 
         if (f.yieldstack.pop) this.note("yield");
+
+        f.closurestack.pop;
+        f.awaitstack.pop;
     }
 
     js(w) {
@@ -1570,7 +1519,7 @@ export class Else extends PredicatedBlock {
     prefix(p) {
 
         if (p.on(If)) return this.note("if").push(p.gather());
-        else return this.push(p.gatherBlock(SIMPLEBLOCK));
+        else return this.push(p.gatherBlock());
     }
 
     fix(f) {
@@ -1646,8 +1595,6 @@ export class For extends Header {
         operator (`in`, `of`, `on` or `from`) as an infix. When the loop is a for-in and the target
         uses a spread operation, the spread token gets a "for" note. */
 
-        const blocktype = context?.is(Do) ? FUNCTIONBLOCK : LOOPBLOCK;
-
         this.push(p.gatherAssignees());
 
         if (p.on(In, Of, On, From)) this.note(p.advance(false).value);
@@ -1661,7 +1608,7 @@ export class For extends Header {
             else throw new LarkError("unexpected spread operator", expression.location);
         }
 
-        return this.push(expression, p.gatherBlock(blocktype));
+        return this.push(expression, p.gatherBlock(context?.is(Do)));
     }
 
     fix(f) {
@@ -1730,8 +1677,6 @@ export class Greater extends InfixOperator {
 export class If extends PredicatedBlock {
 
     /* This class implements `if` statements. */
-
-    notes = new Set(["SIMPLEBLOCK"]);
 
     fix(f) {
 
@@ -2191,7 +2136,7 @@ export class Return extends Keyword {
     fix(f) {
 
         if (f.closurestack.top) this.affix(f);
-        else throw new LarkError("unexpected `return`", this.location);
+        else throw new LarkError("unexpected `return` statement", this.location);
     }
 
     js(w) { return `return${this.length > 0 ? space + this[0].js(w) : empty}` }
@@ -2335,8 +2280,6 @@ export class While extends PredicatedBlock {
 
     /* This class implements the `while` keyword. */
 
-    notes = new Set(["LOOPBLOCK"]);
-
     fix(f) {
 
         /* Add a valid level to the block and loop stacks, affix the operands, then restore both
@@ -2386,7 +2329,7 @@ export class Yield extends Keyword {
 
         if (f.yieldstack.length === 0) {
 
-            throw new LarkError("unexpected yield operator", this.location);
+            throw new LarkError("unexpected `yield` operator", this.location);
 
         } else if (f.yieldstack.top === false) f.yieldstack.pop = this
 

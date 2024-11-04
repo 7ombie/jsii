@@ -1,6 +1,5 @@
 import { put, not, Stack } from "../compiler/helpers.js"
 import { LarkError } from "../compiler/error.js"
-import { empty } from "../compiler/ascii.js"
 import { lex } from "../compiler/lexer.js"
 
 import {
@@ -399,14 +398,13 @@ export function * parse(source, {dev=false}={}) {
         return result;
     }
 
-    function gatherBlock(type) { // api function
+    function gatherBlock(functional=false) { // api function
 
-        /* This function takes a blocktype, and pushes it to the block stack, before gathering a
-        formal statement or an array of statements (of any number and kind). Once the block has
-        been parsed, the block type is popped from the stack, and the parsed block is returned.
-
-        If the blocktype is functional, this function requires that the body is wrapped in braces
-        (as only control-flow statements can have unbraced blocks). */
+        /* This function gathers a single formal statement or a braced block, containing any number
+        of statements of any kind. The result is returned as a `Block` instance. It takes a single
+        optional argument that determines whether to parse the block as a functon body (`true`),
+        which must be wrapped in braces, or a control-flow block (`false`, the default), which
+        will also accept a formal statement. */
 
         function gatherFormalStatement() {
 
@@ -419,11 +417,10 @@ export function * parse(source, {dev=false}={}) {
             else throw new LarkError("expected a formal statement", candidate.location);
         }
 
-        const [functional, braced, block] = [type > 0, on(OpenBrace), new Block(token.location)];
+        const [braced, block] = [on(OpenBrace), new Block(token.location)];
 
         if (functional && not(braced)) throw new LarkError("expected a body", token.location);
 
-        blocktypes.top = type;
         whitespace.top = true;
 
         if (functional) labelspace.top = {};
@@ -434,51 +431,8 @@ export function * parse(source, {dev=false}={}) {
         if (functional) labelspace.pop;
 
         whitespace.pop
-        blocktypes.pop;
 
         return block;
-    }
-
-    function check(doStop, isValid, fallback=false) { // api function
-
-        /* This function allows statements (like `return` and `break`) that can only appear in
-        specific contexts to establish whether they are in a valid context.
-
-        If no arguments are given, the function returns `true` if the `blocktypes` stack is empty
-        (indicating that the parser is at the top level), and `false` otherwise.
-
-        When two or three arguments are givenm the function walks the nonlocal `blocktypes` stack
-        backwards (from innermost to outermost), and calls the `doStop` callback on each type to
-        establish when to stop (it should return `true` to stop, and `false` otherwise).
-
-        If the loop stops, the `isValid` callback is invoked on the type that was stopped on, and
-        the result of that invocation (which is expected to be a bool) is returned.
-
-        The `fallback` is returned when the stack is exhausted without a match.
-
-        The block types are enumerated as follows:
-
-            + loop blocks = -1
-            + simple blocks = 0
-            + function blocks = 1
-            + async function blocks = 2
-            + class blocks = 3
-
-        It is always possible to establish the validity of a statement by walking to the last
-        related block, then checking whether its enumeration is within some range, assuming a
-        `fallback` argument is returned when the top-level is reached.
-
-        Note: Reaching the top would always result in `false`, except that top-level-await is
-        valid (in modules), so the fallback must be `true` in that case. */
-
-        if (arguments.length === 0) return blocktypes.length === 0;
-
-        for (let i = blocktypes.length - 1; i >= 0; i--) {
-
-            if (doStop(blocktypes[i])) return isValid(blocktypes[i]);
-        }
-
-        return fallback;
     }
 
     function label(name, value=undefined) { // api function
@@ -522,7 +476,6 @@ export function * parse(source, {dev=false}={}) {
 
     const api = {
         advance,
-        check,
         dev,
         gather,
         gatherVariable,
@@ -536,7 +489,6 @@ export function * parse(source, {dev=false}={}) {
         on
     };
 
-    const blocktypes = new Stack();
     const labelspace = new Stack({});
     const whitespace = new Stack(true).on(false, ignoreInsignificantNewlines);
 

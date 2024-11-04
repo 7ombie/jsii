@@ -12,6 +12,7 @@ export function * fix(source, {dev=false}={}) {
         blockstack: new Stack(),
         loopstack: new Stack(),
         yieldstack: new Stack(),
+        awaitstack: new Stack(true),
         closurestack: new Stack(false)
     };
 
