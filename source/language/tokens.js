@@ -1086,27 +1086,27 @@ export class FunctionLiteral extends Functional {
         Update the `awaitstack` based on whether this function literal expresses an async function
         (`true`) or not (`false`), so `await` statements can validate themselves.
 
-        Update the `closurestack` stack, so `return` statements know they're inside a function, and
-        update the `blockstack` and `loopstack` so `break` and `continue` statements know that they
-        cannot reach any higher block than this.
+        Update the `callstack`, so `return` statements know they're inside a function, then update
+        the `blockstack` and `loopstack` so `break` and `continue` statements know that they cannot
+        reach any higher block than this.
 
         With all five stacks updated, affix any operands, then restore the previous state of the
         stacks (noting "yield" as appropriate), before returning. */
 
-        f.yieldstack.top = false;
         f.awaitstack.top = this.noted("async");
-        f.closurestack.top = true;
+        f.yieldstack.top = false;
         f.blockstack.top = false;
         f.loopstack.top = false;
+        f.callstack.top = true;
 
         this.affix(f);
 
-        if (f.yieldstack.pop) this.note("yield");
-
-        f.closurestack.pop;
+        f.callstack.pop;
+        f.loopstack.pop;
         f.blockstack.pop;
         f.awaitstack.pop;
-        f.loopstack.pop;
+
+        if (f.yieldstack.pop) this.note("yield");
     }
 
     js(w) {
@@ -1274,7 +1274,7 @@ export class Await extends CommandStatement {
 
         /* Validate this `await` expression, then fix its expression node. */
 
-        if (f.awaitstack.top) this.affix(f);
+        if (f.awaitstack.top === true && f.paramstack.top === false) this.affix(f);
         else throw new LarkError("unexpected `await` expression", this.location);
     }
 
@@ -1483,13 +1483,13 @@ export class Do extends PrefixOperator {
 
         f.yieldstack.top = false;
         f.awaitstack.top = false;
-        f.closurestack.top = true;
+        f.callstack.top = true;
 
         this.affix(f);
 
         if (f.yieldstack.pop) this.note("yield");
 
-        f.closurestack.pop;
+        f.callstack.pop;
         f.awaitstack.pop;
     }
 
@@ -2101,6 +2101,17 @@ export class Packed extends Operator {
 export class Parameters extends Token {
 
     /* This class is used to group function parameters. */
+
+    fix(f) {
+
+        /* Update the `paramstack`, so any `await` and `yield` expressions that've been used as
+        default arguments know to complain, fix any operands, then restore the previous state of
+        the stack. */
+
+        f.paramstack.top = true;
+        this.affix(f);
+        f.paramstack.pop;
+    }
 }
 
 export class Pass extends Keyword {
@@ -2159,7 +2170,7 @@ export class Return extends Keyword {
 
         /* Validate this `return` statement, then fix its expression node. */
 
-        if (f.closurestack.top) this.affix(f);
+        if (f.callstack.top) this.affix(f);
         else throw new LarkError("unexpected `return` statement", this.location);
     }
 
@@ -2351,7 +2362,7 @@ export class Yield extends Keyword {
         alread converted it). We only push `this` if the top is `null`, so any problems can
         be immediately associated with the first yield token that was encountered. */
 
-        if (f.yieldstack.length === 0) {
+        if (f.yieldstack.length === 0  || f.paramstack.top === true) {
 
             throw new LarkError("unexpected `yield` operator", this.location);
 

@@ -9,11 +9,12 @@ export function * fix(source, {dev=false}={}) {
     }
 
     const api = {
-        blockstack: new Stack(),
-        loopstack: new Stack(),
-        yieldstack: new Stack(),
-        awaitstack: new Stack(true),
-        closurestack: new Stack(false)
+        yieldstack: new Stack(),        // looks for `yield` and `yield from` inside functions
+        awaitstack: new Stack(true),    // tracks whether we're in an async function or onside
+        paramstack: new Stack(false),   // tracks whether we're currently in a parameters list
+        blockstack: new Stack(false),   // tracks whether we're in a block (within a function)
+        loopstack:  new Stack(false),   // tracks whether we're in a loop (within in function)
+        callstack:  new Stack(false),   // tracks whether we're in any kind of function at all
     };
 
     yield * walk(parse(source, {dev}));

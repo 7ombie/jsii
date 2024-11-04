@@ -15,7 +15,7 @@ delete foo.bar
 x in foo()
 x not in y
 
-results = do function of x, y {
+results = do function of x, y = 56 {
     x * y
     yield x + y
 }
