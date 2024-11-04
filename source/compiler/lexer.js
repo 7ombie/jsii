@@ -56,6 +56,8 @@ export function * lex(source, {dev=false}={}) {
         /* Gather while the next character is in the given character set. */
 
         while (at(characters) && advance()) if (token) token.value += character;
+
+        return token;
     }
 
     function gatherUntil(characters, token=undefined) { // api function
@@ -63,6 +65,8 @@ export function * lex(source, {dev=false}={}) {
         /* Gather while the next character is not in the given character set. */
 
         while ((not(at(characters))) && advance()) if (token) token.value += character;
+
+        return token;
     }
 
     function read() { // api function

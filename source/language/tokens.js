@@ -172,10 +172,9 @@ export class Token extends Array {
         return false;
     }
 
-    fix(f, parent) {
+    fix(f, parent) { this.affix(f) }
 
-        for (const operand of this) operand.fix(f, this);
-    }
+    affix(f) { for (const operand of this) operand.fix(f, this) }
 
     js(w) { // api method
 
@@ -849,10 +848,10 @@ export class NumberLiteral extends Terminal {
 
         if (l.at(alphas)) { // units...
 
-            const unit = new Token(location);
+            const unit = l.gatherWhile(alphas, new Token(location));
+            const helper = NumberLiteral.units[unit.value];
 
-            l.gatherWhile(alphas, unit);
-            this.value = NumberLiteral.units[unit.value](parseFloat(this.value), float, location);
+            this.value = helper(eval(this.value), float, location);
 
         } else if (atDouble(slash) || atDouble(backslash)) { // exponentiation...
 
@@ -861,6 +860,7 @@ export class NumberLiteral extends Terminal {
 
             l.advance(2);
             l.gatherWhile(digits, exponent);
+
             this.value += operator + exponent.value;
         }
     }
@@ -1107,15 +1107,20 @@ export class FunctionLiteral extends Functional {
 
         if (blockType === ASYNCFUNCTIONBLOCK) this.note("async");
 
-        if (false) this.note("yield"); // isGenerator(this[2])
-
         return this;
+    }
+
+    fix(f, parent) {
+
+        f.yieldstack.top = null; this.affix(f);
+
+        if (f.yieldstack.pop) this.note("yield");
     }
 
     js(w) {
 
         const keyword = this.noted("async") ? "async function" : "function";
-        const modifier = this.noted("yield") ? asterisk : empty;
+        const modifier = this.noted("yield") ? space + asterisk : empty;
         const name = this[0].is(Variable) ? space + this[0].js(w) : empty;
         const params = this[1].map(param => param.js(w)).join(comma + space);
         const block = w.writeBlock(this[2]);
@@ -1278,7 +1283,7 @@ export class Async extends Functional {
         else throw new LarkError("`async` qualifier without `function` keyword", this.location);
     }
 
-    js(w) { return `async ${this[0].js(w)}` }
+    js(w) { return this[0].js(w) }
 }
 
 export class Await extends CommandStatement {
@@ -1904,7 +1909,7 @@ export class OpenBrace extends Opener {
 
         if (this[0].length === 1 && this[0][0].is(OpenBracket)) return this.note("set");
         else if (this[0].length === 1 && this[0][0].is(OpenBrace)) return this.note("map");
-        else return this.note("object");
+        else return this;
     }
 
     fix(f, parent) {
@@ -1948,7 +1953,7 @@ export class OpenBrace extends Opener {
             }
         }
 
-        for (const operand of this) operand.fix(f, this);
+        this.affix(f);
     }
 
     validate(_) { return true }
@@ -1959,13 +1964,13 @@ export class OpenBrace extends Opener {
 
             if (operand.is(Label)) return `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
             else if (operand.is(Spread)) return operand.js(w);
-            else throw new LarkError("expected a label", operand.location);
+            else throw new LarkError("expected a label or spread", operand.location);
         }
 
         function compileHashOperand(operand) {
 
             if (operand.is(Label, Spread, Variable)) return operand.js(w);
-            else throw new LarkError("expected a label", operand.location);
+            else throw new LarkError("expected a label, slurp or variable", operand.location);
         }
 
         if (this.noted("set")) {
@@ -2296,6 +2301,13 @@ export class Yield extends Keyword {
         anything other than a class block, and `false` if it is one. */
 
         return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+    }
+
+    fix(f) {
+
+        if (f.yieldstack.top === null) f.yieldstack.top = this;
+
+        this.affix(f);
     }
 
     js(w) {

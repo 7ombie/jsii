@@ -1,5 +1,5 @@
 import { parse } from "../compiler/parser.js"
-import { put } from "../compiler/helpers.js"
+import { put, Stack } from "../compiler/helpers.js"
 
 export function * fix(source, {dev=false}={}) {
 
@@ -8,7 +8,9 @@ export function * fix(source, {dev=false}={}) {
         for (const statement of statements) { statement.fix(api, null); yield statement }
     }
 
-    const api = {};
+    const api = {
+        yieldstack: new Stack(false)
+    };
 
     yield * walk(parse(source, {dev}));
 }

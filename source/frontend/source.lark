@@ -119,10 +119,10 @@ freeze 1 + 2 when x * y else spam + eggs
 
 28n
 4.3K
-300M
+0x300M
 14px
 12.345em
-34mm
+0b10101111mm
 26p
 34.3T
 12vh
@@ -156,7 +156,7 @@ em = {{y..., z...}}
 {{}}
 {[]}
 []
-{}
-[1, 2, 3]
+{x, y, z} = foo
+[1, 2, 3] = bar
 {x: 1, y: 2}
 {__proto__: Object, x: 1, y: 2, foo}
