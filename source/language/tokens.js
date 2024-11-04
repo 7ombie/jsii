@@ -1079,15 +1079,23 @@ export class FunctionLiteral extends Functional {
 
     fix(f, parent) {
 
-        /* Push `false` to the `yieldstack` and pop it after fixing the child operands to see if the
-        top holds anything truthy (a token) as a result. That will only be the case when a `yield`
-        or `yield from` expression is nested below. Also update the closure stack, so `return`
-        statements know they're inside a function, and the block and loop stacks, to ensure
-        that any nested `break` and `continue` statements know where they are. */
+        /* Push `false` to the `yieldstack` and pop it after fixing the child operands to see if
+        the top holds anything truthy (a token) as a result. That will only be the case when a
+        `yield` or `yield from` expression is nested below.
 
+        Update the `awaitstack` based on whether this function literal expresses an async function
+        (`true`) or not (`false`), so `await` statements can validate themselves.
+
+        Update the `closurestack` stack, so `return` statements know they're inside a function, and
+        update the `blockstack` and `loopstack` so `break` and `continue` statements know that they
+        cannot reach any higher block than this.
+
+        With all five stacks updated, affix any operands, then restore the previous state of the
+        stacks (noting "yield" as appropriate), before returning. */
+
+        f.yieldstack.top = false;
         f.awaitstack.top = this.noted("async");
         f.closurestack.top = true;
-        f.yieldstack.top = false;
         f.blockstack.top = false;
         f.loopstack.top = false;
 
@@ -1264,6 +1272,8 @@ export class Await extends CommandStatement {
 
     fix(f) {
 
+        /* Validate this `await` expression, then fix its expression node. */
+
         if (f.awaitstack.top) this.affix(f);
         else throw new LarkError("unexpected `await` expression", this.location);
     }
@@ -1302,10 +1312,10 @@ export class Break extends BranchStatement {
 
     fix(f) {
 
-        /* Validate this `break` statement. */
+        /* Validate this `break` statement (no need to fix its label, when present). */
 
-        if (this.noted("label") && (f.blockstack.top || f.loopstack.top)) return;
-        else if (f.loopstack.top) return;
+        if (f.loopstack.top) return;
+        else if (f.blockstack.top && this.noted("label")) return;
         else throw new LarkError( "unexpected `break` statement", this.location);
     }
 }
@@ -1391,7 +1401,7 @@ export class Continue extends BranchStatement {
 
     fix(f) {
 
-        /* Validate this `continue` statement. */
+        /* Validate this `continue` statement (no need to fix its label, when present). */
 
         const location = this.location;
 
@@ -1466,10 +1476,13 @@ export class Do extends PrefixOperator {
 
     fix (f) {
 
-        /* Synthesize the effect of a functional block. */
+        /* Configure the stacks like a function literal, noting yield, as a function will need to
+        be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
+        explicit function. However, in that case, this is simply redundant, as the functional
+        operand will shadow this configuration with its own. */
 
-        f.awaitstack.top = false;
         f.yieldstack.top = false;
+        f.awaitstack.top = false;
         f.closurestack.top = true;
 
         this.affix(f);
@@ -1517,6 +1530,8 @@ export class Else extends PredicatedBlock {
     /* This concrete class implements `else` and `else if` clauses. */
 
     prefix(p) {
+
+        /* Parse an `else` or `else if` block. */
 
         if (p.on(If)) return this.note("if").push(p.gather());
         else return this.push(p.gatherBlock());
@@ -1930,6 +1945,11 @@ export class OpenBrace extends Opener {
 
     fix(f, parent) {
 
+        /* Validate the literal or breakdown, using the notes from `p.gatherCompoundexpression`
+        to quickly establish whether the literal is valid, only iterating over the operands to
+        find the location of the offending token when there is one. Assuming everything goes
+        well, recur and fix the operands afterwards. */
+
         if (parent?.is(Assign) && parent[0] === this) {
 
             // first, check this is not a set or map being used as a breakdown in an assignment...
@@ -2129,11 +2149,15 @@ export class Return extends Keyword {
 
     prefix(p) {
 
+        /* Gather a `return` statement, with an optional expression. */
+
         if (p.on(Terminator, Closer)) return this;
         else return this.push(p.gatherExpression());
     }
 
     fix(f) {
+
+        /* Validate this `return` statement, then fix its expression node. */
 
         if (f.closurestack.top) this.affix(f);
         else throw new LarkError("unexpected `return` statement", this.location);
@@ -2283,7 +2307,7 @@ export class While extends PredicatedBlock {
     fix(f) {
 
         /* Add a valid level to the block and loop stacks, affix the operands, then restore both
-        stacks to the original state. */
+        stacks to their original state. */
 
         f.blockstack.top = true;
         f.loopstack.top = true;
