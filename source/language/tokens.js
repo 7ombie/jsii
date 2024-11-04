@@ -1598,7 +1598,7 @@ export class For extends Header {
 
         if (expression.is(Spread)) {
 
-            if (this.noted("in")) expression.note("for");
+            if (this.noted("in")) expression.note("for-spread");
             else throw new LarkError("unexpected spread operator", expression.location);
         }
 
@@ -1613,6 +1613,11 @@ export class For extends Header {
         const operator = this.noted("on") ? "in" : "of";
         const keyword = this.noted("from") ? "for await" : "for";
         const block = w.writeBlock(this[2]);
+
+        if (this[1].noted("for-spread")) {
+
+            return `for (const ${assignees} of ${this[1].js(w)}) ${block}`;
+        }
 
         let target = w.register(this[1]);
 
@@ -1880,15 +1885,15 @@ export class OR extends InfixOperator {
 export class OpenBrace extends Opener {
 
     /* This class implements the open-brace delimiter, which is used for control-flow blocks
-    and function bodies, as well as set and object literals. */
+    and function bodies, set, hash and object literals, and object breakdowns. */
 
     expression = true;
 
     prefix(p) {
 
-        /* Parse a set or object literal. */
+        /* Parse a set literal, object literal or object breakdown. */
 
-        const options = {labels: null, spreadable: true, spreadDenotation: true};
+        const options = {labels: null, spreadable: true};
 
         return this.push(p.gatherCompoundExpression(CloseBrace, options));
     }
@@ -2104,10 +2109,10 @@ export class Spread extends Operator {
 
     js(w) {
 
-        if (this.noted("for")) {
+        if (this.noted("for-spread")) {
 
             if (this.noted("prefix")) throw new LarkError("cannot gather a loop", this.location);
-            else return `Object.entries(${this[0].js(w)})`;
+            else return JS.entries(this[0].js(w));
 
         } else return `...${this[0].js(w)}`;
     }

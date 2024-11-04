@@ -312,7 +312,7 @@ export function * parse(source, {dev=false}={}) {
 
                     if (operand.noted("prefix")) { // prefix spreads (null denotation)...
 
-                        if (spreadDenotation !== null) {
+                        if (spreadDenotation === true) {
 
                             const message = "unexpected `...slurp` operation";
                             throw new LarkError(message, operand.location);
@@ -327,7 +327,7 @@ export function * parse(source, {dev=false}={}) {
 
                     } else { // suffix spreads (left denotation)...
 
-                        if (spreadDenotation !== true) {
+                        if (spreadDenotation === null) {
 
                             const message = "unexpected `splat...` operation";
                             throw new LarkError(message, operand.location);
