@@ -196,8 +196,6 @@ export function * parse(source, {dev=false}={}) {
         a sequence of zero or more comma-separated expressions to form a `CompoundExpression` that
         it returns.
 
-        Note: This function also handles empty maps and hashes (which look like `[:]` and `{:}`).
-
         The second (optional) argument is a hash of options:
 
         + `labels`: A ternary value (one of `true`, `false` or `null`) that determines whether to
@@ -219,7 +217,7 @@ export function * parse(source, {dev=false}={}) {
 
         + "empty": Noted when there are no operands in the literal.
         + "proto": Noted when the literal contains a `__proto__` label (a label with a `Variable`
-           instance as its lvalue that is spelled `__proto__`).
+           instance as its lvalue that is spelled `__proto__`). Also noted on the operand itself.
         + "protos": Noted when the literal contains more than one `__proto__` label.
         + "labelled": Noted when there is at least one labelled field (which includes an empty
            literal with an empty `Label` instance (`[:]` or `{:}`).
@@ -244,26 +242,6 @@ export function * parse(source, {dev=false}={}) {
 
         whitespace.top = false;
 
-        if (on(Label)) {
-
-            // this block handles empty hashes and maps (`[:]` or `{:}`)...
-
-            const operand = advance(false);
-
-            operands.note("empty", "labelled");
-
-            if (not(on(closer))) {
-
-                const message = `expected a ${closer.name} character`;
-                throw new LarkError(message, advance(false).location);
-
-            } else if (singular) {
-
-                throw new LarkError("expected (exactly) one operand", operand.location);
-
-            } else return finalize();
-        }
-
         while (not(on(closer))) {
 
             const operand = gatherExpression();
@@ -287,6 +265,8 @@ export function * parse(source, {dev=false}={}) {
 
                     if (operands.noted("proto")) operands.note("protos");
                     else operands.note("proto");
+
+                    operand.note("proto");
 
                 } else operands.note("labelled");
 

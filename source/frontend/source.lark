@@ -133,18 +133,30 @@ freeze 1 + 2 when x * y else spam + eggs
 300//3 % 5
 1434.435\\45 - 1
 
-{foo, bar, ...rest} = options
+options = {[foo, bar, rest...]}
+moreOptions = {{foo: 1, bar: 2, map: map}}
 [x, y, ...z] = foo
 {x, y, z} = bar
 a[1] *= 1
 
-a = [1, 2, 3]
-h = {x: 1, y: 2, z: 3}
-o = {__proto__: Object, x: 1, y: 2, z: 3}
-s = {1, 2, 3}
-m = [true: 1, false: 2, spam.eggs[1]: 3]
+a = [1, 2, x...]
+h = {x: 1, y: 2, players...}
+o = {__proto__: Object, x: 1, y: 2, z: 3, __photo__: spam}
+s = {[1, 2, 3]}
+m = {{true: 1, false: 2, spam.eggs[1]: 3}}
 f(1, 2, 3)
-{ :  }
-[  : ]
+{{}}
+{[]}
 
 for n in m.s... { n }
+fs = {[foo, bar, rest...]}
+es = {[x...]}
+fm = {{foo: 1, bar: 2, map..., spam: 90}}
+em = {{y..., z...}}
+{{}}
+{[]}
+[]
+{}
+[1, 2, 3]
+{x: 1, y: 2}
+{__proto__: Object, x: 1, y: 2, foo}

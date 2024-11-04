@@ -172,6 +172,11 @@ export class Token extends Array {
         return false;
     }
 
+    fix(f, parent) {
+
+        for (const operand of this) operand.fix(f, this);
+    }
+
     js(w) { // api method
 
         /* This method takes a reference to the Writer API, and is used to generate the JavaScript
@@ -188,7 +193,7 @@ export class Token extends Array {
         /* This chainable helper overrides the `push` method inherited from `Array`. This version
         accepts any number of values to push, and returns `this`. */
 
-        args.forEach(arg => super.push(arg));
+        for (const arg of args) super.push(arg);
 
         return this;
     }
@@ -198,7 +203,7 @@ export class Token extends Array {
         /* This chainable helper complements `push`, and is used to push zero or more notes to the
         `notes` set. */
 
-        args.forEach(arg => this.notes.add(arg));
+        for (const arg of args) this.notes.add(arg);
 
         return this;
     }
@@ -1346,7 +1351,7 @@ export class CloseBracket extends Closer {
     as destructured assignees. */
 }
 
-export class CloseInterpolation extends Opener {
+export class CloseInterpolation extends Closer {
     
     /* This concrete class implements the `)` delimiter within string interpolations, and is
     used by `StringLiteral` (allowing interpolations to be parsed as compound expressions). */
@@ -1885,47 +1890,119 @@ export class OR extends InfixOperator {
 export class OpenBrace extends Opener {
 
     /* This class implements the open-brace delimiter, which is used for control-flow blocks
-    and function bodies, set, hash and object literals, and object breakdowns. */
+    and function bodies, set, hash, object and map literals, and object breakdowns. */
 
     expression = true;
 
     prefix(p) {
 
-        /* Parse a set literal, object literal or object breakdown. */
+        /* Parse a set, map or object literal or an object breakdown. */
 
         const options = {labels: null, spreadable: true};
 
-        return this.push(p.gatherCompoundExpression(CloseBrace, options));
+        this.push(p.gatherCompoundExpression(CloseBrace, options));
+
+        if (this[0].length === 1 && this[0][0].is(OpenBracket)) return this.note("set");
+        else if (this[0].length === 1 && this[0][0].is(OpenBrace)) return this.note("map");
+        else return this.note("object");
+    }
+
+    fix(f, parent) {
+
+        if (parent?.is(Assign) && parent[0] === this) {
+
+            // first, check this is not a set or map being used as a breakdown in an assignment...
+
+            const location = this.location;
+
+            if (this.noted("set")) throw new LarkError("cannot use sets as breakdowns", location);
+
+            if (this.noted("map")) throw new LarkError("cannot use maps as breakdowns", location);
+
+            // next, check the notes to prevent illegal splats in breakdowns...
+
+            if (this[0].noted("suffix-spread")) {
+
+                for (const operand of this[0]) if (operand.is(Spread) && operand.noted("infix")) {
+
+                    throw new LarkError("unexpected `splat...` operation", operand.location);
+                }
+            }
+
+        } else if (this[0].noted("prefix-spread")) {
+
+            // do not allow slurps in object literals or (by recursion) map literals...
+
+            for (const operand of this[0]) if (operand.is(Spread) && operand.noted("prefix")) {
+
+                throw new LarkError("unexpected `...slurp` operation", operand.location);
+            }
+
+        } else if (this.noted("set") && this[0][0][0].noted("prefix-spread")) {
+
+            // do not allow slurps in set literals...
+
+            for (const operand of this[0][0][0]) if (operand.is(Spread) && operand.noted("prefix")) {
+
+                throw new LarkError("unexpected `...slurp` operation", operand.location);
+            }
+        }
+
+        for (const operand of this) operand.fix(f, this);
     }
 
     validate(_) { return true }
 
     js(w) {
 
-        if (this[0].noted("labelled")) {
+        function compileMapOperand(operand) {
 
-            if (this[0].noted("empty")) return "new Set()";
+            if (operand.is(Label)) return `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
+            else if (operand.is(Spread)) return operand.js(w);
+            else throw new LarkError("expected a label", operand.location);
+        }
+
+        function compileHashOperand(operand) {
+
+            if (operand.is(Label, Spread, Variable)) return operand.js(w);
+            else throw new LarkError("expected a label", operand.location);
+        }
+
+        if (this.noted("set")) {
+
+            if (this[0][0][0].noted("empty")) return `new Set()`;
+
+            return `new Set([${this[0][0][0].map(operand => operand.js(w)).join(comma + space)}])`;
+
+        } else if (this.noted("map")) {
+
+            if (this[0][0][0].noted("empty")) return `new Map()`;
+
+            return `new Map([${this[0][0][0].map(compileMapOperand).join(comma + space)}])`;
+
+        } else {
+
+            if (this[0].noted("empty")) return "{__proto__: null}";
 
             const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
-            const body = this[0].map(operand => operand.js(w)).join(comma + space);
+            const body = this[0].map(compileHashOperand).join(comma + space);
 
             return head + body + closeBrace;
-
-        } else return `new Set([${this[0].map(operand => operand.js(w)).join(comma + space)}])`;
+        }
     }
 }
 
 export class OpenBracket extends Caller {
 
-    /* This class implements the open-bracket delimiter, which is used for array literals, map
-    literals and bracket notation. */
+    /* This class implements the open-bracket delimiter, which is used for array literals, array
+    breakdowns and bracket notation. */
 
     prefix(p) {
 
-        /* Parse an arbitrary compound expression (in square brackets), which may be an array or
-        map literal, or an array breakdown. */
+        /* Parse an array literal or breakdown, rejecting labels and accepting spreads in either
+        denotation. */
 
-        const options = {labels: null, skipable: true, spreadable: true, spreadDenotation: null};
+        const options = {skipable: true, spreadable: true};
 
         return this.push(p.gatherCompoundExpression(CloseBracket, options));
     }
@@ -1937,18 +2014,7 @@ export class OpenBracket extends Caller {
         return this.push(left, p.gatherCompoundExpression(CloseBracket, {singular: true}));
     }
 
-    js(w) {
-
-        if (this[0].noted("labelled")) {
-
-            if (this[0].noted("empty")) return "new Map()";
-
-            const compile = operand => `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
-
-            return `new Map([${this[0].map(compile).join(comma + space)}])`;
-
-        } else return super.js(w, openBracket, closeBracket);
-    }
+    js(w) { return super.js(w, openBracket, closeBracket) }
 }
 
 export class OpenInterpolation extends Opener {

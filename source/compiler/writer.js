@@ -1,6 +1,6 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
 import { put, lark } from "../compiler/helpers.js"
-import { parse } from "../compiler/parser.js"
+import { fix } from "../compiler/fixer.js"
 
 import { Header, Label, Variable, Constant, NumberLiteral } from "../language/tokens.js"
 
@@ -79,6 +79,6 @@ export function * write(source, {dev=false}={}) {
     let registerCounter = 0;
     let preambles = [];
 
-    yield * walk(parse(source, {dev}));
+    yield * walk(fix(source, {dev}));
 }
 
