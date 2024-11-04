@@ -1077,11 +1077,12 @@ export class FunctionLiteral extends Functional {
         } else return this.push(new Parameters(this.location), p.gatherBlock(true));
     }
 
-    fix(f, parent) {
+    fix(f) {
 
-        /* Push `false` to the `yieldstack` and pop it after fixing the child operands to see if
-        the top holds anything truthy (a token) as a result. That will only be the case when a
-        `yield` or `yield from` expression is nested below.
+        /* Push `true` to the `yieldstack` (indicating that this function are ready to be converted
+        to a generator), then pop it after fixing the child operands and see if the stack-top holds
+        a `Yield` instance afterwards. That will only be the case when a `yield` or `yield from`
+        expression is nested below (and the instance will be the first expression encountered).
 
         Update the `awaitstack` based on whether this function literal expresses an async function
         (`true`) or not (`false`), so `await` statements can validate themselves.
@@ -1094,7 +1095,7 @@ export class FunctionLiteral extends Functional {
         stacks (noting "yield" as appropriate), before returning. */
 
         f.awaitstack.top = this.noted("async");
-        f.yieldstack.top = false;
+        f.yieldstack.top = true;
         f.blockstack.top = false;
         f.loopstack.top = false;
         f.callstack.top = true;
@@ -1106,10 +1107,12 @@ export class FunctionLiteral extends Functional {
         f.blockstack.pop;
         f.awaitstack.pop;
 
-        if (f.yieldstack.pop) this.note("yield");
+        if (f.yieldstack.pop.is(Yield)) this.note("yield");
     }
 
     js(w) {
+
+        /* Render a function that may be async, a generator, both or neither. */
 
         const keyword = this.noted("async") ? "async function" : "function";
         const modifier = this.noted("yield") ? space + asterisk : empty;
@@ -1481,13 +1484,13 @@ export class Do extends PrefixOperator {
         explicit function. However, in that case, this is simply redundant, as the functional
         operand will shadow this configuration with its own. */
 
-        f.yieldstack.top = false;
+        f.yieldstack.top = true;
         f.awaitstack.top = false;
         f.callstack.top = true;
 
         this.affix(f);
 
-        if (f.yieldstack.pop) this.note("yield");
+        if (f.yieldstack.pop.is(Yield)) this.note("yield");
 
         f.callstack.pop;
         f.awaitstack.pop;
@@ -2356,17 +2359,17 @@ export class Yield extends Keyword {
 
     fix(f) {
 
-        /* Require that there is a function above us to convert to a generator, then check whether
-        the top of the `yieldstack` is `false` (indicating that the function above us has not yet
-        been converted to a generator) or not (some other `yield` or `yield from` operation has
-        alread converted it). We only push `this` if the top is `null`, so any problems can
-        be immediately associated with the first yield token that was encountered. */
+        /* Require that there is a function above us to convert to a generator, and that we're not
+        a default argument. Then, if the function is available for conversion (`yieldstack.top` is
+        `true`, so no other `yield` or `yield from` expression has converted it already), swap the
+        top of the `yieldstack` with `this`. We only push `this` if the top is `true`, so that any
+        problems can be immediately associated with the first yield-token that was encountered. */
 
         if (f.yieldstack.length === 0  || f.paramstack.top === true) {
 
             throw new LarkError("unexpected `yield` operator", this.location);
 
-        } else if (f.yieldstack.top === false) f.yieldstack.pop = this
+        } else if (f.yieldstack.top === true) f.yieldstack.pop = this
 
         this.affix(f);
     }
