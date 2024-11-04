@@ -1107,7 +1107,7 @@ export class FunctionLiteral extends Functional {
         f.blockstack.pop;
         f.awaitstack.pop;
 
-        if (f.yieldstack.pop.is(Yield)) this.note("yield");
+        if (f.yieldstack.pop.is?.(Yield)) this.note("yield");
     }
 
     js(w) {
@@ -1490,7 +1490,7 @@ export class Do extends PrefixOperator {
 
         this.affix(f);
 
-        if (f.yieldstack.pop.is(Yield)) this.note("yield");
+        if (f.yieldstack.pop.is?.(Yield)) this.note("yield");
 
         f.callstack.pop;
         f.awaitstack.pop;
