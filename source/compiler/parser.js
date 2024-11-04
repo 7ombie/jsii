@@ -227,7 +227,6 @@ export function * parse(source, {dev=false}={}) {
            entirely empty (`[]` or `{}`).
         + "prefix-spread": Noted when the literal contains a prefix spread operation.
         + "suffix-spread": Noted when the literal contains a suffix spread operation.
-        + "suffix-spreads": Noted when the literal contains more than one suffix spread operation.
 
         Note: The aim is not to fully validate the compound literal (as that's not technically
         possible at this stage). We validate as much as we can, while also providing as much
@@ -332,10 +331,8 @@ export function * parse(source, {dev=false}={}) {
 
                             const message = "unexpected `splat...` operation";
                             throw new LarkError(message, operand.location);
-                        }
 
-                        if (operands.noted("suffix-spread")) operands.note("suffix-spreads");
-                        else operands.note("suffix-spread");
+                        } else operands.note("suffix-spread");
                     }
                 }
             }

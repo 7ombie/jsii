@@ -713,7 +713,7 @@ export class AssignmentOperator extends InfixOperator {
 
         const expression = `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
 
-        if (this.noted("ambiguous")) return JS.wrap(expression);
+        if (this.noted("ambiguous") && this.noted("labelled")) return JS.wrap(expression);
         else return expression;
     }
 }
@@ -1886,6 +1886,8 @@ export class OpenBrace extends Opener {
 
     prefix(p) {
 
+        /* Parse a set or object literal. */
+
         const options = {labels: null, spreadable: true, spreadDenotation: true};
 
         return this.push(p.gatherCompoundExpression(CloseBrace, options));
@@ -1895,9 +1897,9 @@ export class OpenBrace extends Opener {
 
     js(w) {
 
-        if (this[0].noted("labelled-item")) {
+        if (this[0].noted("labelled")) {
 
-            if (this[0].noted("empty")) return `new Set()`;
+            if (this[0].noted("empty")) return "new Set()";
 
             const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
             const body = this[0].map(operand => operand.js(w)).join(comma + space);
@@ -1932,9 +1934,9 @@ export class OpenBracket extends Caller {
 
     js(w) {
 
-        if (this[0].noted("labelled-item")) {
+        if (this[0].noted("labelled")) {
 
-            if (this[0].noted("empty")) return `new Map()`;
+            if (this[0].noted("empty")) return "new Map()";
 
             const compile = operand => `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
 
