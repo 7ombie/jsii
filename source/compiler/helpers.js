@@ -66,6 +66,18 @@ export class Stack extends Array {
         return result;
     }
 
+    set pop(value) {
+
+        /* Pop the stack (using `this.pop` to trigger any registered events), then push the given
+        `value`, before returning the result of popping the stack (swapping the top). */
+
+        const result = this.pop;
+
+        this.top = value;
+
+        return result;
+    }
+
     on(value, callback) {
 
         /* Chainable method that takes a map key and callback, and uses the given key to store its

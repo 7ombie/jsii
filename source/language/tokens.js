@@ -1112,9 +1112,24 @@ export class FunctionLiteral extends Functional {
 
     fix(f, parent) {
 
-        f.yieldstack.top = null; this.affix(f);
+        /* Push `false` to the `yieldstack` and pop it after fixing the child operands to see if the
+        top holds anything truthy (a token) as a result. That will only be the case when a `yield`
+        or `yield from` expression is nested below. Also update the closure stack, so `return`
+        statements know they're inside a function, and the block and loop stacks, to ensure
+        that any nested `break` and `continue` statements know where they are. */
+
+        f.loopstack.top = false;
+        f.blockstack.top = false;
+        f.closurestack.top = true;
+        f.yieldstack.top = false;
+
+        this.affix(f);
 
         if (f.yieldstack.pop) this.note("yield");
+
+        f.closurestack.pop;
+        f.blockstack.pop;
+        f.loopstack.pop;
     }
 
     js(w) {
@@ -1125,7 +1140,9 @@ export class FunctionLiteral extends Functional {
         const params = this[1].map(param => param.js(w)).join(comma + space);
         const block = w.writeBlock(this[2]);
 
-        return `${keyword}${modifier}${name}(${params}) ${block}`;
+        const javascript =  `${keyword}${modifier}${name}(${params}) ${block}`;
+
+        return this.noted("exposed") ? JS.wrap(javascript) : javascript;
     }
 }
 
@@ -1327,20 +1344,24 @@ export class Break extends BranchStatement {
 
     validate(p) {
 
-        /* Labled break-statements are valid inside any control-flow block, so we can simply check
-        the immediate context to establish that it is not the body of anything functional, while
-        also ensuring the label is active.
-
-        Unlabeled break-statements are only valid inside a loop, though they may be nested inside
-        simple blocks within the loop. Therefore, we handle unlabled breaks by climbing the stack,
-        ignoring any simple blocks, and checking that the first non-simple block is a loop. */
+        /* Just validate the label for now. */
 
         if (this.noted("label")) {
 
-            if (p.label(this[0])) return p.check($ => true, $ => $ < FUNCTIONBLOCK);
+            if (p.label(this[0]) !== null) return true;
             else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
 
-        } else return p.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+        } else return true;
+    }
+
+    fix(f) {
+
+        /* Validate this `break` statement. */
+
+        if (this.noted("label") && (f.blockstack.top || f.loopstack.top)) return this.affix(f);
+        else if (f.loopstack.top) return this.affix(f);
+
+        if (f.loopstack.top !== true) throw new LarkError("unexpected `break`", this.location);
     }
 }
 
@@ -1382,16 +1403,14 @@ export class Label extends InfixOperator {
 
     infix(p, left) {
 
-        /* If this colon is part of a label, update the parser to note whether the label is bound
+        /* If this label labels a control-flow block, check that theupdate the parser to note whether the label is bound
         to a loop statement or a simple block statement. Then, gather the statement, before
         nullifying the label. Otherwise, just treat the colon like a normal infix operator. */
 
         if (p.on(If, Else, While, For)) { // a label...
 
-            if (p.label(left) === null) p.label(left, p.on(For, While));
-            else throw new LarkError("cannot reassign an active label", left.location);
-
             this.expression = false;
+            p.label(left, p.on(For, While));
             this.push(left, p.gather());
             p.label(left, null);
 
@@ -1415,22 +1434,24 @@ export class Continue extends BranchStatement {
 
     validate(p) {
 
-        /* A continue-statement is only valid inside a loop (whether the statement has a label or
-        not), though it may be nested inside simple blocks within the loop.
-
-        If there is a label, ensure it is active and bound to a loop, then (in either case) climb
-        the stack, ignoring simple blocks, and check that the first non-simple block is a loop. */
+        /* Just validate the label for now. */
 
         if (this.noted("label")) {
 
-            const label = this[0];
-            const state = p.label(label);
+            if (p.label(this[0]) !== null) return true;
+            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
 
-            if (state === null) throw new LarkError("undefined label", label.location);
-            else if (state === false) throw new LarkError("must continue a loop", label.location);
-        }
+        } else return true;
+    }
 
-        return p.check($ => $ !== SIMPLEBLOCK, $ => $ === LOOPBLOCK);
+    fix(f) {
+
+        /* Validate this `continue` statement. */
+
+        const location = this.location;
+
+        if (f.loopstack.top) return this.affix(f);
+        else if (f.loopstack.top !== true) throw new LarkError("unexpected `continue`", location);
     }
 }
 
@@ -1498,6 +1519,18 @@ export class Do extends PrefixOperator {
         else return this.push(p.gatherBlock(FUNCTIONBLOCK));
     }
 
+    fix (f) {
+
+        /* Synthesize the effect of a functional block. */
+
+        f.yieldstack.top = false;
+        f.closurestack.top = true;
+        this.affix(f);
+        f.closurestack.pop;
+
+        if (f.yieldstack.pop) this.note("yield");
+    }
+
     js(w) {
 
         /* Render a statement with a `do` qualifier, which can be a do-block (which compiles to an
@@ -1505,7 +1538,11 @@ export class Do extends PrefixOperator {
         statements, which compiles to an IIFE with the statement inside), or a function (which
         just gets dangling-dogballs appended). */
 
-        if (this[0].is(Block)) return `function() ${w.writeBlock(this[0])}()`;
+        if (this[0].is(Block)) {
+
+            if (this.noted("yield")) return `function *() ${w.writeBlock(this[0])}()`;
+            else return `function() ${w.writeBlock(this[0])}()`;
+        }
 
         if (this[0].is(Functional)) return `${this[0].js(w)}()`;
 
@@ -1513,6 +1550,8 @@ export class Do extends PrefixOperator {
         const name = new SkipAssignee(this.location);
         const parameters = new Parameters(this.location);
         const block = new Block(this.location).push(this[0])
+
+        if (this.noted("yield")) literal.note("yield");
 
         return `${literal.push(name, parameters, block).js(w)}()`;
     }
@@ -1532,6 +1571,16 @@ export class Else extends PredicatedBlock {
 
         if (p.on(If)) return this.note("if").push(p.gather());
         else return this.push(p.gatherBlock(SIMPLEBLOCK));
+    }
+
+    fix(f) {
+
+        /* Add a valid level to the block stack, affix the operands, then restore the stack to its
+        original state. */
+
+        f.blockstack.top = true;
+        this.affix(f);
+        f.blockstack.pop;
     }
 
     js(w) { return `else ${this.noted("if") ? this[0].js(w) : w.writeBlock(this[0])}` }
@@ -1615,6 +1664,18 @@ export class For extends Header {
         return this.push(expression, p.gatherBlock(blocktype));
     }
 
+    fix(f) {
+
+        /* Add a valid level to the block and loop stacks, affix the operands, then restore both
+        stacks to the original state. */
+
+        f.blockstack.top = true;
+        f.loopstack.top = true;
+        this.affix(f);
+        f.loopstack.pop;
+        f.blockstack.pop;
+    }
+
     js(w) {
 
         /* Render the appropriate for-loop, adding the extra code that implements the operator. */
@@ -1671,6 +1732,16 @@ export class If extends PredicatedBlock {
     /* This class implements `if` statements. */
 
     notes = new Set(["SIMPLEBLOCK"]);
+
+    fix(f) {
+
+        /* Add a valid level to the block stack, affix the operands, then restore the stack to its
+        original state. */
+
+        f.blockstack.top = true;
+        this.affix(f);
+        f.blockstack.pop;
+    }
 }
 
 export class Import extends Keyword {
@@ -1718,13 +1789,13 @@ export class Is extends InfixOperator {
         if (this[1].is(Not)) {
 
             if (this[2].is(Packed)) return `Object.isExtensible(${this[0].js(w)})`;
-            if (this[2].is(Sealed)) return `(!Object.isSealed(${this[0].js(w)}))`;
-            if (this[2].is(Frozen)) return `(!Object.isFrozen(${this[0].js(w)}))`;
+            if (this[2].is(Sealed)) return `!Object.isSealed(${this[0].js(w)})`;
+            if (this[2].is(Frozen)) return `!Object.isFrozen(${this[0].js(w)})`;
 
             return JS.invert(JS.is(w.register(this[0]), w.register(this[2])));
         }
 
-        if (this[1].is(Packed)) return `(!Object.isExtensible(${this[0].js(w)}))`;
+        if (this[1].is(Packed)) return `!Object.isExtensible(${this[0].js(w)})`;
         if (this[1].is(Sealed)) return `Object.isSealed(${this[0].js(w)})`;
         if (this[1].is(Frozen)) return `Object.isFrozen(${this[0].js(w)})`;
 
@@ -2117,12 +2188,10 @@ export class Return extends Keyword {
         else return this.push(p.gatherExpression());
     }
 
-    validate(p) {
+    fix(f) {
 
-        /* Climb the block stack till something functional is found, then return `true` if it's
-        anything other than a class block, and `false` if it is one. */
-
-        return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
+        if (f.closurestack.top) this.affix(f);
+        else throw new LarkError("unexpected `return`", this.location);
     }
 
     js(w) { return `return${this.length > 0 ? space + this[0].js(w) : empty}` }
@@ -2267,6 +2336,18 @@ export class While extends PredicatedBlock {
     /* This class implements the `while` keyword. */
 
     notes = new Set(["LOOPBLOCK"]);
+
+    fix(f) {
+
+        /* Add a valid level to the block and loop stacks, affix the operands, then restore both
+        stacks to the original state. */
+
+        f.blockstack.top = true;
+        f.loopstack.top = true;
+        this.affix(f);
+        f.loopstack.pop;
+        f.blockstack.pop;
+    }
 }
 
 export class XOR extends InfixOperator {
@@ -2295,17 +2376,19 @@ export class Yield extends Keyword {
         } else if (not(p.on(Terminator, Closer))) return this.push(p.gatherExpression());
     }
 
-    validate(p) {
-
-        /* Climb the block stack till something functional is found, then return `true` if it is
-        anything other than a class block, and `false` if it is one. */
-
-        return p.check($ => $ > SIMPLEBLOCK, $ => $ < CLASSBLOCK);
-    }
-
     fix(f) {
 
-        if (f.yieldstack.top === null) f.yieldstack.top = this;
+        /* Require that there is a function above us to convert to a generator, then check whether
+        the top of the `yieldstack` is `false` (indicating that the function above us has not yet
+        been converted to a generator) or not (some other `yield` or `yield from` operation has
+        alread converted it). We only push `this` if the top is `null`, so any problems can
+        be immediately associated with the first yield token that was encountered. */
+
+        if (f.yieldstack.length === 0) {
+
+            throw new LarkError("unexpected yield operator", this.location);
+
+        } else if (f.yieldstack.top === false) f.yieldstack.pop = this
 
         this.affix(f);
     }

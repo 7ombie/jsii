@@ -9,7 +9,10 @@ export function * fix(source, {dev=false}={}) {
     }
 
     const api = {
-        yieldstack: new Stack(false)
+        blockstack: new Stack(),
+        loopstack: new Stack(),
+        yieldstack: new Stack(),
+        closurestack: new Stack(false)
     };
 
     yield * walk(parse(source, {dev}));

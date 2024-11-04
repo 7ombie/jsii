@@ -485,7 +485,7 @@ export function * parse(source, {dev=false}={}) {
 
         /* This function is a getter-setter, used to get and set the state of labels. It takes a
         `Varaible` instance (`name`) and an optional ternary value (one of `true`, `false` or
-        `null`).
+        `null`). However, it is an error to set a given label more than once (reassign it).
 
         When the second argument is left undefined (getter mode), the function returns `true` when
         the given label is active and bound to a loop block, `false` when it is active and bound
@@ -500,8 +500,11 @@ export function * parse(source, {dev=false}={}) {
         label names (as strings) to their ternary state. */
 
         if (value === undefined) return labelspace.top[name.value] ?? null;
-        else if (value === null) delete labelspace.top[name.value];
-        else labelspace.top[name.value] = value;
+
+        if (value === null) return void delete labelspace.top[name.value];
+
+        if (labelspace.top[name.value] === undefined) labelspace.top[name.value] = value;
+        else throw new LarkError("cannot reassign active labels", left.location);
     }
 
     // initialze a hash, mapping the four notes used by compound expressions to the corresponding
