@@ -34,6 +34,7 @@ import {
     space,
     operationals,
     wordCharacters,
+    equals,
 } from "../compiler/ascii.js"
 
 /* -------------------------------------------------------------------------------------------- */
@@ -79,16 +80,30 @@ export class Token extends Array {
     Parser Stage API. RBP is used to store that binding-power, as there are many tokens that
     implement both prefix operators and infix/suffix operators.
 
-    The `notes` property is an (initially empty) set of strings that subclasses use to note the
-    details of variations and corner-cases.
+    The `notes` property is an (initially empty) set of strings that subclasses use to note various
+    details regarding the specifics of that instance. Each note must belong to a static, frozen set
+    named `notables`, as after being noted (by calling the `note` helper method on one or more note
+    strings), the note effectively becomes a property of that instance (as instances get wrapped by
+    a proxy in `Token.constructor`, then explicitly returned, replacing `this`), so would clobber
+    properties and methods otherwise.
 
     The `expression` property is set to `true` by anything that is a valid expression, and left
     `false` otherwise. The property is required by the Parser API. */
 
     LBP = 0;
     RBP = 0;
-    notes = new Set();
     expression = false;
+    notes = new Set();
+
+    static notables = Object.freeze(new Set([
+        "prefixed", "infixed", "lvalue",
+        "async_qualifier", "yield_qualifier",
+        "for_in", "for_of", "for_on", "for_from",
+        "ignore", "labelled", "exposed", "validated",
+        "tagged_template", "proto_label", "prototyped",
+        "set_literal", "map_literal",
+        "else_if", "yield_from"
+    ]));
 
     constructor(location, value=empty) {
 
@@ -104,6 +119,10 @@ export class Token extends Array {
 
         this.location = location;
         this.value = value;
+
+        return new Proxy(this, {
+            get(target, name) { return Token.notables.has(name) ? target.notes.has(name) : target[name] }
+        });
     }
 
     get spelling() {
@@ -164,7 +183,7 @@ export class Token extends Array {
         return false;
     }
 
-    fix(f, parent) { this.affix(f) }
+    fix(f) { this.affix(f) }
 
     affix(f) { for (const operand of this) operand.fix(f, this) }
 
@@ -192,18 +211,16 @@ export class Token extends Array {
     note(...args) { // internal helper
 
         /* This chainable helper complements `push`, and is used to push zero or more notes to the
-        `notes` set. */
+        `notes` set, which then act as properties of the instance.
 
-        for (const arg of args) this.notes.add(arg);
+        As a sanity check, this method also throws if the given note is not in the authorized set
+        (`Token.notables`). This prevents me from creating a note named something like "map" that
+        clobbers the corresponding `Array` method (again). */
+
+        for (const arg of args) if (Token.notables.has(arg)) this.notes.add(arg);
+        else throw new ReferenceError("unregistered note");
 
         return this;
-    }
-
-    noted(note) {  // internal helper
-
-        /* Directly expose the `has` method of the `notes` set as `this.noted`. */
-
-        return this.notes.has(note);
     }
 
     is(...Classes) { // internal helper
@@ -272,7 +289,7 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(w)).join(comma + space);
 
-        if (this.noted("infix")) return this[0].js(w) + opener + join(this[1]) + closer;
+        if (this.infixed) return this[0].js(w) + opener + join(this[1]) + closer;
         else return opener + join(this[0]) + closer;
     }
 }
@@ -385,11 +402,11 @@ export class BranchStatement extends Keyword {
 
     prefix(p) {
 
-        if (p.on(Variable)) return this.note("label").push(p.gatherVariable());
+        if (p.on(Variable)) return this.note("labelled").push(p.gatherVariable());
         else return this;
     }
 
-    js(w) { return `${this.spelling}${this.noted("label") ? space + this[0].js(w) : empty}` }
+    js(w) { return `${this.spelling}${this.labelled ? space + this[0].js(w) : empty}` }
 }
 
 export class CommandStatement extends Keyword {
@@ -596,7 +613,7 @@ export class DotOperator extends InfixOperator {
 
     infix(p, left) { return this.push(left, p.gatherProperty()) }
 
-    js(w) { return `${this[0].js(w)}${this.spelling}${this[1].js(w)}` }
+    js(w) { return `${this[0].js(w)}${this.spelling}${this[1].value}` }
 }
 
 export class GeneralOperator extends Operator {
@@ -611,7 +628,7 @@ export class GeneralOperator extends Operator {
 
     js(w) {
 
-        if (this.noted("infix")) return `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
+        if (this.infixed) return `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
 
         const separator = lowers.includes(this.spelling[0]) ? space : empty;
 
@@ -647,49 +664,7 @@ export class AssignmentOperator extends InfixOperator {
     LBP = 2;
     initial = false;
 
-    infix(p, left) {
-
-        /* Check that the lvalue is valid: When the operator is `=`, the lvalue can be a variable,
-        dot-operation, bracketed notation or assignees in a bracketed or braced compound literal.
-        The in-place assignment operators cannot unpack, so they're limited to accepting a name,
-        expressed as a variable, dot-operation or bracketed notation.
-
-        Note: When the operator is `=`, this method notes "ambiguous" if its lvalue is an unpacking
-        assignment that uses curly braces (which JavaScript could confuse for a block statement),
-        and ensures that the lvalue notes "proto" for its `CompoundExpression` operand, so the
-        compound expression's `js` method will not infer and render a `null` prototype. */
-
-        if (this.spelling === "=" && left.is(Variable, DotOperator, OpenBracket, OpenBrace)) {
-
-            if (left.is(OpenBrace)) {
-
-                this.note("ambiguous");
-                left[0].note("proto");
-            }
-
-            return this.push(left, p.gatherExpression(this.LBP - 1));
-
-        } else if (left.is(Variable, DotOperator, OpenBracket)) {
-
-            if (left.is(OpenBracket) && not(left.noted("infix"))) {
-
-                throw new LarkError("invalid lvalue", left.location);
-
-            } else return this.push(left, p.gatherExpression(this.LBP - 1));
-
-        } else throw new LarkError("invalid lvalue", left.location);
-    }
-
-    js(w) {
-
-        /* Render an assignment, making sure ambiguous unpacking assignees (that JavaScript would
-        confuse with a block statement) get wrapped in parens. */
-
-        const expression = `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}`;
-
-        if (this.noted("ambiguous") && this.noted("labelled")) return JS.wrap(expression);
-        else return expression;
-    }
+    infix(p, left) { return this.push(left.note("lvalue"), p.gatherExpression(this.LBP - 1)) }
 }
 
 export class GeneralDotOperator extends DotOperator {
@@ -857,7 +832,6 @@ export class StringLiteral extends Terminal {
 
     LBP = 16;
     expression = true;
-    notes = new Set(["interpolated"]);
 
     static * lex(l, location) {
 
@@ -957,19 +931,16 @@ export class StringLiteral extends Terminal {
         /* Gather one or more pairs of operands, each containing an interpolation array, followed
         by a (required) `StringLiteral` substring (that the lexer ensures will be there). */
 
-        const options = {spreadable: true, spreadDenotation: true};
-
         while (p.on(OpenInterpolation)) {
 
             p.advance();
-            this.push(p.gatherCompoundExpression(CloseInterpolation, options));
-            this.push(p.advance(false));
+            this.push(p.gatherCompoundExpression(CloseInterpolation), p.advance(false));
         }
 
         return this;
     }
 
-    infix(p, left) { return this.note("tag").push(left).prefix(p) }
+    infix(p, left) { return this.note("tagged_template").push(left).prefix(p) }
 
     validate(_) { return true }
 
@@ -980,7 +951,7 @@ export class StringLiteral extends Terminal {
         tag-expression. */
 
         const chunks = [this.value];
-        const prefix = this.noted("tag") ? this.shift().js(w) : empty;
+        const prefix = this.tagged_template ? this.shift().js(w) : empty;
 
         for (const operand of this) {
 
@@ -1028,7 +999,7 @@ export class TextLiteral extends StringLiteral {
         // there is one, else the `empty` string...
 
         const chunks = [strip(this.value).slice(1)];
-        const prefix = this.noted("tag") ? this.shift().js(w) : empty;
+        const prefix = this.tagged_template ? this.shift().js(w) : empty;
 
         // now, iterate over the token's (remaining) operands, convert them to js, and wrapping any
         // interpolations appropriately, before concatenating the results to `chunks`...
@@ -1063,7 +1034,7 @@ export class FunctionLiteral extends Functional {
         /* This method parses functions, based on the given context (either `Async` or `undefined`,
         with the later implying no qualifier). */
 
-        if (context?.is(Async)) this.note("async");
+        if (context?.is(Async)) this.note("async_qualifier");
 
         if (p.on(Variable)) this.push(p.gatherVariable());
         else this.push(new SkipAssignee(this.location));
@@ -1092,9 +1063,9 @@ export class FunctionLiteral extends Functional {
         reach any higher block than this.
 
         With all five stacks updated, affix any operands, then restore the previous state of the
-        stacks (noting "yield" as appropriate), before returning. */
+        stacks (noting "yield_qualifier" as appropriate), before returning. */
 
-        f.awaitstack.top = this.noted("async");
+        f.awaitstack.top = this.async_qualifier;
         f.yieldstack.top = true;
         f.blockstack.top = false;
         f.loopstack.top = false;
@@ -1107,22 +1078,22 @@ export class FunctionLiteral extends Functional {
         f.blockstack.pop;
         f.awaitstack.pop;
 
-        if (f.yieldstack.pop.is?.(Yield)) this.note("yield");
+        if (f.yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
     }
 
     js(w) {
 
         /* Render a function that may be async, a generator, both or neither. */
 
-        const keyword = this.noted("async") ? "async function" : "function";
-        const modifier = this.noted("yield") ? space + asterisk : empty;
+        const keyword = this.async_qualifier ? "async function" : "function";
+        const modifier = this.yield_qualifier ? space + asterisk : empty;
         const name = this[0].is(Variable) ? space + this[0].js(w) : empty;
         const params = this[1].map(param => param.js(w)).join(comma + space);
         const block = w.writeBlock(this[2]);
 
         const javascript =  `${keyword}${modifier}${name}(${params}) ${block}`;
 
-        return this.noted("exposed") ? JS.wrap(javascript) : javascript;
+        return this.exposed ? JS.wrap(javascript) : javascript;
     }
 }
 
@@ -1289,7 +1260,7 @@ export class Bang extends GeneralDotOperator {
     /* This class implements the `!` operator, which compiles to the bitwise `~` operator in a
     prefix context, and JavaScript's `.#` pseudo-dot-operator in an infix context. */
 
-    spelling = ".#";
+    spelling = ".#"
 }
 
 export class Block extends Token {
@@ -1305,7 +1276,7 @@ export class Break extends BranchStatement {
 
         /* Just validate the label for now. */
 
-        if (this.noted("label")) {
+        if (this.labelled) {
 
             if (p.label(this[0]) !== null) return true;
             else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
@@ -1318,7 +1289,7 @@ export class Break extends BranchStatement {
         /* Validate this `break` statement (no need to fix its label, when present). */
 
         if (f.loopstack.top) return;
-        else if (f.blockstack.top && this.noted("label")) return;
+        else if (f.blockstack.top && this.labelled) return;
         else throw new LarkError( "unexpected `break` statement", this.location);
     }
 }
@@ -1361,23 +1332,36 @@ export class Label extends InfixOperator {
 
     infix(p, left) {
 
-        /* If this label labels a control-flow block, check that theupdate the parser to note whether the label is bound
-        to a loop statement or a simple block statement. Then, gather the statement, before
-        nullifying the label. Otherwise, just treat the colon like a normal infix operator. */
+        /* If this label labels a control-flow block, use `left` to register a label as `true` (on
+        a loop) or `false` (on a simple block). Then, gather the statement, before cleaning up the
+        label. If it's not a control-flow block, just treat the colon like a normal infix operator,
+        as it's a key-value pair (where the key and value can be arbitrary expressions). */
 
-        if (p.on(If, Else, While, For)) { // a label...
+        if (p.on(If, Else, While, For)) { // a control-flow label...
 
-            this.expression = false;
+            if (not(left instanceof Variable)) throw new LarkError("invalid label", this.location);
+
+            this.note("validated").expression = false;
             p.label(left, p.on(For, While));
             this.push(left, p.gather());
             p.label(left, null);
 
-        } else super.infix(p, left); // a key-value pair
+            return this;
 
-        return this;
+        } else { // a key-value pair...
+
+            super.infix(p, left);
+
+            if (left.value === "__proto__") return this.note("proto_label");
+            else return this;
+        }
     }
 
-    js(w) { return `${this[0].js(w)}: ${this[1].js(w)}` }
+    js(w) {
+
+        if (this.validated) return `${this[0].js(w)}: ${this[1].js(w)}`;
+        else throw new LarkError("unexpected label", this.location);
+    }
 }
 
 export class Comma extends Terminator {
@@ -1394,7 +1378,7 @@ export class Continue extends BranchStatement {
 
         /* Just validate the label for now. */
 
-        if (this.noted("label")) {
+        if (this.labelled) {
 
             if (p.label(this[0]) !== null) return true;
             else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
@@ -1433,7 +1417,7 @@ export class Delete extends Keyword {
 
         const expression = p.gatherExpression();
 
-        if (expression.is(Dot, OpenBracket) && expression.noted("infix")) {
+        if (expression.is(Dot, OpenBracket) && expression.infixed) {
 
             return this.push(expression);
 
@@ -1490,7 +1474,7 @@ export class Do extends PrefixOperator {
 
         this.affix(f);
 
-        if (f.yieldstack.pop.is?.(Yield)) this.note("yield");
+        if (f.yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
 
         f.callstack.pop;
         f.awaitstack.pop;
@@ -1505,7 +1489,7 @@ export class Do extends PrefixOperator {
 
         if (this[0].is(Block)) {
 
-            if (this.noted("yield")) return `function *() ${w.writeBlock(this[0])}()`;
+            if (this.yield_qualifier) return `function *() ${w.writeBlock(this[0])}()`;
             else return `function() ${w.writeBlock(this[0])}()`;
         }
 
@@ -1516,7 +1500,7 @@ export class Do extends PrefixOperator {
         const parameters = new Parameters(this.location);
         const block = new Block(this.location).push(this[0])
 
-        if (this.noted("yield")) literal.note("yield");
+        if (this.yield_qualifier) literal.note("yield_qualifier");
 
         return `${literal.push(name, parameters, block).js(w)}()`;
     }
@@ -1536,7 +1520,7 @@ export class Else extends PredicatedBlock {
 
         /* Parse an `else` or `else if` block. */
 
-        if (p.on(If)) return this.note("if").push(p.gather());
+        if (p.on(If)) return this.note("else_if").push(p.gather());
         else return this.push(p.gatherBlock());
     }
 
@@ -1550,7 +1534,7 @@ export class Else extends PredicatedBlock {
         f.blockstack.pop;
     }
 
-    js(w) { return `else ${this.noted("if") ? this[0].js(w) : w.writeBlock(this[0])}` }
+    js(w) { return `else ${this.else_if ? this[0].js(w) : w.writeBlock(this[0])}` }
 }
 
 export class SkipAssignee extends PrefixOperator {
@@ -1611,19 +1595,19 @@ export class For extends Header {
 
         /* This method parses all four for-loops. It uses `p.gatherAssignees` to avoid parsing the
         operator (`in`, `of`, `on` or `from`) as an infix. When the loop is a for-in and the target
-        uses a spread operation, the spread token gets a "for" note. */
+        uses a splat operation, the spread token gets a "validated" note. */
 
         this.push(p.gatherAssignees());
 
-        if (p.on(In, Of, On, From)) this.note(p.advance(false).value);
+        if (p.on(In, Of, On, From)) this.note(`for_${p.advance(false).value}`);
         else throw new LarkError("incomplete for-statement", this.location);
 
         const expression = p.gatherExpression();
 
         if (expression.is(Spread)) {
 
-            if (this.noted("in")) expression.note("for-spread");
-            else throw new LarkError("unexpected spread operator", expression.location);
+            if (this.for_in && expression.infixed) expression.note("validated");
+            else throw new LarkError("unexpected slurp", expression.location);
         }
 
         return this.push(expression, p.gatherBlock(context?.is(Do)));
@@ -1646,19 +1630,16 @@ export class For extends Header {
         /* Render the appropriate for-loop, adding the extra code that implements the operator. */
 
         const assignees = this[0].js(w);
-        const operator = this.noted("on") ? "in" : "of";
-        const keyword = this.noted("from") ? "for await" : "for";
+        const operator = this.for_on ? "in" : "of";
+        const keyword = this.for_from ? "for await" : "for";
         const block = w.writeBlock(this[2]);
 
-        if (this[1].noted("for-spread")) {
-
-            return `for (const ${assignees} of ${this[1].js(w)}) ${block}`;
-        }
+        if (this[1].for_loop) return `for (const ${assignees} of ${this[1].js(w)}) ${block}`;
 
         let target = w.register(this[1]);
 
-        if (this.noted("in")) target = JS.values(target);
-        else if (this.noted("of")) target = JS.keys(target);
+        if (this.for_in) target = JS.values(target);
+        else if (this.for_of) target = JS.keys(target);
 
         return `${keyword} (const ${assignees} ${operator} ${target}) ${block}`;
     }
@@ -1845,7 +1826,7 @@ export class Not extends GeneralOperator {
 
     js(w) {
 
-        if (this.noted("infix")) {
+        if (this.infixed) {
 
             const target = JS.values(w.register(this[1]));
 
@@ -1928,110 +1909,132 @@ export class OR extends InfixOperator {
 
 export class OpenBrace extends Opener {
 
-    /* This class implements the open-brace delimiter, which is used for control-flow blocks
-    and function bodies, set, hash, object and map literals, and object breakdowns. */
+    /* This class implements the open-brace delimiter, which is used for control-flow blocks and
+    function bodies as well as set, hash, object and map literals, and object breakdowns. */
 
     expression = true;
 
     prefix(p) {
 
-        /* Parse a set, map or object literal or an object breakdown. */
+        /* Parse a set, a map or an object literal or breakdown, splatting all of the operands from
+        the resulting `CompoundExpression` into the current instance, while noting the grammar used
+        (either "set_literal" or "map_literal", leaving object literals and breakdowns implicit).
 
-        const options = {labels: null, spreadable: true};
+        In Lark's grammar, objects use braces, sets use brackets inside braces, and maps use braces
+        inside braces. Due to recursion, each grammar naturally produces results that are nested to
+        different degrees: With object literals (and breakdowns), the operands are the operands, as
+        they are not nested. When it's a set, the operands we need are stored in the first operand,
+        and when it's a map, we need the first operand of the first operand. Without destructuring,
+        everything would be far more complicated to validate and convert to JavaScript during the
+        latter stages.
 
-        this.push(p.gatherCompoundExpression(CloseBrace, options));
+        Note: The `OpenBracket` implementation keeps the `CompoundExpression` as an operand, due to
+        brackets having a `left` value when used in bracket notation and the fact that brackets are
+        only used to express bracket notation and array literals and breakdowns (so the resulting
+        `CompoundExpression` directly contains the operands). */
 
-        if (this[0].length === 1 && this[0][0].is(OpenBracket)) return this.note("set");
-        else if (this[0].length === 1 && this[0][0].is(OpenBrace)) return this.note("map");
-        else return this;
+        const operands = p.gatherCompoundExpression(CloseBrace);
+
+        if (operands.length === 1 && operands[0].is(OpenBracket)) {
+
+            if (this.lvalue) throw new LarkError("sets cannot be lvalues", this.location);
+            else return this.note("set_literal").push(...operands[0][0]);
+
+        } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
+
+            if (this.lvalue) throw new LarkError("maps cannot be lvalues", this.location);
+            else return this.note("map_literal").push(...operands[0]);
+
+        } else return this.push(...operands);
     }
 
-    fix(f, parent) {
+    validate(_) { return true }
 
-        /* Validate the literal or breakdown, using the notes from `p.gatherCompoundexpression`
-        to quickly establish whether the literal is valid, only iterating over the operands to
-        find the location of the offending token when there is one. Assuming everything goes
-        well, recur and fix the operands afterwards. */
+    fix(f) {
 
-        if (parent?.is(Assign) && parent[0] === this) {
+        /* Validate a set, map, object literal or object breakdown, iterating over its operands
+        and checking labels (particularly `__proto__` labels), splats and slurps. */
 
-            // first, check this is not a set or map being used as a breakdown in an assignment...
+        let proto_labels = 0;
 
-            const location = this.location;
+        const badSlurpMessage = "a slurp must always be the last operand";
+        const badLabelMessage = "expected a name or string literal";
+        const badProtoMessage = "duplicate `__proto__` labels";
 
-            if (this.noted("set")) throw new LarkError("cannot use sets as breakdowns", location);
+        if (this.set_literal) for (const operand of this) {
 
-            if (this.noted("map")) throw new LarkError("cannot use maps as breakdowns", location);
+            if (operand.is(Spread) && operand.infixed) operand.note("validated");
 
-            // next, check the notes to prevent illegal splats in breakdowns...
+        } else if (this.map_literal) for (const operand of this) {
 
-            if (this[0].noted("suffix-spread")) {
+            if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) {
 
-                for (const operand of this[0]) if (operand.is(Spread) && operand.noted("infix")) {
+                operand.note("validated");
 
-                    throw new LarkError("unexpected `splat...` operation", operand.location);
+            } else throw new LarkError("expected a label or splat", operand.location);
+
+        } else if (this.lvalue) for (const operand of this) { // breakdowns...
+
+            if (operand.is(Spread) && operand.prefixed) {
+
+                if (this.at(-1) === operand) operand.note("validated");
+                else throw new LarkError(badSlurpMessage, operand.location);
+            }
+
+            if (operand.is(Label)) {
+
+                if (operand[0].is(Variable, StringLiteral)) operand.note("validated");
+                else throw new LarkError(badLabelMessage, operand[0].location);
+            }
+
+        } else for (const operand of this) { // object literals...
+
+            if (operand.is(Spread) && operand.infixed) operand.note("validated");
+
+            if (operand.is(Label)) {
+
+                operand.note("validated");
+
+                if (operand.proto_label) {
+
+                    if (++proto_labels < 2) this.note("prototyped");
+                    else throw new LarkError(badProtoMessage, operand[0].location);
                 }
-            }
-
-        } else if (this[0].noted("prefix-spread")) {
-
-            // do not allow slurps in object literals or (by recursion) map literals...
-
-            for (const operand of this[0]) if (operand.is(Spread) && operand.noted("prefix")) {
-
-                throw new LarkError("unexpected `...slurp` operation", operand.location);
-            }
-
-        } else if (this.noted("set") && this[0][0][0].noted("prefix-spread")) {
-
-            // do not allow slurps in set literals...
-
-            for (const operand of this[0][0][0]) if (operand.is(Spread) && operand.noted("prefix")) {
-
-                throw new LarkError("unexpected `...slurp` operation", operand.location);
             }
         }
 
         this.affix(f);
     }
 
-    validate(_) { return true }
-
     js(w) {
 
-        function compileMapOperand(operand) {
+        /* Render a set, map, array literal or array breakdown. */
 
-            if (operand.is(Label)) return `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
-            else if (operand.is(Spread)) return operand.js(w);
-            else throw new LarkError("expected a label or spread", operand.location);
-        }
+        if (this.set_literal) {
 
-        function compileHashOperand(operand) {
+            if (this.length === 0) return "new Set()";
+            else return `new Set([${this.map(operand => operand.js(w)).join(comma + space)}])`;
 
-            if (operand.is(Label, Spread, Variable)) return operand.js(w);
-            else throw new LarkError("expected a label, slurp or variable", operand.location);
-        }
+        } else if (this.map_literal) {
 
-        if (this.noted("set")) {
+            if (this.length === 0) return "new Map()";
 
-            if (this[0][0][0].noted("empty")) return `new Set()`;
+            const operands = this.map(function(operand) {
 
-            return `new Set([${this[0][0][0].map(operand => operand.js(w)).join(comma + space)}])`;
+                if (operand.is(Label)) return `[${operand[0].js(w)}, ${operand[1].js(w)}]`;
+                else return operand.js(w);
+            });
 
-        } else if (this.noted("map")) {
-
-            if (this[0][0][0].noted("empty")) return `new Map()`;
-
-            return `new Map([${this[0][0][0].map(compileMapOperand).join(comma + space)}])`;
+            return `new Map([${operands.join(comma + space)}])`;
 
         } else {
 
-            if (this[0].noted("empty")) return "{__proto__: null}";
+            if (this.length === 0) return this.lvalue ? "{}" : "{__proto__: null}";
+            else if (this.lvalue) return `{${this.map(operand => operand.js(w)).join(comma + space)}}`;
 
-            const head = this[0].noted("proto") ? openBrace : "{__proto__: null, ";
-            const body = this[0].map(compileHashOperand).join(comma + space);
+            const operands = this.map(operand => operand.js(w));
 
-            return head + body + closeBrace;
+            return `{${this.prototyped ? empty : `__proto__: null, `}${operands.join(comma + space)}}`;
         }
     }
 }
@@ -2041,21 +2044,51 @@ export class OpenBracket extends Caller {
     /* This class implements the open-bracket delimiter, which is used for array literals, array
     breakdowns and bracket notation. */
 
-    prefix(p) {
+    prefix(p) { return this.push(p.gatherCompoundExpression(CloseBracket)) }
 
-        /* Parse an array literal or breakdown, rejecting labels and accepting spreads in either
-        denotation. */
+    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseBracket)) }
 
-        const options = {skipable: true, spreadable: true};
+    fix(f) {
 
-        return this.push(p.gatherCompoundExpression(CloseBracket, options));
-    }
+        /* Validate an array literal, array breakdown or bracket notation, principly by iterating
+        over its operands and validating any splats and slurps. */
 
-    infix(p, left) {
+        const deslurp = location => { throw new LarkError("unexpected slurp operation", location) }
+        const desplat = location => { throw new LarkError("unexpected splat operation", location) }
 
-        /* Parse bracket notation, rejecting labels, and requiring exactly one operand. */
+        const notation = this.infixed;
+        const operands = this[notation ? 1 : 0];
+        const emptyBracketNotation = notation && operands.length < 1;
+        const multiBracketNotation = notation && operands.length > 1;
+        const lvalue = this.lvalue;
+        const rvalue = not(lvalue);
 
-        return this.push(left, p.gatherCompoundExpression(CloseBracket, {singular: true}));
+        // first, check that any bracket notation always contains exactly one operand...
+
+        if (emptyBracketNotation) throw new LarkError("expected an operand", operands.location);
+        if (multiBracketNotation) throw new LarkError("too many operands", operands[1].location);
+
+        // now, loop over the operands, and validate any splats and slurps (leaving any labels
+        // unvalidated, so they always throw (automatically, see `Label.js`)...
+
+        for (const operand of operands) if (operand.is(Spread)) {
+
+            const slurpOperation = operand.prefixed;
+            const splatOperation = not(slurpOperation);
+
+            if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand[0].location);
+            else if (rvalue && slurpOperation) deslurp(operand.location);
+            else if (lvalue && splatOperation) desplat(operand[0].location);
+            else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
+
+                throw new LarkError("a slurp must always be the last operand", operand.location);
+
+            } else operand.note("validated"); // any spread that didn't throw already
+        }
+
+        // finally, continue the recursion, and fix each operand...
+
+        this.affix(f);
     }
 
     js(w) { return super.js(w, openBracket, closeBracket) }
@@ -2074,7 +2107,7 @@ export class OpenParen extends Caller {
 
     prefix(p) {
 
-        return this.push(p.gatherCompoundExpression(CloseParen, {singular: true}));
+        return this.push(p.gatherCompoundExpression(CloseParen));
     }
 
     infix(p, left) {
@@ -2232,12 +2265,9 @@ export class Spread extends Operator {
 
     js(w) {
 
-        if (this.noted("for-spread")) {
-
-            if (this.noted("prefix")) throw new LarkError("cannot gather a loop", this.location);
-            else return JS.entries(this[0].js(w));
-
-        } else return `...${this[0].js(w)}`;
+        if (this.validated) return this.for_loop ? JS.entries(this[0].js(w)) : `...${this[0].js(w)}`;
+        else if (this.prefixed) throw new LarkError("unexpected slurp", this.location);
+        else throw new LarkError("unexpected splat", this.location);
     }
 }
 
@@ -2352,7 +2382,7 @@ export class Yield extends Keyword {
 
             p.advance();
 
-            return this.note("from").push(p.gatherExpression());
+            return this.note("yield_from").push(p.gatherExpression());
 
         } else if (not(p.on(Terminator, Closer))) return this.push(p.gatherExpression());
     }
@@ -2376,7 +2406,7 @@ export class Yield extends Keyword {
 
     js(w) {
 
-        if (this.noted("from")) return `yield * ${this[0].js(w)}`;
+        if (this.yield_from) return `yield * ${this[0].js(w)}`;
         else return `yield${this.length > 0 ? space + this[0].js(w) : empty}`;
     }
 }

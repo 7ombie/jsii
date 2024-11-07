@@ -6,7 +6,7 @@ export function iife(lambda) { return lambda() } // replace the dangling-dogball
 
 export function not(arg) { return ! arg } // replace the logical-not operator
 
-export const put = console.log; // shorten the name for `console.log`
+export const put = console.log;
 
 export class Stack extends Array {
 

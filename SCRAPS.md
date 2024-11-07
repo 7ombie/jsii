@@ -1617,6 +1617,28 @@ asm multiply of x: i32, y: i32 returns i32 {
 
 put multiply(1, 1)
 
+JavaScript Operators that coerce to a primitive: Unary arithmetic (`-`, `+`, `--` and `++`), binary
+arithmetic (`+`, `-`, `*`, `/`, `%` and `**`), bitwise-not (`~`) and the bitwise infix operators
+(`<<`, `>>`, `>>>`, `&`, `|` and `^`), the four comparison operators (`<`, `>`, `<=` and `>=`),
+as well as `in`, `delete` and bracket notation (when using primitive keys). For example:
+
+    const o = {foo: 1, bar: 2};
+    new String("foo") in o                  // true
+    o[new String("foo")]                    // 1
+    delete o[new String("foo")]
+    o                                       // {bar: 2}
+
+JavaScript operators that do not, but probably should, coerce to a primitive: Equality (`==`, `!=`, `===`
+and `!==`), logic (`&&`, `||` and `!`) and the ternary operator (the predicate is not coerced). For example:
+
+    new String("foo") === "foo"             // false
+    new Boolean(false) || true              // Boolean {false}
+    new Boolean(false) ? "true" : "false"   // "true"
+
+JavaScript operators where it would make no sense to coerce to a primitive: Breadcrumbs, invocations (including
+with `new` and `import`), `void`,  `await`, `typeof` and `instanceof`, the nullish operator (`??`), the entire
+set of assignment operators, splats, `yield` and `yield *`, the arrow operator and commas.
+
 JavaScript Operator Precedence
 ==============================
 

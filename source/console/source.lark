@@ -1,3 +1,28 @@
+[]
+{}
+{[]}
+{{}}
+
+
+{foo: 1, bar: 2, metavars...}
+point = {x: 1, y: 2}
+{ali, bob, cal, ...others} = people
+{__proto__: Array, length: 2, 0: false, 1: true}
+{__proto__: Object, name: "John", salary: 50000}
+john = {__proto__: Object, name: "John", salary: 50000}
+
+{[a, b, c, d...]}
+{{__proto__: Player, score: 0, lives: 3, gameObject...}}
+
+{x: 1, y: 2}
+{{y: 2, __proto__: Array, foo: bar}}
+[1, 2, 3]
+{x: 45, boo: 56, __proto__: Object}
+x[x]
+{__proto_: Array, x: 1, y: 2, z: 3, ...foo} = obj
+
+{x, foo, bar, pop, pip: 345, ...z} = options
+
 delete foo.bar
 delete foo["bar"]
 delete foo[bar][10]
@@ -163,6 +188,24 @@ em = {{y..., z...}}
 {x, y, z} = foo
 [1, 2, 3] = bar
 {x: 1, y: 2}
-{__proto__: Object, x: 1, y: 2, foo}
+{{y: 2, __proto__: Array, foo: bar}}
+
 
 while true continue
+
+[]
+{}
+{[]}
+{{x: 1}}
+
+
+{foo: 1, bar: 2, metavars...}
+point = {x: 1, y: 2}
+{ali, bob, cal, ...others} = people
+{__proto__: Array, length: 2, 0: false, 1: true}
+{__proto__: Object, name: "John", salary: 50000}
+john = {__proto__: Object, name: "John", salary: 50000}
+
+{[a, b, c, d...]}
+{{__proto__: Player, score: 0, lives: 3, gameObject...}}
+

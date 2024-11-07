@@ -14,5 +14,5 @@ window.source = await result.text();
 // put("SOURCE...\n---------\n\n" + source);
 // for (const token of lex(source)) put("token:", token);
 // for (const statement of parse(source, {dev: true})) put("basic statement:", statement);
-// for (const statement of fix(source, {dev: true})) put("fixed statement:", statement);
+for (const statement of fix(source, {dev: true})) put(statement);
 for (const string of write(source, {dev: true})) put(string);

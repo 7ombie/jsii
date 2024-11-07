@@ -155,7 +155,7 @@ export function * parse(source, {dev=false}={}) {
 
         current = token;
         token = advance();
-        result = validate(current.prefix(api, context), "prefix");
+        result = validate(current.prefix(api, context), "prefixed");
 
         if (result.expression) while (RBP < token.LBP) {
 
@@ -172,7 +172,7 @@ export function * parse(source, {dev=false}={}) {
             // `result` with whatever it returns (assuming it also validates)...
 
             token = advance();
-            result = validate(current.infix(api, result), "infix");
+            result = validate(current.infix(api, result), "infixed");
         }
 
         return result;
@@ -189,54 +189,16 @@ export function * parse(source, {dev=false}={}) {
         else throw new LarkError("expected an expression", candidate.location);
     }
 
-    function gatherCompoundExpression(closer, options={}) {
+    function gatherCompoundExpression(closer) { // api function
 
-        /* This API function takes a subclass of `Closer` (not an instance) that it uses to gather
-        a sequence of zero or more comma-separated expressions to form a `CompoundExpression` that
-        it returns.
-
-        The second (optional) argument is a hash of options:
-
-        + `labels`: A ternary value (one of `true`, `false` or `null`) that determines whether to
-           require labels (`true`), reject labels (`false`) or either (`null`).
-        + `singular`: A boolean that determines whether there should be exactly one operand in the
-           literal (`true`) or any number (`false`).
-        + `skipable`: A boolean value that determines whether `SkipAssignee` instances (`~`) are
-           acceptable (`true`) or not (`false`).
-        + `spreadable`: A boolean value that determines whether spread (`...`) operations are
-           allowed (`true`) or not (`false`).
-        + `spreadDenotation`: A ternary value that determines whether spread operations must be in
-           the null denotation (`null`), left denotation (`true`) or either (`false`), where null
-           equates to prefix and left equates to infix.
-
-        If any of the rules are broken, a `LarkError` will be thrown.
-
-        Notable conditions trigger notes to be made on the `CompoundExpression` instance (which is
-        bound to `operands` locally):
-
-        + "empty": Noted when there are no operands in the literal.
-        + "proto": Noted when the literal contains a `__proto__` label (a label with a `Variable`
-           instance as its lvalue that is spelled `__proto__`). Also noted on the operand itself.
-        + "protos": Noted when the literal contains more than one `__proto__` label.
-        + "labelled": Noted when there is at least one labelled field (which includes an empty
-           literal with an empty `Label` instance (`[:]` or `{:}`).
-        + "unlabelled": Noted when there is at least one unlabelled field, or the literal is
-           entirely empty (`[]` or `{}`).
-        + "prefix-spread": Noted when the literal contains a prefix spread operation.
-        + "suffix-spread": Noted when the literal contains a suffix spread operation.
-
-        Note: The aim is not to fully validate the compound literal (as that's not technically
-        possible at this stage). We validate as much as we can, while also providing as much
-        information as possible to the caller and the Fixer Stage.
+        /* This function takes a subclass of `Closer` (not an instance) that it uses to gather a
+        sequence of zero or more comma-separated expressions to form a `CompoundExpression` that
+        is then returned.
 
         Note: It is important to restore the previous significance of newlines *before* advancing,
-        to drop both the the closing token and any insignificant newlines, immediately before
-        returning the results (see `finalize` at the beginning of the implementation). */
+        to drop the the closing token as well as any insignificant newlines, immediately prior
+        to returning the results (see the tail of the main while-loop). */
 
-        const finalize = () => { whitespace.pop; advance(); return operands }
-
-        const { labels = false, singular = false, skipable = false } = options;
-        const { spreadable = false, spreadDenotation = false } = options;
         const operands = new CompoundExpression(token.location);
 
         whitespace.top = false;
@@ -247,92 +209,13 @@ export function * parse(source, {dev=false}={}) {
 
             operands.push(operand);
 
-            if (singular && operands.length > 1) { // enforce the singular rule...
-
-                const message = "unexpected (superfluous) field (when exactly one was expected)";
-                throw new LarkError(message, operand.location);
-            }
-
-            if (operand.is(Label)) { // handle labelled operands...
-
-                if (labels === false) {
-
-                    const message = "unexpected labelled field in unlabelled compound expression";
-                    throw new LarkError(message, operand[0].location);
-
-                } else if (operand[0].is(Variable) && operand[0].value === "__proto__") {
-
-                    if (operands.noted("proto")) operands.note("protos");
-                    else operands.note("proto");
-
-                    operand.note("proto");
-
-                } else operands.note("labelled");
-
-            } else { // handled unlabelled operands...
-
-                if (labels === true) {
-
-                    throw new LarkError("expected a labelled expression", operand.location);
-
-                } else operands.note("unlabelled");
-
-                if (operand.is(SkipAssignee) && !skipable) { // handle skip operators...
-
-                    throw new LarkError("unexpected skip operator", operand.location);
-                }
-
-                if (operand.is(Spread)) { // handle spread operators (prefix and suffix)...
-
-                    if (spreadable === false) {
-
-                        throw new LarkError("unexpected spread operation", operand.location);
-                    }
-
-                    if (operand.noted("prefix")) { // prefix spreads (null denotation)...
-
-                        if (spreadDenotation === true) {
-
-                            const message = "unexpected `...slurp` operation";
-                            throw new LarkError(message, operand.location);
-                        }
-
-                        if (operands.noted("prefix-spread")) {
-
-                            const message = "unexpected (superfluous) `...slurp` operation";
-                            throw new LarkError(message, operand.location);
-
-                        } else operands.note("prefix-spread");
-
-                    } else { // suffix spreads (left denotation)...
-
-                        if (spreadDenotation === null) {
-
-                            const message = "unexpected `splat...` operation";
-                            throw new LarkError(message, operand.location);
-
-                        } else operands.note("suffix-spread");
-                    }
-                }
-            }
-
             if (on(Comma)) { advance(); continue } else if (on(closer)) break;
 
             const message = `expected a ${closer.name} character`;
+
             throw new LarkError(message, operands.at(-1).location);
-        }
 
-        if (operands.length > 0) return finalize();
-
-        if (singular) {
-
-            const message = "no operands found (when exactly one was expected)";
-            throw new LarkError(message, operands.location);
-        }
-
-        operands.note("empty", "unlabelled");
-
-        return finalize();
+        } whitespace.pop; advance(); return operands;
     }
 
     function gatherVariable() { // api function
