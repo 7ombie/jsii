@@ -21,6 +21,7 @@ import {
     decimal,
     dollar,
     dot,
+    equals,
     empty,
     hexadecimal,
     lowers,
@@ -100,10 +101,10 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
+        "for_loop", "for_in", "for_of", "for_on", "for_from",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
-        "for_loop", "for_in", "for_of", "for_on", "for_from",
-        "tagged_template", "proto_label", "prototyped",
+        "tagged_template", "proto_label", "less_magic",
         "ignore", "labelled", "initial", "validated",
         "set_literal", "map_literal",
         "else_if", "yield_from"
@@ -444,9 +445,10 @@ export class Declaration extends Keyword {
 
     prefix(p) {
 
-        /* Gather a `let` or `var` declaration. */
+        /* Gather a `let` or `var` declaration, which always has an assignees before the assign
+        operator, and always has an expression after it. */
 
-        this.push(p.gatherAssignees());
+        this.push(p.gatherAssignees().note("lvalue"));
 
         if (p.on(Assign)) p.advance();
         else throw new LarkError("expected an assigment operator");
@@ -454,11 +456,40 @@ export class Declaration extends Keyword {
         return this.push(p.gatherExpression());
     }
 
+    fix(f) {
+
+        /* Iterate over the assignees, and make sure any nested breakdowns note "lvalue", and that
+        slurps note "validated" when they are the last assignee within their respective breakdown,
+        complaining if they are not. The exact same logic is applied to the lvalues of assignment
+        operations too (see `AssignmentOperator`), but not inplace-assignment (as updating a name
+        cannot use a breakdown). */
+
+        const message = "a slurp must always be the last operand";
+
+        iife(this[0], function walk(assignees) {
+
+            assignees.note("lvalue");
+
+            for (const assignee of assignees) {
+
+                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) walk(assignee);
+                else if (assignee.is(Spread) && assignee.prefixed) {
+
+                    if (assignees.at(-1) === assignee) assignee.note("validated");
+                    else throw new LarkError(message, assignee.location);
+                }
+            }
+        });
+
+        this.affix(f);
+    }
+
     js(w) {
 
-        //
+        /* Render a Lark `let` or `var` declaration using JavaScript's `const` or `let`. */
+
         if (this.spelling === "var") return `let ${this[0].js(w)} = ${this[1].js(w)}`;
-        else return `const ${this[0].js(w)} = Object.freeze(${this[1].js(w)})`
+        else return `const ${this[0].js(w)} = Object.freeze(${this[1].js(w)})`;
     }
 }
 
@@ -701,7 +732,38 @@ export class AssignmentOperator extends InfixOperator {
 
     LBP = 2;
 
-    infix(p, left) { return this.push(left.note("lvalue"), p.gatherExpression(this.LBP - 1)) }
+    infix(p, left) { return this.push(left, p.gatherExpression(this.LBP - 1)) }
+
+    fix(f) {
+
+        /* If this instance is a plain assignment operation (using `=`, so not including inplace
+        assignment operations), then iterate over the assignees, and make sure that every nested
+        breakdown notes "lvalue", and that slurps note "validated", if they're the last assignee
+        within their respective breakdown, complaining if they are not.
+
+        The same logic is applied to the lvalues of `let` and `var` declarations. */
+
+        if (this.spelling !== equals) return this.affix(f);
+
+        const message = "a slurp must always be the last operand";
+
+        iife(this[0], function walk(assignees) {
+
+            assignees.note("lvalue");
+
+            for (const assignee of assignees) {
+
+                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) walk(assignee);
+                else if (assignee.is(Spread) && assignee.prefixed) {
+
+                    if (assignees.at(-1) === assignee) assignee.note("validated", "lvalue");
+                    else throw new LarkError(message, assignee.location);
+                }
+            }
+        });
+
+        this.affix(f);
+    }
 }
 
 export class GeneralDotOperator extends DotOperator {
@@ -2034,7 +2096,7 @@ export class OpenBrace extends Opener {
 
                 if (operand.proto_label) {
 
-                    if (++proto_labels < 2) this.note("prototyped");
+                    if (++proto_labels < 2) this.note("less_magic");
                     else throw new LarkError(badProtoMessage, operand[0].location);
                 }
             }
@@ -2066,12 +2128,14 @@ export class OpenBrace extends Opener {
 
         } else {
 
-            if (this.length === 0) return this.lvalue ? "{}" : "{__proto__: null}";
-            else if (this.lvalue) return `{${this.map(operand => operand.js(w)).join(comma + space)}}`;
+            if (this.length > 0) {
 
-            const operands = this.map(operand => operand.js(w));
+                const expressions = this.map(operand => operand.js(w)).join(comma + space);
 
-            return `{${this.prototyped ? empty : `__proto__: null, `}${operands.join(comma + space)}}`;
+                if (this.lvalue || this.less_magic) return `{${expressions}}`;
+                else return `{__proto__: null, ${expressions}}`;
+
+            } else return this.lvalue || this.less_magic ? "{}" : "{__proto__: null}";
         }
     }
 }
@@ -2097,8 +2161,6 @@ export class OpenBracket extends Caller {
         const operands = this[notation ? 1 : 0];
         const emptyBracketNotation = notation && operands.length < 1;
         const multiBracketNotation = notation && operands.length > 1;
-        const lvalue = this.lvalue;
-        const rvalue = not(lvalue);
 
         // first, check that any bracket notation always contains exactly one operand...
 
@@ -2112,6 +2174,8 @@ export class OpenBracket extends Caller {
 
             const slurpOperation = operand.prefixed;
             const splatOperation = not(slurpOperation);
+            const lvalue = this.lvalue || operand.lvalue;
+            const rvalue = not(lvalue);
 
             if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand[0].location);
             else if (rvalue && slurpOperation) deslurp(operand.location);

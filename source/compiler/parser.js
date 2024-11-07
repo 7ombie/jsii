@@ -208,7 +208,7 @@ export function * parse(source, {dev=false}={}) {
 
             if (on(Comma)) { advance(); continue } else if (on(closer)) break;
 
-            const message = `expected a ${closer.name} character`;
+            const message = `expected a ${closer.name} or Comma character`;
 
             throw new LarkError(message, operands.at(-1).location);
 

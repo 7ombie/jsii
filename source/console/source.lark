@@ -1,3 +1,7 @@
+let foo = thing
+[x, y, {foo, bar, spam: x, [z], foo}] = foo
+[x, y, {foo, bar, spam: x, [z], [spam, eggs, ...foo], ...o }, ...f] = options
+
 []
 {}
 {[]}

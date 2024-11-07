@@ -2,7 +2,13 @@
 
 export function lark(name) { return `ƥ${name}` } // prefix the argument with a lark character
 
-export function iife(lambda) { return lambda() } // replace the dangling-dogballs operator
+export function iife(...args) {
+
+    // replace the dangling-dogballs operator
+
+    if (args.length === 1) return args[0]();
+    else return args.pop()(...args);
+}
 
 export function not(arg) { return ! arg } // replace the logical-not operator
 
