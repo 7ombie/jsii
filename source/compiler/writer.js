@@ -15,7 +15,7 @@ export function * write(source, {dev=false}={}) {
         were generated during the compilation of the statement, before yielding the JavaScript for
         the statement itself. */
 
-        preambles.top  = [];
+        preambles.top = [];
 
         for (const statement of statements) if (statement["ignore"] === false) {
 

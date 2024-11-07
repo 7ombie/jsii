@@ -12,7 +12,6 @@ import {
     asterisk,
     backslash,
     backtick,
-    bang,
     bases,
     binary,
     closeBrace,
@@ -34,7 +33,6 @@ import {
     space,
     operationals,
     wordCharacters,
-    equals,
 } from "../compiler/ascii.js"
 
 /* -------------------------------------------------------------------------------------------- */
@@ -106,7 +104,7 @@ export class Token extends Array {
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "for_loop", "for_in", "for_of", "for_on", "for_from",
         "tagged_template", "proto_label", "prototyped",
-        "ignore", "labelled", "exposed", "validated",
+        "ignore", "labelled", "initial", "validated",
         "set_literal", "map_literal",
         "else_if", "yield_from"
     ]));
@@ -122,13 +120,17 @@ export class Token extends Array {
         the text of the token. */
 
         super();
-
         this.location = location;
         this.value = value;
 
-        return new Proxy(this, {
-            get(target, name) { return Token.notables.has(name) ? target.notes.has(name) : target[name] }
-        });
+        const get = function(target, name) {
+
+            /* This proxy handler exposes the strings in the `notes` set as instance properties. */
+
+            return Token.notables.has(name) ? target.notes.has(name) : target[name];
+        };
+
+        return new Proxy(this, {get});
     }
 
     get spelling() {
@@ -603,8 +605,6 @@ export class InfixOperator extends Operator {
     /* This abstract class provides general functionality for operators that are only valid in the
     infix denotation. */
 
-    initial = false;
-
     infix(p, left) { return this.push(left, p.gatherExpression(this.LBP)) }
 
     js(w) { return `${this[0].js(w)} ${this.spelling} ${this[1].js(w)}` }
@@ -616,7 +616,6 @@ export class DotOperator extends InfixOperator {
     property name (which can be any type of word token) for their righthand operand. */
 
     LBP = 17;
-    initial = false;
 
     infix(p, left) { return this.push(left, p.gatherProperty()) }
 
@@ -653,11 +652,12 @@ export class ArrowOperator extends GeneralOperator {
     infix(p, left) {
 
         /* This method overrides the inherited version to ensure that the `left` parameter
-        (when present) is wrapped in parens, and that the operator is right-associative. */
+        (when present) is either a variable name or is wrapped in parens, and that the
+        operator is right-associative. */
 
         const message = "arrow operators require parenthesized arguments";
 
-        if (not(left.is(OpenParen))) throw new LarkError(message, left.location);
+        if (not(left.is(OpenParen, Variable))) throw new LarkError(message, left.location);
 
         return this.push(left, p.gatherExpression(this.LBP - 1));
     }
@@ -669,7 +669,6 @@ export class AssignmentOperator extends InfixOperator {
     associative. */
 
     LBP = 2;
-    initial = false;
 
     infix(p, left) { return this.push(left.note("lvalue"), p.gatherExpression(this.LBP - 1)) }
 }
@@ -706,28 +705,28 @@ export class NumberLiteral extends Terminal {
 
     static units = {
 
-        ch: n => `"${n}ch"`,                    // css unit strings...
-        cm: n => `"${n}cm"`,
-        em: n => `"${n}em"`,
-        ex: n => `"${n}ex"`,
-        mm: n => `"${n}mm"`,
-        p: n => `"${n}%"`,
-        pc: n => `"${n}pc"`,
-        pt: n => `"${n}pt"`,
-        px: n => `"${n}px"`,
-        rem: n => `"${n}rem"`,
-        vh: n => `"${n}vh"`,
+        ch:   n => `"${n}ch"`,                      // css unit strings...
+        cm:   n => `"${n}cm"`,
+        em:   n => `"${n}em"`,
+        ex:   n => `"${n}ex"`,
+        mm:   n => `"${n}mm"`,
+        p:    n => `"${n}%"`,
+        pc:   n => `"${n}pc"`,
+        pt:   n => `"${n}pt"`,
+        px:   n => `"${n}px"`,
+        rem:  n => `"${n}rem"`,
+        vh:   n => `"${n}vh"`,
         vmax: n => `"${n}vmax"`,
         vmin: n => `"${n}vmin"`,
-        vw: n => `"${n}vw"`,
+        vw:   n => `"${n}vw"`,
 
-        K: n => `${n * 1_000}`,                 // numeric units of magnitude...
-        M: n => `${n * 1_000_000}`,
-        B: n => `${n * 1_000_000_000}`,
-        T: n => `${n * 1_000_000_000_000}`,
-        Q: n => `${n * 1_000_000_000_000_000}`,
+        K:    n => `${n * 1_000}`,                  // numeric units of magnitude...
+        M:    n => `${n * 1_000_000}`,
+        B:    n => `${n * 1_000_000_000}`,
+        T:    n => `${n * 1_000_000_000_000}`,
+        Q:    n => `${n * 1_000_000_000_000_000}`,
 
-        n(n, float, location) {                 // bigint literals...
+        n(n, float, location) {                     // bigint literals...
 
             if (float) throw new LarkError("invalid (fractional) bigint literal", location);
             else return `${n}n`;
@@ -1101,7 +1100,7 @@ export class FunctionLiteral extends Functional {
 
         const javascript =  `${keyword}${modifier}${name}(${params}) ${block}`;
 
-        return this.exposed ? `(${javascript})` : javascript;
+        return this.initial ? `(${javascript})` : javascript;
     }
 }
 
@@ -2348,7 +2347,6 @@ export class When extends Operator {
     which is right-associative. */
 
     LBP = 2;
-    initial = false;
 
     infix(p, left) {
 
