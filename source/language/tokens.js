@@ -1,6 +1,7 @@
 /* This module defines `Token` and all of its subclasses, forming a single token hierarchy that
 implements all of the language specifics. */
 
+import * as js from "../language/javascript.js"
 import { constants, keywords, operators, reserved } from "../language/spellings.js"
 
 import { put, not, iife } from "../compiler/helpers.js"
@@ -87,10 +88,15 @@ export class Token extends Array {
     properties and methods otherwise.
 
     The `expression` property is set to `true` by anything that is a valid expression, and left
-    `false` otherwise. The property is required by the Parser API. */
+    `false` otherwise. The property is required by the Parser API.
+
+    The `safe` property is used during the Writer Stage (by `../language/javascript.js`) to know if
+    an expression can be safely reused in the compiled code (`true`), or needs to be assigned to a
+    Lark register during first evaluation, then referenced via the register (`false`). */
 
     LBP = 0;
     RBP = 0;
+    safe = false;
     expression = false;
     notes = new Set();
 
@@ -338,6 +344,7 @@ export class Constant extends Word {
     /* This is the abstract base class for constant words, (like `Infinity`, `NaN`, `true` etc).
     It is also used (internally) by the `Word` class (see the `subclass` method below). */
 
+    safe = true;
     expression = true;
 
     prefix(_) { return this }
@@ -727,6 +734,7 @@ export class NumberLiteral extends Terminal {
         }
     };
 
+    safe = true;
     expression = true;
 
     static * lex(...args) { yield new NumberLiteral(...args) }
@@ -1553,7 +1561,7 @@ export class Equal extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return `${this[0].js(w)}.ƥequals(${this[1].js(w)})` }
+    js(w) { return js.is_equal(w, ...this) }
 }
 
 export class EOF extends Terminator {
@@ -1632,21 +1640,18 @@ export class For extends Header {
         the iterable, which knows it's inside a for-loop. */
 
         const [assignees, iterable, statements] = this;
+        const block = w.writeBlock(statements);
+
+        if (iterable.is(Spread)) return js.for_of(assignees.js(w), iterable.js(w), block);
+
+        if (this.for_in) return js.for_of(assignees.js(w), js.values(w, iterable), block);
+
+        if (this.for_of) return js.for_of(assignees.js(w), js.keys(w, iterable), block);
 
         const keyword = this.for_from ? "for await" : "for";
         const operator = this.for_on ? "in" : "of";
-        const names = assignees.js(w);
-        const target = iterable.js(w);
-        const register = w.register();
-        const block = w.writeBlock(statements);
 
-        if (iterable.is(Spread)) return `for (const ${names} of ${target}) ${block}`;
-
-        if (this.for_of) return `${keyword} (const ${names} of (${register}=${target})?.ƥks?.() ?? Object.keys(${register} ?? []) ${block}`;
-
-        if (this.for_in) return `${keyword} (const ${names} of (${register}=${target})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null}) ${block}`;
-
-        return `${keyword} (const ${names} ${operator} ${target}) ${block}`;
+        return `${keyword} (const ${assignees.js(w)} ${operator} ${iterable.js(w)}) ${block}`;
     }
 }
 
@@ -1705,14 +1710,7 @@ export class In extends InfixOperator {
 
     LBP = 8;
 
-    js(w) {
-
-        const register = w.register();
-        const container = this[1].js(w);
-        const values = `(${register}=${container})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null})`;
-
-        return `(${values}).includes(${this[0].js(w)})`;
-    }
+    js(w) { return `(${js.values(w, this[1])}).includes(${this[0].js(w)})` }
 }
 
 export class InfinityConstant extends Constant {
@@ -1749,20 +1747,14 @@ export class Is extends InfixOperator {
             if (this.sealed_qualifier) return `!Object.isSealed(${this[0].js(w)})`;
             if (this.frozen_qualifier) return `!Object.isFrozen(${this[0].js(w)})`;
 
-            const [type, value] = [this[0].js(w), this[1].js(w)];
-            const [typeRegister, valueRegister] = [w.register(), w.register()];
-
-            return `!((${typeRegister}=${type})?.ƥis?.(${valueRegister}=${value}) ?? ${value} instanceof ${type})`;
+            return js.is_not(w, ...this);
         }
 
         if (this.packed_qualifier) return `!Object.isExtensible(${this[0].js(w)})`;
         if (this.sealed_qualifier) return `Object.isSealed(${this[0].js(w)})`;
         if (this.frozen_qualifier) return `Object.isFrozen(${this[0].js(w)})`;
 
-        const [type, value] = [this[0].js(w), this[1].js(w)];
-        const [typeRegister, valueRegister] = [w.register(), w.register()];
-
-        return `(${typeRegister}=${type})?.ƥis?.(${valueRegister}=${value}) ?? ${value} instanceof ${type}`;
+        return js.is(w, ...this);
     }
 }
 
@@ -1845,25 +1837,18 @@ export class Not extends GeneralOperator {
 
     js(w) {
 
-        if (this.infixed) {
-
-            const register = w.register();
-            const container = this[1].js(w);
-            const values = `(${register}=${container})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null})`;
-
-            return `!(${values}).includes(${this[0].js(w)})`;
-
-        } else return super.js(w);
+        if (this.infixed) return `(${js.values(w, this[1])}).includes(${this[0].js(w)})`;
+        else return super.js(w);
     }
 }
 
 export class NotEqual extends InfixOperator {
 
-    /* This class implements the `!=` operator, which compiles to `!Object.is`. */
+    /* This class implements the `!=` operator. */
 
     LBP = 8;
 
-    js(w) { return `!(${this[0].js(w)}).ƥequals(${this[1].js(w)})` }
+    js(w) { return js.is_not_equal(w, ...this) }
 }
 
 export class NotGreater extends InfixOperator {
@@ -2288,8 +2273,13 @@ export class Spread extends Operator {
 
         if (this.validated) {
 
-            if (this.for_loop) return `(${this[0].js(w)})?.ƥentries?.() ?? []`;
-            else return `...(${this[0].js(w)})`;
+            if (this.for_loop) {
+
+                const expression = this[0].safe ? this[0].js(w) : `(${this[0].js(w)})`;
+
+                return `${expression}?.ƥentries?.() ?? []`;
+
+            } else return this[0].safe ? `...${this[0].js(w)}` : `...(${this[0].js(w)})`;
 
         } else if (this.prefixed) {
 
@@ -2341,6 +2331,7 @@ export class Variable extends Word {
 
     /* This class implements variable names. */
 
+    safe = true;
     expression = true;
 
     prefix(_) { return this }

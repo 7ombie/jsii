@@ -36,7 +36,7 @@ delete foo.bar
     eggs
 })
 
-x in foo()
+x[1] in foo()
 x not in y
 
 results = do function of x, y = 56 {
@@ -112,6 +112,7 @@ if p0 { foo } else if p1 { bar } else { spam }
 
 do async function { return await true }
 
+google == alphabet
 spam != green.eggs and ham
 
 foo!bar?spam.eggs
@@ -198,7 +199,7 @@ while true continue
 {{x: 1}}
 
 
-{foo: 1, bar: 2, metavars...}
+{foo: 1, bar: 2, metavars.x...}
 point = {x: 1, y: 2}
 {ali, bob, cal, ...others} = people
 {__proto__: Array, length: 2, 0: false, 1: true}
@@ -208,3 +209,8 @@ john = {__proto__: Object, name: "John", salary: 50000}
 {[a, b, c, d...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
 
+theory is String
+theory is not String
+
+theory.com() is Types[1]
+conspiracy_theory is not Types[20 * 8]
