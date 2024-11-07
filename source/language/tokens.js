@@ -428,7 +428,38 @@ export class CommandStatement extends Keyword {
 
 export class Declaration extends Keyword {
 
-    /* This abstract base class implements `let` and `var` declarations. */
+    /* This abstract base class implements `let` and `var` declarations. Lark's `let` declarations
+    compile to `const` with freezing, while `var compiles to `let`. For example:
+
+        let x = y       -> const x = Object.freeze(y);
+        var x = y       -> let x = y;
+
+    Note: Lark also shadows variables that would otherwise create a temporal dead zone, so there
+    is nothing like hoisting in Lark.
+
+    Note: Freezing true primitives (which are intrinsically immutable) is always a noop. However,
+    freezing a *primitive object*, freezes the object as an object. The resulting value is still
+    equal to its primitive equivalent (in Lark, but not in JavaScript), but the value cannot be
+    optimized to a primitive afterwards. */
+
+    prefix(p) {
+
+        /* Gather a `let` or `var` declaration. */
+
+        this.push(p.gatherAssignees());
+
+        if (p.on(Assign)) p.advance();
+        else throw new LarkError("expected an assigment operator");
+
+        return this.push(p.gatherExpression());
+    }
+
+    js(w) {
+
+        //
+        if (this.spelling === "var") return `let ${this[0].js(w)} = ${this[1].js(w)}`;
+        else return `const ${this[0].js(w)} = Object.freeze(${this[1].js(w)})`
+    }
 }
 
 export class Functional extends Keyword {

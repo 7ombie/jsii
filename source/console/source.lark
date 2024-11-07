@@ -13,10 +13,11 @@ john = {__proto__: Object, name: "John", salary: 50000}
 {[a, b, c, __proto__...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
 
-map = {{y: 2, __proto__: Array, foo: bar}}
-array = [1, 2, 3]
-object = {x: 45, boo: 56, __proto__: Object}
-index = x[x]
+let map = {{y: 2, __proto__: Array, foo: bar}}
+var array = [1, 2, 3]
+var object = {x: 45, boo: 56, __proto__: Object}
+let index = x[x]
+
 {__proto__: Array, x: 1, y: 2, z: 3, ...foo} = obj
 
 {x, foo, bar, pop, pip: 345, ...z} = options

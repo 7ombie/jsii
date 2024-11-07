@@ -18,11 +18,11 @@ function larkOrObjectMethod(w, expression, method, fallback) {
 
     if (expression.safe) return `${expression.js(w)}?.ƥ${method}?.() ?? Object.${method}(${expression.js(w)} ?? ${fallback})`;
 
-    const name = register();
+    const mainRegister = register();
 
-    w.preamble(`let ${name}`);
+    w.preamble(`let ${mainRegister}`);
 
-    return `(${name}=${expression.js(w)})?.ƥ${method}?.() ?? Object.${method}(${name} ?? ${fallback})`;
+    return `(${mainRegister}=${expression.js(w)})?.ƥ${method}?.() ?? Object.${method}(${mainRegister} ?? ${fallback})`;
 }
 
 const register = iife(function() {
@@ -65,27 +65,27 @@ export function is(w, value, type) {
 
     if (value.safe) {
 
-        const typeName = register();
+        const typeRegister = register();
 
-        w.preamble(`let ${typeName}`);
+        w.preamble(`let ${typeRegister}`);
 
-        return `(${typeName}=${type.js(w)})?.ƥis?.(${value.js(w)}) ?? ${value.js(w)} instanceof ${typeName}`;
+        return `(${typeRegister}=${type.js(w)})?.ƥis?.(${value.js(w)}) ?? ${value.js(w)} instanceof ${typeRegister}`;
     }
 
     if (type.safe) {
 
-        const valueName = register();
+        const valueRegister = register();
 
-        w.preamble(`let ${valueName}`);
+        w.preamble(`let ${valueRegister}`);
 
-        return `${type.js()}?.ƥis?.(${valueName}=${value.js(js)}) ?? ${valueName} instanceof ${type.js()}`;
+        return `${type.js()}?.ƥis?.(${valueRegister}=${value.js(js)}) ?? ${valueRegister} instanceof ${type.js()}`;
     }
 
-    const [valueName, typeName] = [register(), register()];
+    const [valueRegister, typeRegister] = [register(), register()];
 
-    w.preamble(`let ${valueName}, ${typeName}`);
+    w.preamble(`let ${valueRegister}, ${typeRegister}`);
 
-    return `(${typeName}=${type.js(w)})?.ƥis?.(${valueName}=${value.js(w)}) ?? ${valueName} instanceof ${typeName}`;
+    return `(${typeRegister}=${type.js(w)})?.ƥis?.(${valueRegister}=${value.js(w)}) ?? ${valueRegister} instanceof ${typeRegister}`;
 }
 
 export function is_not(w, value, type) {
@@ -108,5 +108,3 @@ export function is_not_equal(w, x, y) {
 
     return x.safe ? `!${is_equal(w, x, y)}` : `!(${is_equal(w, x, y)})`;
 }
-
-
