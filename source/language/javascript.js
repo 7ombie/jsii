@@ -1,3 +1,7 @@
+/* This module exports a bunch of helper functions that generally convert instances of `Token`
+subclasses to JavaScript strings. This is convenient, as it allows us to keep all the really
+long string literals in one file. */
+
 import { put, not, lark, iife } from "../compiler/helpers.js"
 
 // internal helpers...
@@ -26,9 +30,7 @@ const register = iife(function() {
     /* This IIFE returns a function that generates and returns incrementing Lark register names (as
     strings) for assigning to unsafe expressions, so they're safe to use more than once. */
 
-    let counter = 0;
-
-    return () => lark(counter++);
+    let counter = 0; return () => lark(counter++);
 });
 
 // api functions...
@@ -59,34 +61,31 @@ export function is(w, value, type) {
     /* Takes a reference to the Writer Stage API, a value node and a type node, and uses them to
     render a Lark `is` typecheck expression, minimizing the need to parenthesize safe arguments. */
 
-    if (value.safe && type.safe) {
+    if (value.safe && type.safe) return `${type.js(w)}?.ƥis?.(${value.js(w)}) ?? ${value.js(w)} instanceof ${type.js()}`;
 
-        return `${type.js(w)}?.ƥis?.(${value.js(w)}) ?? ${value.js(w)} instanceof ${type.js()}`;
-
-    } else if (value.safe) {
+    if (value.safe) {
 
         const typeName = register();
 
         w.preamble(`let ${typeName}`);
 
         return `(${typeName}=${type.js(w)})?.ƥis?.(${value.js(w)}) ?? ${value.js(w)} instanceof ${typeName}`;
+    }
 
-    } else if (type.safe) {
+    if (type.safe) {
 
         const valueName = register();
 
         w.preamble(`let ${valueName}`);
 
         return `${type.js()}?.ƥis?.(${valueName}=${value.js(js)}) ?? ${valueName} instanceof ${type.js()}`;
-
-    } else {
-
-        const [valueName, typeName] = [register(), register()];
-
-        w.preamble(`let ${valueName}, ${typeName}`);
-
-        return `(${typeName}=${type.js(w)})?.ƥis?.(${valueName}=${value.js(w)}) ?? ${valueName} instanceof ${typeName}`;
     }
+
+    const [valueName, typeName] = [register(), register()];
+
+    w.preamble(`let ${valueName}, ${typeName}`);
+
+    return `(${typeName}=${type.js(w)})?.ƥis?.(${valueName}=${value.js(w)}) ?? ${valueName} instanceof ${typeName}`;
 }
 
 export function is_not(w, value, type) {

@@ -88,9 +88,9 @@ export class Token extends Array {
     The `expression` property is set to `true` by anything that is a valid expression, and left
     `false` otherwise. The property is required by the Parser API.
 
-    The `safe` property is used during the Writer Stage (by `../language/javascript.js`) to know if
-    an expression can be safely reused in the compiled code (`true`), or needs to be assigned to a
-    Lark register during first evaluation, then referenced via the register (`false`). */
+    The `safe` property is used during the Writer Stage (by `/language/javascript.js` and this
+    file) to know if an expression can be safely reused in the compiled code (`true`), or needs
+    to be assigned to a Lark register during first evaluation, then referenced (`false`). */
 
     LBP = 0;
     RBP = 0;
@@ -1098,7 +1098,7 @@ export class FunctionLiteral extends Functional {
         const params = this[1].map(param => param.js(w)).join(comma + space);
         const block = w.writeBlock(this[2]);
 
-        const javascript =  `${keyword}${modifier}${name}(${params}) ${block}`;
+        const javascript = `${keyword}${modifier}${name}(${params}) ${block}`;
 
         return this.initial ? `(${javascript})` : javascript;
     }
@@ -1415,7 +1415,8 @@ export class Debug extends Keyword {
 
 export class Delete extends Keyword {
 
-    /* This class implements the `delete` operator, exactly like JavaScript. */
+    /* This class implements the `delete` operator, which looks like JavaScript, except it requires
+    the expression is (at the top) an unconditional dot operation or bracket notation. */
 
     LBP = 14;
     expression = true;
@@ -2110,15 +2111,9 @@ export class OpenParen extends Caller {
     /* This class implements the open-paren delimiter, which is used for grouped expressions and
     invocations. */
 
-    prefix(p) {
+    prefix(p) { return this.push(p.gatherCompoundExpression(CloseParen)) }
 
-        return this.push(p.gatherCompoundExpression(CloseParen));
-    }
-
-    infix(p, left) {
-
-        return this.push(left, p.gatherCompoundExpression(CloseParen));
-     }
+    infix(p, left) { return this.push(left, p.gatherCompoundExpression(CloseParen)) }
 
     js(w) { return super.js(w, openParen, closeParen) }
 }
@@ -2215,7 +2210,7 @@ export class Return extends Keyword {
         else throw new LarkError("unexpected `return` statement", this.location);
     }
 
-    js(w) { return `return${this.length > 0 ? space + this[0].js(w) : empty}` }
+    js(w) { return `return${this.length ? space + this[0].js(w) : empty}` }
 }
 
 export class RSHIFT extends InfixOperator {
@@ -2424,6 +2419,6 @@ export class Yield extends Keyword {
     js(w) {
 
         if (this.yield_from) return `yield * ${this[0].js(w)}`;
-        else return `yield${this.length > 0 ? space + this[0].js(w) : empty}`;
+        else return `yield${this.length ? space + this[0].js(w) : empty}`;
     }
 }
