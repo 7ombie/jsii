@@ -3,7 +3,6 @@
 {[]}
 {{}}
 
-
 {foo: 1, bar: 2, metavars...}
 point = {x: 1, y: 2}
 {ali, bob, cal, ...others} = people
@@ -11,7 +10,7 @@ point = {x: 1, y: 2}
 {__proto__: Object, name: "John", salary: 50000}
 john = {__proto__: Object, name: "John", salary: 50000}
 
-{[a, b, c, d...]}
+{[a, b, c, __proto__...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
 
 {x: 1, y: 2}
@@ -135,7 +134,7 @@ function {
         }
         o is not sealed
         o is not frozen
-        function { moves: for thing from otherThing { break moves } }
+        function { moves: for thing in otherThing { break moves } }
     }
 }
 

@@ -1,8 +1,8 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
-import { put, lark } from "../compiler/helpers.js"
+import { put, not, lark, Stack } from "../compiler/helpers.js"
 import { fix } from "../compiler/fixer.js"
 
-import { Header, Label, Variable, Constant, NumberLiteral } from "../language/tokens.js"
+import { Header, Label } from "../language/tokens.js"
 
 export function * write(source, {dev=false}={}) {
 
@@ -15,16 +15,20 @@ export function * write(source, {dev=false}={}) {
         were generated during the compilation of the statement, before yielding the JavaScript for
         the statement itself. */
 
+        preambles.top  = [];
+
         for (const statement of statements) if (statement["ignore"] === false) {
 
             const terminated = statement.is(Header, Label);
             const javascript = statement.js(api);
 
-            yield * preambles;
+            yield * preambles.top.map(preamble => indentation + preamble);
             yield indentation + javascript + (terminated ? empty : semicolon);
 
-            preambles.length = 0;
+            preambles.top.length = 0;
         }
+
+        preambles.pop;
     }
 
     function writeBlock(block) { // api function
@@ -42,22 +46,14 @@ export function * write(source, {dev=false}={}) {
         return openBrace + newline + code + newline + indentation + closeBrace;
     }
 
-    function register(expression) { // api function
+    function register(declare=true) { // api function
 
-        /* Take an optional expression node. When provided, check whether the node is safe to
-        evaluate more than once (either a simple, non-compound literal or a variable). If it
-        is safe to reuse, just expand it to JS, and return the resulting source. Otherwise,
-        register the expression in a preamble, and return the register name instead.
-
-        When no argument is given, immediately create and return a register name. */
-
-        if (arguments.length === 0) return lark(registerCounter++);
-
-        if (expression.is(Variable, Constant, NumberLiteral)) return expression.js(api);
+        /* Increment the register counter to generate and return a Lark register name, declaring it
+        in a preamble if the optional argument is truthy (the default). */
 
         const register = lark(registerCounter++);
 
-        preambles.push(`const ${register} = ${expression.js(api)};\n`);
+        if (declare) preamble(`let ${register}`);
 
         return register;
     }
@@ -67,7 +63,7 @@ export function * write(source, {dev=false}={}) {
         /* Take a preamble string and an optional bool. Push the string to the `preambles` array,
         concatenating a semicolon to the end if `terminated` is truthy (the default). */
 
-        preambles.push(string + (terminate ? semicolon : empty));
+        preambles.top.push(string + (terminate ? semicolon : empty));
     }
 
     // gather the api functions and flags into the api object, initialize the internal state, then
@@ -77,7 +73,7 @@ export function * write(source, {dev=false}={}) {
 
     let indentation = empty;
     let registerCounter = 0;
-    let preambles = [];
+    let preambles = new Stack();
 
     yield * walk(fix(source, {dev}));
 }

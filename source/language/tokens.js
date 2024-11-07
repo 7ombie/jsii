@@ -2,7 +2,6 @@
 implements all of the language specifics. */
 
 import { constants, keywords, operators, reserved } from "../language/spellings.js"
-import { JS } from "../language/helpers.js"
 
 import { put, not, iife } from "../compiler/helpers.js"
 import { LarkError } from "../compiler/error.js"
@@ -97,10 +96,11 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
-        "async_qualifier", "yield_qualifier",
-        "for_in", "for_of", "for_on", "for_from",
-        "ignore", "labelled", "exposed", "validated",
+        "async_qualifier", "yield_qualifier", "not_qualifier",
+        "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
+        "for_loop", "for_in", "for_of", "for_on", "for_from",
         "tagged_template", "proto_label", "prototyped",
+        "ignore", "labelled", "exposed", "validated",
         "set_literal", "map_literal",
         "else_if", "yield_from"
     ]));
@@ -1093,7 +1093,7 @@ export class FunctionLiteral extends Functional {
 
         const javascript =  `${keyword}${modifier}${name}(${params}) ${block}`;
 
-        return this.exposed ? JS.wrap(javascript) : javascript;
+        return this.exposed ? `(${javascript})` : javascript;
     }
 }
 
@@ -1260,7 +1260,7 @@ export class Bang extends GeneralDotOperator {
     /* This class implements the `!` operator, which compiles to the bitwise `~` operator in a
     prefix context, and JavaScript's `.#` pseudo-dot-operator in an infix context. */
 
-    spelling = ".#"
+    spelling = ".#";
 }
 
 export class Block extends Token {
@@ -1553,7 +1553,7 @@ export class Equal extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return JS.equals(this[0].js(w), this[1].js(w)) }
+    js(w) { return `${this[0].js(w)}.ƥequals(${this[1].js(w)})` }
 }
 
 export class EOF extends Terminator {
@@ -1606,7 +1606,7 @@ export class For extends Header {
 
         if (expression.is(Spread)) {
 
-            if (this.for_in && expression.infixed) expression.note("validated");
+            if (this.for_in && expression.infixed) expression.note("validated", "for_loop");
             else throw new LarkError("unexpected slurp", expression.location);
         }
 
@@ -1627,21 +1627,26 @@ export class For extends Header {
 
     js(w) {
 
-        /* Render the appropriate for-loop, adding the extra code that implements the operator. */
+        /* Render the appropriate for-loop, adding the extra code that implements the operator,
+        unless the iterable is a spread operation, in which case, leave it to `Spread` to render
+        the iterable, which knows it's inside a for-loop. */
 
-        const assignees = this[0].js(w);
-        const operator = this.for_on ? "in" : "of";
+        const [assignees, iterable, statements] = this;
+
         const keyword = this.for_from ? "for await" : "for";
-        const block = w.writeBlock(this[2]);
+        const operator = this.for_on ? "in" : "of";
+        const names = assignees.js(w);
+        const target = iterable.js(w);
+        const register = w.register();
+        const block = w.writeBlock(statements);
 
-        if (this[1].for_loop) return `for (const ${assignees} of ${this[1].js(w)}) ${block}`;
+        if (iterable.is(Spread)) return `for (const ${names} of ${target}) ${block}`;
 
-        let target = w.register(this[1]);
+        if (this.for_of) return `${keyword} (const ${names} of (${register}=${target})?.ƥks?.() ?? Object.keys(${register} ?? []) ${block}`;
 
-        if (this.for_in) target = JS.values(target);
-        else if (this.for_of) target = JS.keys(target);
+        if (this.for_in) return `${keyword} (const ${names} of (${register}=${target})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null}) ${block}`;
 
-        return `${keyword} (const ${assignees} ${operator} ${target}) ${block}`;
+        return `${keyword} (const ${names} ${operator} ${target}) ${block}`;
     }
 }
 
@@ -1700,7 +1705,14 @@ export class In extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return `(${JS.values(w.register(this[1]))}).includes(${this[0].js(w)})` }
+    js(w) {
+
+        const register = w.register();
+        const container = this[1].js(w);
+        const values = `(${register}=${container})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null})`;
+
+        return `(${values}).includes(${this[0].js(w)})`;
+    }
 }
 
 export class InfinityConstant extends Constant {
@@ -1719,10 +1731,11 @@ export class Is extends InfixOperator {
 
         this.push(left);
 
-        if (p.on(Not)) { this.push(p.advance(false)) }
+        if (p.on(Not)) { this.note(`${p.advance(false).value}_qualifier`) }
 
-        if (p.on(Packed, Sealed, Frozen)) return this.push(p.advance(false));
-        else return this.push(p.gatherExpression(this.LBP));
+        if (p.on(Packed, Sealed, Frozen)) return this.note(`${p.advance(false).value}_qualifier`);
+
+        return this.push(p.gatherExpression(this.LBP));
     }
 
     js(w) {
@@ -1730,20 +1743,26 @@ export class Is extends InfixOperator {
         /* Render an `is` or `is not`, `is packed`, `is not packed`, `is sealed`, `is not sealed`,
         `is frozen` or `is not frozen` operation. */
 
-        if (this[1].is(Not)) {
+        if (this.not_qualifier) {
 
-            if (this[2].is(Packed)) return `Object.isExtensible(${this[0].js(w)})`;
-            if (this[2].is(Sealed)) return `!Object.isSealed(${this[0].js(w)})`;
-            if (this[2].is(Frozen)) return `!Object.isFrozen(${this[0].js(w)})`;
+            if (this.packed_qualifier) return `Object.isExtensible(${this[0].js(w)})`;
+            if (this.sealed_qualifier) return `!Object.isSealed(${this[0].js(w)})`;
+            if (this.frozen_qualifier) return `!Object.isFrozen(${this[0].js(w)})`;
 
-            return JS.invert(JS.is(w.register(this[0]), w.register(this[2])));
+            const [type, value] = [this[0].js(w), this[1].js(w)];
+            const [typeRegister, valueRegister] = [w.register(), w.register()];
+
+            return `!((${typeRegister}=${type})?.ƥis?.(${valueRegister}=${value}) ?? ${value} instanceof ${type})`;
         }
 
-        if (this[1].is(Packed)) return `!Object.isExtensible(${this[0].js(w)})`;
-        if (this[1].is(Sealed)) return `Object.isSealed(${this[0].js(w)})`;
-        if (this[1].is(Frozen)) return `Object.isFrozen(${this[0].js(w)})`;
+        if (this.packed_qualifier) return `!Object.isExtensible(${this[0].js(w)})`;
+        if (this.sealed_qualifier) return `Object.isSealed(${this[0].js(w)})`;
+        if (this.frozen_qualifier) return `Object.isFrozen(${this[0].js(w)})`;
 
-        return JS.is(w.register(this[0]), w.register(this[1]));
+        const [type, value] = [this[0].js(w), this[1].js(w)];
+        const [typeRegister, valueRegister] = [w.register(), w.register()];
+
+        return `(${typeRegister}=${type})?.ƥis?.(${valueRegister}=${value}) ?? ${value} instanceof ${type}`;
     }
 }
 
@@ -1828,9 +1847,11 @@ export class Not extends GeneralOperator {
 
         if (this.infixed) {
 
-            const target = JS.values(w.register(this[1]));
+            const register = w.register();
+            const container = this[1].js(w);
+            const values = `(${register}=${container})?.ƥvs?.() ?? Object.values(${register} ?? {__proto__: null})`;
 
-            return JS.invert(`(${target}).includes(${this[0].js(w)})`);
+            return `!(${values}).includes(${this[0].js(w)})`;
 
         } else return super.js(w);
     }
@@ -1842,7 +1863,7 @@ export class NotEqual extends InfixOperator {
 
     LBP = 8;
 
-    js(w) { return bang + JS.equals(this[0].js(w), this[1].js(w)) }
+    js(w) { return `!(${this[0].js(w)}).ƥequals(${this[1].js(w)})` }
 }
 
 export class NotGreater extends InfixOperator {
@@ -2265,9 +2286,16 @@ export class Spread extends Operator {
 
     js(w) {
 
-        if (this.validated) return this.for_loop ? JS.entries(this[0].js(w)) : `...${this[0].js(w)}`;
-        else if (this.prefixed) throw new LarkError("unexpected slurp", this.location);
-        else throw new LarkError("unexpected splat", this.location);
+        if (this.validated) {
+
+            if (this.for_loop) return `(${this[0].js(w)})?.ƥentries?.() ?? []`;
+            else return `...(${this[0].js(w)})`;
+
+        } else if (this.prefixed) {
+
+            throw new LarkError("unexpected slurp", this.location);
+
+        } else throw new LarkError("unexpected splat", this[0].location);
     }
 }
 
