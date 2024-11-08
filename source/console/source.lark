@@ -1,5 +1,5 @@
 let foo = thing
-[x, y, {foo, bar, spam: x, [z], foo}] = foo
+lets = [x, y, {foo, bar, spam: x, [z], __proto__: Number}, x] = foo
 [x, y, {foo, bar, spam: x, [z], [spam, eggs, ...foo], ...o }, ...f] = options
 
 []
@@ -217,4 +217,6 @@ theory is String
 theory is not String
 
 theory.com() is Types[1]
-conspiracy_theory is not Types[20 * 8]
+conspiracy_theory is not Types[20 * 8.x]
+
+0xFF.toString(16)

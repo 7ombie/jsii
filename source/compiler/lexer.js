@@ -168,7 +168,7 @@ export function * lex(source, {dev=false}={}) {
 
             } else if (on(delimiters)) {
 
-                if (interpolating && on(closeParen)) return;    // exit point for interpolations
+                if (interpolating && on(closeParen)) return; // interpolation exit point
                 else yield * Delimiter.lex(api, location);
 
             } else throw new LarkError(`unexpected character (${character})`, location);

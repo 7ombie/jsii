@@ -34,6 +34,7 @@ import {
     space,
     operationals,
     wordCharacters,
+    underscore,
 } from "../compiler/ascii.js"
 
 /* -------------------------------------------------------------------------------------------- */
@@ -101,12 +102,11 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
-        "for_loop", "for_in", "for_of", "for_on", "for_from",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
-        "tagged_template", "proto_label", "less_magic",
-        "ignore", "labelled", "initial", "validated",
-        "set_literal", "map_literal",
+        "ignore", "labelled", "initial", "validated", "tagged_template", "proto_label",
+        "for_loop", "for_in", "for_of", "for_on", "for_from",
+        "oo_literal", "set_literal", "map_literal",
         "else_if", "yield_from"
     ]));
 
@@ -448,7 +448,7 @@ export class Declaration extends Keyword {
         /* Gather a `let` or `var` declaration, which always has an assignees before the assign
         operator, and always has an expression after it. */
 
-        this.push(p.gatherAssignees().note("lvalue"));
+        this.push(p.gatherAssignees());
 
         if (p.on(Assign)) p.advance();
         else throw new LarkError("expected an assigment operator");
@@ -605,6 +605,7 @@ export class Operator extends Token {
             case "<<=": return new AssignLSHIFT(location, value);
             case ">>=": return new AssignRSHIFT(location, value);
             case ">>>=": return new AssignARSHIFT(location, value);
+            case "as": return new As(location, value);
             case "and": return new And(location, value);
             case "freeze": return new Freeze(location, value);
             case "frozen": return new Frozen(location, value);
@@ -849,39 +850,46 @@ export class NumberLiteral extends Terminal {
 
         } else var [digits, isDecimal] = [decimal, true];
 
-        // gather as many digits as possible from the appropriate set...
+        // gather as many digits and underscores as possible from the appropriate set...
 
-        l.gatherWhile(digits, this);
+        l.gatherWhile(digits + underscore, this);
 
-        // validate the value so far, requiring that it does not start with a zero, unless it is
-        // the start of a base-prefix, or it is just a single zero, as well as checking that it's
-        // not *only* a base-prefix (without any significant digits)...
+        // validate the value so far, requiring that it does not start with a zero, unless the zero
+        // introduces a base-prefix or the *whole value* is a single zero, as well as checking that
+        // it's not just a base-prefix (without any significant digits afterwards), nor ends on an
+        // underscore separator (which is illegal in JavaScript)...
 
         if (isDecimal && this.value[0] === "0" && this.value !== "0") { // leading zeros...
 
             throw new LarkError("leading zeros are invalid", location);
         }
 
-        if (not(isDecimal) && this.value.length === 2) { // incomplete base-prefix...
+        if (not(isDecimal) && this.value.length === 2) { // loner base-prefix...
 
             if (l.at(decimal)) throw new LarkError("invalid digit for notation", location);
             else throw new LarkError("incomplete base-prefix", location);
         }
 
-        // if a dot is present and legal, continue to lex this number literal using float-notation,
-        // complaining if a dot is present but illegal, and doing nothing if there's no dot...
+        if (this.value.at(-1) === underscore) { // trailing separator...
+
+            throw new LarkError("number literals cannot end on an underscore", location);
+        }
+
+        // if a dot is present and followed by a decimal digit, continue to lex this number literal
+        // as a float (leaving the dot to be parsed as a breadcrumb operator otherwise)...
 
         let float = false;
 
-        if (l.at(dot)) {
+        if (l.at(dot) && isDecimal && this.value[0] !== dot && l.peek(+2, decimal)) {
 
-            if (isDecimal && this.value[0] !== dot && l.peek(2, decimal)) {
+            float = true;
+            this.value += l.advance();
+            l.gatherWhile(digits + underscore, this);
+        }
 
-                float = true;
-                this.value += l.advance();
-                l.gatherWhile(digits, this);
+        if (float && this.value.at(-1) === underscore) { // trailing separator (again)...
 
-            } else throw new LarkError("fractional numbers must use decimal notation", location);
+            throw new LarkError("number literals cannot end on an underscore", this.location);
         }
 
         // finally, check for a numeric unit xor an exponentiation pseudo-operator - on units, use
@@ -889,7 +897,7 @@ export class NumberLiteral extends Terminal {
         // on operators, lex the characters and convert to JavaScript exponentiation notation - in
         // either case, update the `value` property with the result...
 
-        const atDouble = character => l.at(character) && l.peek(2, character);
+        const atDouble = character => l.at(character) && l.peek(+2, character);
 
         if (l.at(alphas)) { // units...
 
@@ -1211,6 +1219,24 @@ export class SubclassLiteral extends Functional {
     (`subclass of Foo {}` -> `class extends Foo {}`). */
 
     expression = true;
+}
+
+export class As extends PrefixOperator {
+
+    /* This class implements the `as` prefix-operator, which provides a nicer way of setting the
+    prototype of object literals, where `as Object` is short for `__proto__: Object` (though the
+    latter is also valid).
+
+    Note: Each object literal is limited to specifying one protocol (at most), either using `as`
+    xor using the magic `__proto__` label. Using `as` is recommended. It's nicer, and `__proto__`
+    is a regular key in many contexts, while `as Type` only means one thing, and can only appear
+    in one context. */
+
+    js(w) {
+
+        if (this.validated) return `__proto__: ${this[0].js(w)}`;
+        else throw new LarkError("unexpected `as` operation", this.operand);
+    }
 }
 
 export class And extends InfixOperator {
@@ -1609,8 +1635,15 @@ export class Do extends PrefixOperator {
 
 export class Dot extends DotOperator {
 
-    /* This class implements the dot operator (`.`), which is used for property access. The points
-    in number literals do not use this class. */
+    /* This concrete class implements the breadcrumb operator (`.`), which can have a number
+    literal as its lefthand operand (without parens) in Lark. */
+
+    js(w) {
+
+        const expression = this[0].is(NumberLiteral) ? `(${this[0].js(w)})` : this[0].js(w);
+
+        return `${expression}${this.spelling}${this[1].value}`;
+    }
 }
 
 export class Else extends PredicatedBlock {
@@ -2054,11 +2087,12 @@ export class OpenBrace extends Opener {
         /* Validate a set, map, object literal or object breakdown, iterating over its operands
         and checking labels (particularly `__proto__` labels), splats and slurps. */
 
-        let proto_labels = 0;
-
+        const badValueMessage = "expected a label, name, splat or prototype";
         const badSlurpMessage = "a slurp must always be the last operand";
         const badLabelMessage = "expected a name or string literal";
-        const badProtoMessage = "duplicate `__proto__` labels";
+        const badProtoMessage = "duplicate prototype specifiers";
+
+        let prototypes = 0;
 
         if (this.set_literal) for (const operand of this) {
 
@@ -2088,18 +2122,16 @@ export class OpenBrace extends Opener {
 
         } else for (const operand of this) { // object literals...
 
-            if (operand.is(Spread) && operand.infixed) operand.note("validated");
+            if (operand.is(Label, Variable, As)) operand.note("validated");
+            else if (operand.is(Spread) && operand.infixed) operand.note("validated");
+            else throw new LarkError(badValueMessage, operand.location);
 
-            if (operand.is(Label)) {
+            if (operand.is(As) || operand.proto_label) {
 
-                operand.note("validated");
+                if (++prototypes < 2) this.note("oo_literal");
+                else throw new LarkError(badProtoMessage, operand[0].location);
 
-                if (operand.proto_label) {
-
-                    if (++proto_labels < 2) this.note("less_magic");
-                    else throw new LarkError(badProtoMessage, operand[0].location);
-                }
-            }
+            } else if (operand.is(Spread) && operand.infixed) operand.note("validated");
         }
 
         this.affix(f);
@@ -2132,10 +2164,10 @@ export class OpenBrace extends Opener {
 
                 const expressions = this.map(operand => operand.js(w)).join(comma + space);
 
-                if (this.lvalue || this.less_magic) return `{${expressions}}`;
+                if (this.lvalue || this.oo_literal) return `{${expressions}}`;
                 else return `{__proto__: null, ${expressions}}`;
 
-            } else return this.lvalue || this.less_magic ? "{}" : "{__proto__: null}";
+            } else return this.lvalue || this.oo_literal ? "{}" : "{__proto__: null}";
         }
     }
 }

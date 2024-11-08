@@ -1088,24 +1088,23 @@ compiler will throw away (as they are not used for anything).
 Object Literals
 ---------------
 
-Objects defined with object literals have `null` prototypes by default:
+Lark object literals infer `null` prototypes, unless a prototype is explicitly set using the magic
+`__proto__` key:
 
-    let o = {x: 1}                     -> const o = {__proto__: null, x: 1}
+    let o = {x: 1, y: 2}                -> const o = {__proto__: null, x: 1, y: 2}
 
-If you want a different prototype, use `as <Type>` inside the literal:
-
-    let oo = {as Object, x: 1}         -> const oo = {__proto__: Object, x: 1}
+    let oo = {as Object, x: 1}  -> const oo = {__proto__: Object, x: 1}
 
 Note: You can use the `as` prefix-operator anywhere within the object literal, but it's a syntax
 error to include more than one (really just as a sanity check).
 
 Dynamic keys use parens, instead of square brackets (just like computed function names):
 
-    {(foo): 1, (bar): 2}               -> {__proto__: null, [foo]: 1, [bar]: 2}
+    {(foo): 1, (bar): 2}                -> {__proto__: null, [foo]: 1, [bar]: 2}
 
 Note: The `__proto__` key has no special meaning in Lark object literals:
 
-    {__proto__: Object}                -> {__proto__: null, "__proto__": Object}
+    {__proto__: Object}                 -> {__proto__: null, "__proto__": Object}
 
 Math Operators
 --------------
