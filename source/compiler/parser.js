@@ -130,7 +130,13 @@ export function * parse(source, {dev=false}={}) {
         be anything, as it is simply passed to the `prefix` method of the first token in the
         expression, as a context. In practice, it is used by `Async` to contextualize the
         function statement that follows (`Async.prefix` checks the next token begins a
-        function literal before it invokes this function). */
+        function literal before it invokes this function).
+
+        Note: The main loop checks for and breaks on operative keywords (`yield`, `throw` etc)
+        as their `expression` property is `true` (so they're recognized as operators), but they
+        need to be parsed as keywords (despite still being valid expressions). Otherwise, for
+        example, the `yield` operator in a statements like `if x yield y` would be parsed as
+        an infix operator, when it's a keyword (beginning a formal expression). */
 
         function validate(result, note) {
 
@@ -144,12 +150,6 @@ export function * parse(source, {dev=false}={}) {
 
         let current, result;
 
-        // use `current` to track the token we need to parse next when advancing the (nonlocal)
-        // parser state to the next `token` in the stream, and use `result` to store the parse
-        // tree is it's generated, first by an invocation of the `current` token's `prefix`
-        // method, then by zero or more iterations of the following loop (which invokes
-        // the `current` token's `infix` instead)...
-
         current = token;
         token = advance();
         result = validate(current.prefix(api, context), "prefixed");
@@ -158,15 +158,7 @@ export function * parse(source, {dev=false}={}) {
 
             current = token;
 
-            // check for and break on operative keywords (like `yield` and `throw`), so they still
-            // act like keywords when used to begin an unbraced control-flow block, despite also
-            // being operators (that always introduce valid expressions)...
-
             if (current instanceof Keyword) return result;
-
-            // advance to the next token, then pass everything that has been parsed so far (as a
-            // prefix) to the the `infix` method of the `current` token instance, updating the
-            // `result` with whatever it returns (assuming it also validates)...
 
             token = advance();
             result = validate(current.infix(api, result), "infixed");
