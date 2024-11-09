@@ -254,10 +254,16 @@ export function * parse(source, {dev=false}={}) {
     function gatherParameters() { // api function
 
         /* This function gathers the parameters for a function into a `Parameters` instance, which
-        is returned. The operands will all be valid expressions, with no empty values, but are not
-        otherwise validated (as function parameters).
+        is returned.
+
+        Note: This function ensures that parameters are always valid expressions, but does not check
+        for `yield` or `await` expressions in default arguments (leaving that to later stages).
 
         Note: Lark parameters do not use parens (so are not parsed as compound expressions).
+
+        Note: Refer to the `FunctionLiteral` class (in `/language/tokens.js`) and the `gatherBlock`
+        function below for more information on why this function must ensure that parameters always
+        end on an opening brace.
 
         Note: Arrow functions use `gatherCompoundExpression` (implicitly, as the arrow will not be
         encountered until the parameters have already been parsed). */
@@ -272,7 +278,7 @@ export function * parse(source, {dev=false}={}) {
 
             if (on(Comma)) advance();
             else if (on(OpenBrace)) break;
-            else throw new LarkError("expected a comma or block", token.location);
+            else throw new LarkError("expected a Comma or Block", token.location);
         }
 
         return result;
@@ -282,9 +288,33 @@ export function * parse(source, {dev=false}={}) {
 
         /* This function gathers a single formal statement or a braced block, containing any number
         of statements of any kind. The result is returned as a `Block` instance. It takes a single
-        optional argument that determines whether to parse the block as a functon body (`true`),
-        which must be wrapped in braces, or a control-flow block (`false`, the default), which
-        will also accept a formal statement. */
+        optional argument that determines whether to parse the block as a functon body (`true`) or
+        a control-flow block (`false`, the default).
+
+        Note: To this function, the only difference between bodies and blocks is that bodies create
+        a new scope for labels, while blocks don't. The fact that bodies require braces is enforced
+        by `gatherParameters`. This function specifically ignores that requirement, so expressions
+        like this generator comprehension are legal without braces around `yield n * 2`:
+
+            do for n in numbers yield n * 2
+
+        However, this remains illegal (braces are required around `return x * 2`):
+
+            function of x return x * 2
+
+        The `do` qualifier in the first example causes the statement `yield n * 2` to be parsed as
+        the body of a function (hence the validity of `return`, `yield` and `yield from` there). We
+        want that behavior, but it's confusing, inconvenient and pedantic to require braces in this
+        case, so we just ignore that requirement here.
+
+        Note: Braces around bodies could plausibly become optional (leaving it to user preference),
+        but functions in the statically typed dialects will probably use `returns` for their result
+        types. For example:
+
+            let sum = asm function of x: i32, y: i32 returns i32 { return x + y }
+
+        On balance, it seems best to require braces around explicit function bodies, but not around
+        bodies that're only implied by the `do` qualifier (or the skinny arrow operator). */
 
         function gatherFormalStatement() {
 
@@ -297,9 +327,14 @@ export function * parse(source, {dev=false}={}) {
             else throw new LarkError("expected a formal statement", candidate.location);
         }
 
+        // establish whether the block/body begins with an opening brace, and initialize a `Block`
+        // instance, which will store the block's statements as its operands...
+
         const [braced, block] = [on(OpenBrace), new Block(token.location)];
 
-        if (functional && not(braced)) throw new LarkError("expected a body", token.location);
+        // push new state to the (significant) `whitespace` and `labelspace` stacks, as required,
+        // then parse a braced block xor a formal statement, before popping whatever was pushed,
+        // then returning the results (the `Block` instance)...
 
         whitespace.top = true;
 

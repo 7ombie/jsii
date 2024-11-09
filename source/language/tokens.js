@@ -1153,7 +1153,15 @@ export class FunctionLiteral extends Functional {
     prefix(p, context) {
 
         /* This method parses functions, based on the given context (either `Async` or `undefined`,
-        with the later implying no qualifier). */
+        with the later implying no qualifier). The operands will contain an instance of `Variable`
+        or `SkipAssignee`, followed by a (potentially empty) `Parameters` instance, followed by a
+        (potentially empty) `Block` instance.
+
+        Note: When the parameters are ommited (there's no `of`), this function synthesizes an empty
+        instance of `Parameters`, then checks for an opening brace, before it calls `p.gatherBlock`,
+        as `gatherBlock` does not enforce that requirement (any more), as Lark does not retain that
+        requirement with do-blocks (`do for n in numbers yield n * 2` is legal, and it's really the
+        presence of the `function` operator that makes curly braces required now). */
 
         if (context?.is(Async)) this.note("async_qualifier");
 
@@ -1165,8 +1173,10 @@ export class FunctionLiteral extends Functional {
             p.advance();
 
             return this.push(p.gatherParameters(), p.gatherBlock(true));
+        }
 
-        } else return this.push(new Parameters(this.location), p.gatherBlock(true));
+        if (p.on(OpenBrace)) return this.push(new Parameters(this.location), p.gatherBlock(true));
+        else throw new LarkError("expected a Block", p.advance(false).location);
     }
 
     fix(f) {
@@ -2227,9 +2237,9 @@ export class OpenBracket extends Caller {
             const lvalue = this.lvalue || operand.lvalue;
             const rvalue = not(lvalue);
 
-            if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand[0].location);
+            if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand.location);
             else if (rvalue && slurpOperation) deslurp(operand.location);
-            else if (lvalue && splatOperation) desplat(operand[0].location);
+            else if (lvalue && splatOperation) desplat(operand.location);
             else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
 
                 throw new LarkError("a slurp must always be the last operand", operand.location);
@@ -2424,7 +2434,7 @@ export class Spread extends Operator {
 
             throw new LarkError("unexpected slurp", this.location);
 
-        } else throw new LarkError("unexpected splat", this[0].location);
+        } else throw new LarkError("unexpected splat", this.location);
     }
 }
 
