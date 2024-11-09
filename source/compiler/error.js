@@ -13,8 +13,8 @@ export class LarkError extends SyntaxError {
         least significant byte storing the column number (both internally zero-indexed).
         This just makes it easier to ignore the location data when debugging. */
 
-        const line = Math.floor(location / 256) + 1;
-        const column = location % 256 + 1;
+        const line = (location >> 8n) + 1n;
+        const column = (location % 256n) + 1n;
         const locator = `[${line}:${column}]`;
 
         super();

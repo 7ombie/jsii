@@ -94,6 +94,8 @@ export class Token extends Array {
     file) to know if an expression can be safely reused in the compiled code (`true`), or needs
     to be assigned to a Lark register during first evaluation, then referenced (`false`). */
 
+    location; empty; // initialized by the constructor
+
     LBP = 0;
     RBP = 0;
     safe = false;
@@ -112,13 +114,16 @@ export class Token extends Array {
 
     constructor(location, value=empty) {
 
-        /* This constructor takes and initializes the two remaining properties (`location` and
-        `value`) that combine with the four properties declared already to create the complete
-        set of properties that all token instances require.
+        /* This constructor takes and initializes the `location` property (as a `BigInt`), and the
+        `value` property (as a `String`, copied from the source), both provided during the Lexer
+        Stage, when all tokens are initialzed (the parser reuses tokens as AST nodes, per Pratt).
 
-        The `location` and `value` properties are provided by the Lexer Stage. The `location` is
-        the location in the source file, encoded as a single integer `Number`, while `value` is
-        the text of the token. */
+        The `location` is represented by an unsigned (and unbounded) `BigInt`, which stores the
+        column number (internally zero-indexed) in the lowest eight bits (limiting files to 256
+        columns), and the line number in the higher bits (with effectively no upperbound).
+
+        Lark recommends using 128-column source files, but supports upto 256 columns for edgecases
+        that require super-long lines. Users cannot go past 256 columns (it's a syntax error). */
 
         super();
         this.location = location;
@@ -439,9 +444,8 @@ export class Declaration extends Keyword {
     is nothing like hoisting in Lark.
 
     Note: Freezing true primitives (which are intrinsically immutable) is always a noop. However,
-    freezing a *primitive object*, freezes the object as an object. The resulting value is still
-    equal to its primitive equivalent (in Lark, but not in JavaScript), but the value cannot be
-    optimized to a primitive afterwards. */
+    freezing a *primitive object*, freezes the object (though the resulting value is still equal
+    to its primitive equivalent, according to Lark equality). */
 
     prefix(p) {
 
@@ -466,13 +470,17 @@ export class Declaration extends Keyword {
 
         const message = "a slurp must always be the last operand";
 
-        iife(this[0], function walk(assignees) {
+        iife(this[0], function $(assignees) {
+
+            /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
+            note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
+            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`). */
 
             assignees.note("lvalue");
 
             for (const assignee of assignees) {
 
-                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) walk(assignee);
+                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
                 else if (assignee.is(Spread) && assignee.prefixed) {
 
                     if (assignees.at(-1) === assignee) assignee.note("validated");
@@ -535,30 +543,6 @@ export class Operator extends Token {
     as concrete tokens, one at a time. */
 
     expression = true;
-
-    static slice(value, offset, location) {
-
-        /* Take a `value` string containing a contiguous sequence of symbolic operator characters,
-        and break it into an array of individual operators, greedily, from left to right, based on
-        a given starting `offset` in to the string.
-
-        The helper repeatedly yields the longest token it can make (starting from the beginning of
-        the string), before recuring on the remaining characters. If it is unable to exhaust the
-        string that way, the function complains instead (requiring the `location` argument).
-
-        This is the lexer's algorithm for symbolic operator disambiguation. */
-
-        if (not(value)) return [];
-
-        if (operators.includes(value)) return [value];
-
-        if (offset > value.length) throw new LarkError(`invalid operator (${value})`, location);
-
-        const [start, end] = [value.slice(0, -offset), value.slice(-offset)];
-
-        if (operators.includes(start)) return [start, ...Operator.slice(end, 1, location)];
-        else return Operator.slice(value, offset + 1, location);
-    }
 
     static subclass(location, value) {
 
@@ -624,6 +608,31 @@ export class Operator extends Token {
         }
     }
 
+
+    static slice(value, offset, location) {
+
+        /* Take a `value` string containing a contiguous sequence of symbolic operator characters,
+        and break it into an array of individual operators, greedily, from left to right, based on
+        a given starting `offset` into the string (`offset` is a `BigInt`).
+
+        The helper repeatedly yields the longest token it can make (starting from the beginning of
+        the string), before recuring on the remaining characters. If it is unable to exhaust the
+        string that way, the function complains instead (requiring the `location` argument).
+
+        This is the lexer's algorithm for symbolic operator disambiguation. */
+
+        if (not(value)) return [];
+
+        if (operators.includes(value)) return [value];
+
+        if (offset > BigInt(value.length)) throw new LarkError(`invalid operator (${value})`, location);
+
+        const [start, end] = [value.slice(0n, -offset), value.slice(-offset)];
+
+        if (operators.includes(start)) return [start, ...Operator.slice(end, 1n, location)];
+        else return Operator.slice(value, offset + 1n, location);
+    }
+
     static * lex(l, location) {
 
         /* This API method tokenizes and yields as many operators as it can gather (refer to the
@@ -633,11 +642,11 @@ export class Operator extends Token {
 
         while (l.at(operationals)) values += l.advance();
 
-        for (const value of Operator.slice(values, 1, location)) {
+        for (const value of Operator.slice(values, 1n, location)) {
 
             yield Operator.subclass(location, value);
 
-            location += value.length;
+            location += BigInt(value.length);
         }
     }
 
@@ -748,13 +757,17 @@ export class AssignmentOperator extends InfixOperator {
 
         const message = "a slurp must always be the last operand";
 
-        iife(this[0], function walk(assignees) {
+        iife(this[0], function $(assignees) {
+
+            /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
+            note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
+            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`). */
 
             assignees.note("lvalue");
 
             for (const assignee of assignees) {
 
-                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) walk(assignee);
+                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
                 else if (assignee.is(Spread) && assignee.prefixed) {
 
                     if (assignees.at(-1) === assignee) assignee.note("validated", "lvalue");
@@ -880,7 +893,7 @@ export class NumberLiteral extends Terminal {
 
         let float = false;
 
-        if (l.at(dot) && isDecimal && this.value[0] !== dot && l.peek(+2, decimal)) {
+        if (l.at(dot) && isDecimal && this.value[0] !== dot && l.peek(2n, decimal)) {
 
             float = true;
             this.value += l.advance();
@@ -897,7 +910,7 @@ export class NumberLiteral extends Terminal {
         // on operators, lex the characters and convert to JavaScript exponentiation notation - in
         // either case, update the `value` property with the result...
 
-        const atDouble = character => l.at(character) && l.peek(+2, character);
+        const atDouble = character => l.at(character) && l.peek(2n, character);
 
         if (l.at(alphas)) { // units...
 
@@ -911,7 +924,7 @@ export class NumberLiteral extends Terminal {
             const operator = l.at(slash) ? "e-" : "e";
             const exponent = new Token(location);
 
-            l.advance(2);
+            l.advance(+2);
             l.gatherWhile(digits, exponent);
 
             this.value += operator + exponent.value;
@@ -985,7 +998,7 @@ export class StringLiteral extends Terminal {
 
                 yield new StringClass(location, characters.join(empty));
 
-                l.advance(2);
+                l.advance(+2);
                 characters.length = 0;
 
                 yield new OpenInterpolation(l.locate());
@@ -1893,7 +1906,8 @@ export class Lesser extends InfixOperator {
 
 export class Let extends Declaration {
 
-    /* This class implements let-statements, which compile to const-statements. */
+    /* This class implements let-statements, which compile to const-statements that also freeze the
+    initializer (see the `Declaration` base-class).*/
 }
 
 export class LineFeed extends Terminator {
@@ -2465,7 +2479,7 @@ export class Variable extends Word {
     prefix(p) {
 
         /* Gather a name, as well as the expression that follows it, if (and only if) the following
-        expression also begins with a name (which also makes the expression unsafe to reuse). */
+        expression also begins with a name (which also makes this expression unsafe to reuse). */
 
         if (not(p.on(Variable))) return this;
 

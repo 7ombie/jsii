@@ -4,10 +4,11 @@ export function lark(name) { return `ƥ${name}` } // prefix the argument with a 
 
 export function iife(...args) {
 
-    // replace the dangling-dogballs operator
+    /* This helper replaces the dangling-dogballs operator. It takes a required callback, which is
+    always the last argument. It also takes zero or more leading arguments, which are passed to the
+    given function when its invoked. The result is returned. */
 
-    if (args.length === 1) return args[0]();
-    else return args.pop()(...args);
+    return args.pop()(...args);
 }
 
 export function not(arg) { return ! arg } // replace the logical-not operator

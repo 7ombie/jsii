@@ -33,14 +33,23 @@ export function * lex(source, {dev=false}={}) {
     the `lex` generator methods of the classes exported by `objects.js`, so they can handle the
     specifics of parsing the given token type, yielding one or more tokens of that type. */
 
-    function advance(stride=1) { // api function
+    function advance(stride=1n) { // api function
 
-        /* This function takes an optional number of characters to advance by, defaulting to `1`,
+        /* This function takes an optional number of characters to advance by, defaulting to `1n`,
         and advances that far. If the new character exists and is is legal, it's returned. If the
         source becomes exhausted, `undefined` is returned, and if the new character's illegal,
-        an exception is raised. */
+        an exception is raised.
 
-        index += stride;
+        This function will also raise an exception if the source contains a line with more than 256
+        characters. */
+
+        index += BigInt(stride);
+
+        if (index - lastNewlineIndex > 256n) {
+
+            throw new LarkError("more than 256 columns", 255n + (line << 8n));
+        }
+
         character = source[index];
 
         if (character === undefined) return undefined;
@@ -89,39 +98,41 @@ export function * lex(source, {dev=false}={}) {
         /* This function takes a string, representing a character or character set, and returns
         `true` if the *next character* is in the set, else `false`. */
 
-        return characters.includes(source[index + 1]);
+        return characters.includes(source[index + 1n]);
     }
 
     function peek(offset, characters) { // api function
 
-        /* This function takes a string, representing a character or character set, and returns
-        `true` if the *character following the next character* is in the set, else `false`. */
+        /* This function does the same thing as `on` and `at`, except that it takes an `offset` as
+        a `BigInt` as its first argument, and the chracter set as the second arg (so `on(c)` would
+        equate to `peek(0n, c)` and `at(c)` to `peek(1n, c)`. */
 
         return characters.includes(source[index + offset]);
     }
 
     function terminate() { // api function
 
-        /* Update `lastNewline` to track the index of the most recent newline, before updating the
-        line number. Note: As new logical lines can be created by commas, the function must also
+        /* Update `lastNewlineIndex` to track the index of the most recent newline, before updating
+        the line number. Note: As logical lines can be created by commas, the function must also
         check for a proper newline. */
 
         if (not(on(newline))) return;
 
-        lastNewline = index;
+        lastNewlineIndex = index;
         line++;
     }
 
     function locate() { // api function
 
         /* Generate a location value that encodes the current line and column numbers within a
-        single `Number`, by multipling the line number by 256, then adding the column number
+        single `BigInt`, by multipling the line number by 256, then adding the column number
         to the result.
 
-        Note: The numbers are zero-indexed, limiting source files to 256 columns, and a few
-        trillion lines. */
+        Note: The numbers are zero-indexed (internally), limiting source files to 256 columns
+        (though 128 columns are recommended in normal source files). There's no upperbound on
+        the number of lines. */
 
-        return line * 256 + (index - lastNewline - 1);
+        return (line << 8n) + (index - lastNewlineIndex - 1n);
     }
 
     function * gather(interpolating=false) { // api function
@@ -192,7 +203,7 @@ export function * lex(source, {dev=false}={}) {
         dev
     };
 
-    let [character, index, line, lastNewline] = [empty, -1, 0, -1];
+    let [character, index, line, lastNewlineIndex] = [empty, -1n, 0n, -1n];
 
     advance(); yield * gather();
 }
