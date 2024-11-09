@@ -57,9 +57,9 @@ export class Token extends Array {
     Subclasses occasionally add helper methods specific to the class, but do not change the shape
     of their instances.
 
-    The API methods (`token`, `prefix`, `infix`, `validate` and `js`) each take a reference to the
-    corresponding API object (`lexer`, `parser` or `writer`) as their first argument, and are
-    individually documented below (within the default implementations).
+    The API methods (`token`, `prefix`, `infix`, `fix` and `js`) each take a reference to an API
+    object (`lexer`, `parser`, `fixer` or `writer`) as their first argument, and are individually
+    documented below (within their respective default implementations).
 
     Every token defines or inherits `LBP` and `RBP` properties (short for *left-binding-power*
     and *right-binding-power* respectively), refered to hereafter as *LBP* and *RBP*.
@@ -182,19 +182,6 @@ export class Token extends Array {
         node) instead of a context. The default implementation just throws an exception. */
 
         throw new LarkError("invalid token (in infix position)", this.location);
-    }
-
-    validate(p) { // api method
-
-        /* This method takes a reference to the Parser API (mainly to access the `check` function,
-        which is used to validate the statement, based on the types of blocks it is nested within.
-        This is used by statements like `return`, `break`, `yield` and `await`, which are invalid
-        unless they are nested within specific types of blocks.
-
-        The method returns `true` if the statement is valid, and `false` otherwise. This default
-        implementation makes tokens invalid in any context. */
-
-        return false;
     }
 
     fix(f) { this.affix(f) }
@@ -322,8 +309,6 @@ export class Caller extends Opener {
 
     LBP = 17;
     expression = true;
-
-    validate(_) { return true }
 }
 
 export class Word extends Terminal {
@@ -343,8 +328,6 @@ export class Word extends Terminal {
         else if (reserved.includes(value)) yield new Reserved(location, value);
         else yield new Variable(location, value);
     }
-
-    validate(_) { return true }
 }
 
 export class Constant extends Word {
@@ -412,13 +395,22 @@ export class Keyword extends Word {
 
 export class BranchStatement extends Keyword {
 
-    /* This is the abstract base class for statements that are used to branch from loops (in
-    practice, just `break` and `continue`) and accept an optional (`Variable`) label. */
+    /* This is the abstract base class for flow-transfer statements that accept an optional
+    `Variable` label (in practice, just `break` and `continue`). */
 
     prefix(p) {
 
-        if (p.on(Variable)) return this.note("labelled").push(p.gatherVariable());
-        else return this;
+        /* Gather a `break` or `continue` statement, with an optional label, validating the
+        label when present. */
+
+        if (p.on(Variable)) {
+
+            this.note("labelled").push(p.gatherVariable());
+
+            if (p.label(this[0]) !== null) return this;
+            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
+
+        } else return this;
     }
 
     js(w) { return `${this.spelling}${this.labelled ? space + this[0].js(w) : empty}` }
@@ -649,8 +641,6 @@ export class Operator extends Token {
             location += BigInt(value.length);
         }
     }
-
-    validate(_) { return true }
 
     get named() {
 
@@ -932,8 +922,6 @@ export class NumberLiteral extends Terminal {
     }
 
     prefix(_) { return this }
-
-    validate(_) { return true }
 }
 
 export class StringLiteral extends Terminal {
@@ -1063,8 +1051,6 @@ export class StringLiteral extends Terminal {
 
     infix(p, left) { return this.note("tagged_template").push(left).prefix(p) }
 
-    validate(_) { return true }
-
     js(w) {
 
         /* Generate a template literal from the various parts of the string literal (text literals
@@ -1153,15 +1139,7 @@ export class FunctionLiteral extends Functional {
     prefix(p, context) {
 
         /* This method parses functions, based on the given context (either `Async` or `undefined`,
-        with the later implying no qualifier). The operands will contain an instance of `Variable`
-        or `SkipAssignee`, followed by a (potentially empty) `Parameters` instance, followed by a
-        (potentially empty) `Block` instance.
-
-        Note: When the parameters are ommited (there's no `of`), this function synthesizes an empty
-        instance of `Parameters`, then checks for an opening brace, before it calls `p.gatherBlock`,
-        as `gatherBlock` does not enforce that requirement (any more), as Lark does not retain that
-        requirement with do-blocks (`do for n in numbers yield n * 2` is legal, and it's really the
-        presence of the `function` operator that makes curly braces required now). */
+        with the later implying no qualifier). */
 
         if (context?.is(Async)) this.note("async_qualifier");
 
@@ -1173,10 +1151,8 @@ export class FunctionLiteral extends Functional {
             p.advance();
 
             return this.push(p.gatherParameters(), p.gatherBlock(true));
-        }
 
-        if (p.on(OpenBrace)) return this.push(new Parameters(this.location), p.gatherBlock(true));
-        else throw new LarkError("expected a Block", p.advance(false).location);
+        } else return this.push(new Parameters(this.location), p.gatherBlock(true));
     }
 
     fix(f) {
@@ -1421,21 +1397,9 @@ export class Break extends BranchStatement {
 
     /* This class implements the `break` statement. */
 
-    validate(p) {
-
-        /* Just validate the label for now. */
-
-        if (this.labelled) {
-
-            if (p.label(this[0]) !== null) return true;
-            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
-
-        } else return true;
-    }
-
     fix(f) {
 
-        /* Validate this `break` statement (no need to fix its label, when present). */
+        /* Validate this `break` statement (any label has already been validated). */
 
         if (f.loopstack.top) return;
         else if (f.blockstack.top && this.labelled) return;
@@ -1523,21 +1487,9 @@ export class Continue extends BranchStatement {
 
     /* This class implements the `continue` statement, just like JavaScript. */
 
-    validate(p) {
-
-        /* Just validate the label for now. */
-
-        if (this.labelled) {
-
-            if (p.label(this[0]) !== null) return true;
-            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
-
-        } else return true;
-    }
-
     fix(f) {
 
-        /* Validate this `continue` statement (no need to fix its label, when present). */
+        /* Validate this `continue` statement (any label has already been validated). */
 
         const location = this.location;
 
@@ -2103,8 +2055,6 @@ export class OpenBrace extends Opener {
 
         } else return this.push(...operands);
     }
-
-    validate(_) { return true }
 
     fix(f) {
 

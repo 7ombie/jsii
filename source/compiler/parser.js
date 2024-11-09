@@ -104,64 +104,34 @@ export function * parse(source, {dev=false}={}) {
 
     function gather(RBP=0, context=undefined) { // api function
 
-        /* This function implements Pratt's Algorithm. It is textbook, except for some extra
-        validation that ensures two things:
+        /* This function implements Pratt's Algorithm. It's close to textbook.
 
-        1) Only valid expressions get passed to `infix` methods. Statements that cannot also
-           be expressions are immediately returned.
-        2) Statements (like `break` and `return`) and expressions (like `yield`) that must
-           only appear in specific contexts are validated here, and an exception is raised
-           if a given construct cannot appear on the current block stack.
+        The first (required) argument is the binding power. The second (optional) argument can be
+        any arbitrary value, as it's simply passed to the `prefix` method of the first token in
+        the expression, as its context. It is used by qualifiers like `Async` to contextualize
+        the statements they qualify (so for example, an async function will know to validate
+        `await` expressions in its body).
 
-        Point 1 prevents a statement (that ends without an expression) from being incorrectly
-        passed to an operator that immediately follows the statement, which is a syntax error,
-        unless it forms a valid expression (the statement is also a valid expression).
+        Note: The main (`while`) loop only loops on valid expressions, so statements followed by an
+        operator only act as a left operand when the statement is also a valid expression.
 
-        Point 1 eliminates the issue that `function` has in JavaScript, where functions cannot
-        also be expressions when the statement begins with the function-keyword (without valid-
-        ating anything that should remain invalid). This also applies to all formal expressions
-        (any statment beginning with `do`, `async`, `await`, `lambda`, `yield` etc).
-
-        Note: The distinction between formal and informal statements only applies lexically
-        (to blocks without braces). In general, a statement is a statement and an expression
-        is an expression, without exception; they are just not mutually exclusive.
-    
-        The first (required) argument is the binding power. The second (optional) argument can
-        be anything, as it is simply passed to the `prefix` method of the first token in the
-        expression, as a context. In practice, it is used by `Async` to contextualize the
-        function statement that follows (`Async.prefix` checks the next token begins a
-        function literal before it invokes this function).
-
-        Note: The main loop checks for and breaks on operative keywords (`yield`, `throw` etc)
-        as their `expression` property is `true` (so they're recognized as operators), but they
-        need to be parsed as keywords (despite still being valid expressions). Otherwise, for
-        example, the `yield` operator in a statements like `if x yield y` would be parsed as
-        an infix operator, when it's a keyword (beginning a formal expression). */
-
-        function validate(result, note) {
-
-            /* Use the `validate` method of the token instance to check it, and complain if
-            it is not valid (given the blocks it is nested within), also noting whether it's
-            in the prefix or infix denotation. */
-
-            if (result.validate(api)) return result.note(note);
-            else throw new LarkError(`unexpected ${result.value} statement`, result.location);
-        }
+        Note: The main loop has to special-case keywords, so that operative keywords (like `yield`
+        and `throw`) still act like keywords when used to begin an unbraced control-flow block,
+        despite also being operators (that also introduce valid expressions). */
 
         let current, result;
 
         current = token;
         token = advance();
-        result = validate(current.prefix(api, context), "prefixed");
+        result = current.prefix(api, context).note("prefixed");
 
         if (result.expression) while (RBP < token.LBP) {
 
+            if (token instanceof Keyword) break;
+
             current = token;
-
-            if (current instanceof Keyword) return result;
-
             token = advance();
-            result = validate(current.infix(api, result), "infixed");
+            result = current.infix(api, result).note("infixed");
         }
 
         return result;
