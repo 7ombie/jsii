@@ -35,15 +35,15 @@ export function * lex(source, {dev=false}={}) {
 
     function advance(stride=1n) { // api function
 
-        /* This function takes an optional number of characters to advance by, defaulting to `1n`,
-        and advances that far. If the new character exists and is is legal, it's returned. If the
-        source becomes exhausted, `undefined` is returned, and if the new character's illegal,
-        an exception is raised.
+        /* This function takes an optional number of characters to advance by (as a BigInt that
+        defaults to `1n`) and advances that far. If the new character is legal, it's returned.
+        If the source becomes exhausted, `undefined` is returned, and if the new character's
+        illegal, an exception is raised.
 
-        This function will also raise an exception if the source contains a line with more than 256
-        characters. */
+        This function will also raise an exception if the source contains a line with more than
+        256 characters. */
 
-        index += BigInt(stride);
+        index += stride;
 
         if (index - lastNewlineIndex > 256n) {
 

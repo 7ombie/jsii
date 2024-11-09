@@ -924,7 +924,7 @@ export class NumberLiteral extends Terminal {
             const operator = l.at(slash) ? "e-" : "e";
             const exponent = new Token(location);
 
-            l.advance(+2);
+            l.advance(2n);
             l.gatherWhile(digits, exponent);
 
             this.value += operator + exponent.value;
@@ -998,7 +998,7 @@ export class StringLiteral extends Terminal {
 
                 yield new StringClass(location, characters.join(empty));
 
-                l.advance(+2);
+                l.advance(2n);
                 characters.length = 0;
 
                 yield new OpenInterpolation(l.locate());
