@@ -2454,12 +2454,34 @@ export class Var extends Declaration {
 
 export class Variable extends Word {
 
-    /* This class implements variable names. */
+    /* This class implements (variable) names, which can optionally prefix other names to form an
+    expression that invokes the first name on the expression that the second name introduces. The
+    expression may just be the second name, but can be any expression that begin with a name, and
+    this works recursively (so `a b c d(1, 2, 3)` compiles to `a(b(c(d(1, 2, 3))))`). */
 
     safe = true;
     expression = true;
 
-    prefix(_) { return this }
+    prefix(p) {
+
+        /* Gather a name, as well as the expression that follows it, if (and only if) the following
+        expression also begins with a name (which also makes the expression unsafe to reuse). */
+
+        if (not(p.on(Variable))) return this;
+
+        this.safe = false;
+
+        return this.push(p.gatherExpression());
+    }
+
+    js(w) {
+
+        /* Render a name, or an invocation of the name (passing the expression that followed it) if
+        the implicit invocation grammar was accepted during the Parser Stage. */
+
+        if (this.length) return `${this.value}(${this[0].js(w)})`;
+        else return this.value;
+    }
 }
 
 export class VoidConstant extends Constant {

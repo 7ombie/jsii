@@ -1,5 +1,5 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
-import { put, not, lark, Stack } from "../compiler/helpers.js"
+import { put, Stack } from "../compiler/helpers.js"
 import { fix } from "../compiler/fixer.js"
 
 import { Header, Label } from "../language/tokens.js"
@@ -46,18 +46,6 @@ export function * write(source, {dev=false}={}) {
         return openBrace + newline + code + newline + indentation + closeBrace;
     }
 
-    function register(declare=true) { // api function
-
-        /* Increment the register counter to generate and return a Lark register name, declaring it
-        in a preamble if the optional argument is truthy (the default). */
-
-        const register = lark(registerCounter++);
-
-        if (declare) preamble(`let ${register}`);
-
-        return register;
-    }
-
     function preamble(string, terminate=true) { // api function
 
         /* Take a preamble string and an optional bool. Push the string to the `preambles` array,
@@ -69,10 +57,9 @@ export function * write(source, {dev=false}={}) {
     // gather the api functions and flags into the api object, initialize the internal state, then
     // walk the parse tree, yielding the results (as strings), one top-level statement at a time...
 
-    const api = {preamble, register, write, writeBlock, dev};
+    const api = {preamble, write, writeBlock, dev};
 
     let indentation = empty;
-    let registerCounter = 0;
     let preambles = new Stack();
 
     yield * walk(fix(source, {dev}));

@@ -1,5 +1,5 @@
 let foo = thing
-lets = [x, y, {foo, bar, spam: x, [z], __proto__: Number}, x] = foo
+let s = [x, y, {foo, bar, spam: x, [z], __proto__: Number}, x] = foo
 [x, y, {foo, bar, spam: x, [z], [spam, eggs, ...foo], ...o }, ...f] = options
 
 []
@@ -220,3 +220,5 @@ theory.com() is Types[1]
 conspiracy_theory is not Types[20 * 8.x]
 
 0xFF.toString(16)
+
+foo bar spam eggs (1, 2, 3)

@@ -1633,6 +1633,29 @@ asm multiply of x: i32, y: i32 returns i32 {
 
 put multiply(1, 1)
 
+let load = function of filepath {
+    let file = open(filepath)
+    defer { file.close() }
+    return file.toString()
+}
+
+const load = function(filepath) {
+    try {
+        const file = open(filepath);
+        return file.toString();
+    } finally { file.close() }
+};
+
+
+let SpaceInvader = class of Sprite {
+
+    this.spritesheet = load("../sprites/invader.png")
+
+    prototype.foo = function of x {
+
+    }
+}
+
 Observations Regarding Primitives
 =================================
 
