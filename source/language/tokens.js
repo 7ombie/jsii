@@ -1235,7 +1235,7 @@ export class As extends PrefixOperator {
     js(w) {
 
         if (this.validated) return `__proto__: ${this[0].js(w)}`;
-        else throw new LarkError("unexpected `as` operation", this.operand);
+        else throw new LarkError("unexpected `as` operation", this.location);
     }
 }
 
@@ -2085,7 +2085,8 @@ export class OpenBrace extends Opener {
     fix(f) {
 
         /* Validate a set, map, object literal or object breakdown, iterating over its operands
-        and checking labels (particularly `__proto__` labels), splats and slurps. */
+        and checking labels (particularly `__proto__` labels) and `as` operations, as well as
+        any splats and slurps. */
 
         const badValueMessage = "expected a label, name, splat or prototype";
         const badSlurpMessage = "a slurp must always be the last operand";
@@ -2094,11 +2095,11 @@ export class OpenBrace extends Opener {
 
         let prototypes = 0;
 
-        if (this.set_literal) for (const operand of this) {
+        if (this.set_literal) for (const operand of this) { // set literals...
 
             if (operand.is(Spread) && operand.infixed) operand.note("validated");
 
-        } else if (this.map_literal) for (const operand of this) {
+        } else if (this.map_literal) for (const operand of this) { // map literals...
 
             if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) {
 
@@ -2106,7 +2107,7 @@ export class OpenBrace extends Opener {
 
             } else throw new LarkError("expected a label or splat", operand.location);
 
-        } else if (this.lvalue) for (const operand of this) { // breakdowns...
+        } else if (this.lvalue) for (const operand of this) { // object breakdowns...
 
             if (operand.is(Spread) && operand.prefixed) {
 
@@ -2120,7 +2121,7 @@ export class OpenBrace extends Opener {
                 else throw new LarkError(badLabelMessage, operand[0].location);
             }
 
-        } else for (const operand of this) { // object literals...
+        } else operandsLoop: for (const operand of this) { // object literals...
 
             if (operand.is(Label, Variable, As)) operand.note("validated");
             else if (operand.is(Spread) && operand.infixed) operand.note("validated");
@@ -2128,8 +2129,11 @@ export class OpenBrace extends Opener {
 
             if (operand.is(As) || operand.proto_label) {
 
-                if (++prototypes < 2) this.note("oo_literal");
-                else throw new LarkError(badProtoMessage, operand[0].location);
+                if (++prototypes < 2) { this.note("oo_literal"); continue operandsLoop }
+
+                const location = operand.is(As) ? operand.location : operand[0].location;
+
+                throw new LarkError(badProtoMessage, location);
 
             } else if (operand.is(Spread) && operand.infixed) operand.note("validated");
         }

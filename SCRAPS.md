@@ -1088,23 +1088,40 @@ compiler will throw away (as they are not used for anything).
 Object Literals
 ---------------
 
-Lark object literals infer `null` prototypes, unless a prototype is explicitly set using the magic
-`__proto__` key:
+Object literals infer `null` prototypes, unless a prototype is explicitly set using the magic
+`__proto__` key (from JavaScript), or Lark's equivalent `as` prefix-operator:
 
-    let o = {x: 1, y: 2}                -> const o = {__proto__: null, x: 1, y: 2}
+    let hash = {x: 1}                           -> const hash = {__proto__: null, x: 1}
+    let object = {__proto__: Object, x: 1}      -> const object = {__proto__: Object, x: 1}
+    let object = {as Object, x: 1}              -> const object = {__proto__: Object, x: 1}
 
-    let oo = {as Object, x: 1}  -> const oo = {__proto__: Object, x: 1}
+Note: You can use the `as` prefix-operator anywhere within the object literal, but it's a
+syntax error to specify more than one prototype (whether you use the `__proto__` key, the
+`as` operator).
 
-Note: You can use the `as` prefix-operator anywhere within the object literal, but it's a syntax
-error to include more than one (really just as a sanity check).
+Dynamic keys use square brackets (just like JavaScript):
 
-Dynamic keys use parens, instead of square brackets (just like computed function names):
+    {[foo]: 1, [bar]: 2}                        -> {__proto__: null, [foo]: 1, [bar]: 2}
 
-    {(foo): 1, (bar): 2}                -> {__proto__: null, [foo]: 1, [bar]: 2}
+You can also use names as keys and values, so these two lines are equivalent:
 
-Note: The `__proto__` key has no special meaning in Lark object literals:
+    {x, y, z}
+    {x: x, y: y, z: z}
 
-    {__proto__: Object}                 -> {__proto__: null, "__proto__": Object}
+Set Literals
+------------
+
+    let numbers = {[1, 2, 3]}                   -> const numbers = Object.freeze(new Set([1, 2, 3]));
+
+Map Literals
+------------
+
+    let scores = {{true: 1000, false: -2500}}   -> const scores = Object.freeze(new Map([[true, 1000], [false, -2500]]));
+
+            create  delete  write   read
+pack        x       o       o       o
+seal        x       x       o       o
+freeze      x       x       x       o
 
 Math Operators
 --------------
@@ -1615,6 +1632,21 @@ asm multiply of x: i32, y: i32 returns i32 {
 }
 
 put multiply(1, 1)
+
+Observations Regarding Primitives
+=================================
+
+Packing, sealing or freezing `null` or `void` is a noop (the result is the same value).
+
+Packing, sealing and freezing primitives has no effect when the value is a proper primitive, though
+*primitive objects* can be packed, sealed or frozen (as objects).
+
+Symbols and BigInts are *strict primitives* (they cannot be called with `new`).
+
+Regexs are objects.
+
+Operators that Coerce Operands to Primitves
+-------------------------------------------
 
 JavaScript Operators that coerce to a primitive: Unary arithmetic (`-`, `+`, `--` and `++`), binary
 arithmetic (`+`, `-`, `*`, `/`, `%` and `**`), bitwise-not (`~`) and the bitwise infix operators
