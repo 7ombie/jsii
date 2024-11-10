@@ -1,5 +1,5 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
-import { put, Stack } from "../compiler/helpers.js"
+import { put, not, Stack } from "../compiler/helpers.js"
 import { fix } from "../compiler/fixer.js"
 
 import { Header, Label } from "../language/tokens.js"
@@ -13,14 +13,18 @@ export function * write(source, {dev=false}={}) {
         /* Take a statement iterator, traverse it, and convert each statement to its corresponding
         JavaScript code, adding semi-colons as required. On each iteration, yield any preambles that
         were generated during the compilation of the statement, before yielding the JavaScript for
-        the statement itself. */
+        the statement itself.
+
+        When invoking the token's `js` method, the API object is passed twice, once as the API, and
+        again as the context. This makes `context === w` when the grammar is at the top level of
+        the block that contains it. */
 
         preambles.top = [];
 
-        for (const statement of statements) if (statement["ignore"] === false) {
+        for (const statement of statements) if (not(statement.ignore)) {
 
             const terminated = statement.is(Header, Label);
-            const javascript = statement.js(api);
+            const javascript = statement.js(api, api);
 
             yield * preambles.top.map(preamble => indentation + preamble);
             yield indentation + javascript + (terminated ? empty : semicolon);

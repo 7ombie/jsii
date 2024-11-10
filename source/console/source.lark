@@ -143,7 +143,6 @@ function {
     }
 }
 
-throw Foo("spam and eggs")
 dev if x { Y }
 dev 1 + 2 * 3 + 3
 pack new Foo(x, y, z)
@@ -230,3 +229,9 @@ do for number in numbers yield number * 2
 [(do for number in numbers yield number * 2)...]
 
 function { return }
+
+x when y else throw new Foo("spam and eggs")
+throw new Foo("spam and eggs")
+
+x not in y
+y not of x
