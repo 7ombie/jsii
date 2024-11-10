@@ -47,7 +47,7 @@ export function * lex(source, {dev=false}={}) {
 
         if (index - lastNewlineIndex > 256n) {
 
-            throw new LarkError("more than 256 columns", 255n + (line << 8n));
+            throw new LarkError("more than 256 Columns", 255n + (line << 8n));
         }
 
         character = source[index];
@@ -57,7 +57,7 @@ export function * lex(source, {dev=false}={}) {
         const code = character.charCodeAt();
 
         if (code > 31 && code < 127 || code === 10) return character;
-        else throw new LarkError(`illegal character (${code})`, locate());
+        else throw new LarkError(`illegal Character (${code})`, locate());
     }
 
     function gatherWhile(characters, token=undefined) { // api function
@@ -182,7 +182,7 @@ export function * lex(source, {dev=false}={}) {
                 if (interpolating && on(closeParen)) return; // interpolation exit point
                 else yield * Delimiter.lex(api, location);
 
-            } else throw new LarkError(`unexpected character (${character})`, location);
+            } else throw new LarkError(`unexpected Character (${character})`, location);
 
             advance();
         }

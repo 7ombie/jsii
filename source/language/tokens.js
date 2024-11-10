@@ -172,7 +172,7 @@ export class Token extends Array {
         being qualified, so it can validate its blocks, which may contain statements (`return`
         or `await`, for example) that are only valid when specific qualifiers apply. */
 
-        throw new LarkError("invalid token (in prefix position)", this.location);
+        throw new LarkError("invalid Token (in prefix denotation)", this.location);
     }
 
     infix(p, left) { // api method
@@ -181,7 +181,7 @@ export class Token extends Array {
         the infix position (with something before them), and takes its `left` operand (as an AST
         node) instead of a context. The default implementation just throws an exception. */
 
-        throw new LarkError("invalid token (in infix position)", this.location);
+        throw new LarkError("invalid Token (in infix denotation)", this.location);
     }
 
     fix(f) { this.affix(f) }
@@ -408,7 +408,7 @@ export class BranchStatement extends Keyword {
             this.note("labelled").push(p.gatherVariable());
 
             if (p.label(this[0]) !== null) return this;
-            else throw new LarkError(`undefined label '${this[0].value}'`, this[0].location);
+            else throw new LarkError(`undefined Label '${this[0].value}'`, this[0].location);
 
         } else return this;
     }
@@ -447,7 +447,7 @@ export class Declaration extends Keyword {
         this.push(p.gatherAssignees());
 
         if (p.on(Assign)) p.advance();
-        else throw new LarkError("expected an assigment operator");
+        else throw new LarkError("expected the Assigment Symbol");
 
         return this.push(p.gatherExpression());
     }
@@ -460,7 +460,7 @@ export class Declaration extends Keyword {
         operations too (see `AssignmentOperator`), but not inplace-assignment (as updating a name
         cannot use a breakdown). */
 
-        const message = "a slurp must always be the last operand";
+        const message = "a Slurp must always be the last operand";
 
         iife(this[0], function $(assignees) {
 
@@ -617,7 +617,7 @@ export class Operator extends Token {
 
         if (operators.includes(value)) return [value];
 
-        if (offset > BigInt(value.length)) throw new LarkError(`invalid operator (${value})`, location);
+        if (offset > BigInt(value.length)) throw new LarkError(`invalid Operator (${value})`, location);
 
         const [start, end] = [value.slice(0n, -offset), value.slice(-offset)];
 
@@ -717,7 +717,7 @@ export class ArrowOperator extends GeneralOperator {
         (when present) is either a variable name or is wrapped in parens, and that the
         operator is right-associative. */
 
-        const message = "arrow operators require parenthesized arguments";
+        const message = "the Arrow Operator requires parenthesized arguments";
 
         if (not(left.is(OpenParen, Variable))) throw new LarkError(message, left.location);
 
@@ -745,7 +745,7 @@ export class AssignmentOperator extends InfixOperator {
 
         if (this.spelling !== equals) return this.affix(f);
 
-        const message = "a slurp must always be the last operand";
+        const message = "a Slurp must always be the last operand";
 
         iife(this[0], function $(assignees) {
 
@@ -825,7 +825,7 @@ export class NumberLiteral extends Terminal {
 
         n(n, float, location) {                     // bigint literals...
 
-            if (float) throw new LarkError("invalid (fractional) bigint literal", location);
+            if (float) throw new LarkError("invalid (fractional) BigInt Literal", location);
             else return `${n}n`;
         }
     };
@@ -875,7 +875,7 @@ export class NumberLiteral extends Terminal {
 
         if (this.value.at(-1) === underscore) { // trailing separator...
 
-            throw new LarkError("number literals cannot end on an underscore", location);
+            throw new LarkError("a Number Literal cannot end on an underscore", location);
         }
 
         // if a dot is present and followed by a decimal digit, continue to lex this number literal
@@ -892,7 +892,7 @@ export class NumberLiteral extends Terminal {
 
         if (float && this.value.at(-1) === underscore) { // trailing separator (again)...
 
-            throw new LarkError("number literals cannot end on an underscore", this.location);
+            throw new LarkError("a Number Literal cannot end on an underscore", this.location);
         }
 
         // finally, check for a numeric unit xor an exponentiation pseudo-operator - on units, use
@@ -1004,7 +1004,7 @@ export class StringLiteral extends Terminal {
 
                 if (tailCount > headCount) {            // too many closing quotes...
 
-                    const message = `${headCount} opening quotes with ${tailCount} closing quotes`;
+                    const message = `${headCount} opening Quotes with ${tailCount} closing Quotes`;
 
                     throw new LarkError(message, location);
                 }
@@ -1234,7 +1234,7 @@ export class As extends PrefixOperator {
     js(w) {
 
         if (this.validated) return `__proto__: ${this[0].js(w)}`;
-        else throw new LarkError("unexpected `as` operation", this.location);
+        else throw new LarkError("unexpected As Operation", this.location);
     }
 }
 
@@ -1354,7 +1354,7 @@ export class Async extends Functional {
     prefix(p) {
 
         if (p.on(FunctionLiteral)) return this.push(p.gather(0, this));
-        else throw new LarkError("`async` qualifier without `function` keyword", this.location);
+        else throw new LarkError("Async Qualifier without a Function Literal", this.location);
     }
 
     js(w) { return this[0].js(w) }
@@ -1374,7 +1374,7 @@ export class Await extends CommandStatement {
         /* Validate this `await` expression, then fix its expression node. */
 
         if (f.awaitstack.top === true && f.paramstack.top === false) this.affix(f);
-        else throw new LarkError("unexpected `await` expression", this.location);
+        else throw new LarkError("unexpected Await Operation", this.location);
     }
 
     js(w) { return `await ${this[0].js(w)}` }
@@ -1403,7 +1403,7 @@ export class Break extends BranchStatement {
 
         if (f.loopstack.top) return;
         else if (f.blockstack.top && this.labelled) return;
-        else throw new LarkError( "unexpected `break` statement", this.location);
+        else throw new LarkError( "unexpected Break Statement", this.location);
     }
 }
 
@@ -1452,7 +1452,7 @@ export class Label extends InfixOperator {
 
         if (p.on(If, Else, While, For)) { // a control-flow label...
 
-            if (not(left instanceof Variable)) throw new LarkError("invalid label", this.location);
+            if (not(left.is(Variable))) throw new LarkError("invalid Label", this.location);
 
             this.note("validated").expression = false;
             p.label(left, p.on(For, While));
@@ -1473,7 +1473,7 @@ export class Label extends InfixOperator {
     js(w) {
 
         if (this.validated) return `${this[0].js(w)}: ${this[1].js(w)}`;
-        else throw new LarkError("unexpected label", this.location);
+        else throw new LarkError("unexpected Label", this.location);
     }
 }
 
@@ -1494,7 +1494,7 @@ export class Continue extends BranchStatement {
         const location = this.location;
 
         if (f.loopstack.top) return;
-        else throw new LarkError("unexpected `continue` statement", location);
+        else throw new LarkError("unexpected Continue Statement", location);
     }
 }
 
@@ -1523,7 +1523,7 @@ export class Delete extends Keyword {
 
             return this.push(expression);
 
-        } else throw new LarkError("can only delete properties, keys and indices", this.location);
+        } else throw new LarkError("can only delete Properties, Keys and Indices", this.location);
     }
 
     js(w) {
@@ -1709,14 +1709,14 @@ export class For extends Header {
         this.push(p.gatherAssignees());
 
         if (p.on(In, Of, On, From)) this.note(`for_${p.advance(false).value}`);
-        else throw new LarkError("incomplete for-statement", this.location);
+        else throw new LarkError("incomplete For Statement", this.location);
 
         const expression = p.gatherExpression();
 
         if (expression.is(Spread)) {
 
             if (this.for_in && expression.infixed) expression.note("validated", "for_loop");
-            else throw new LarkError("unexpected slurp", expression.location);
+            else throw new LarkError("unexpected Slurp", expression.location);
         }
 
         return this.push(expression, p.gatherBlock(context?.is(Do)));
@@ -1878,9 +1878,9 @@ export class LineFeed extends Terminator {
     not be significant, depending on the current LIST state, which is maintained by the parser
     implicitly (removing line-feed instances from the token stream as required). */
 
-    prefix(_) { throw new LarkError("unexpected newline", this.location) }
+    prefix(_) { throw new LarkError("unexpected Newline", this.location) }
 
-    infix(_) { throw new LarkError("unexpected newline", this.location) }
+    infix(_) { throw new LarkError("unexpected Newline", this.location) }
 }
 
 export class LSHIFT extends InfixOperator {
@@ -1934,7 +1934,7 @@ export class Not extends GeneralOperator {
 
             return this.push(left, p.gatherExpression(this.LBP));
 
-        } else throw new LarkError("unexpected not-operator", this.location);
+        } else throw new LarkError("unexpected Not Operator", this.location);
     }
 
     js(w) {
@@ -2045,12 +2045,12 @@ export class OpenBrace extends Opener {
 
         if (operands.length === 1 && operands[0].is(OpenBracket)) {
 
-            if (this.lvalue) throw new LarkError("sets cannot be lvalues", this.location);
+            if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
             else return this.note("set_literal").push(...operands[0][0]);
 
         } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
 
-            if (this.lvalue) throw new LarkError("maps cannot be lvalues", this.location);
+            if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
             else return this.note("map_literal").push(...operands[0]);
 
         } else return this.push(...operands);
@@ -2062,10 +2062,10 @@ export class OpenBrace extends Opener {
         and checking labels (particularly `__proto__` labels) and `as` operations, as well as
         any splats and slurps. */
 
-        const badValueMessage = "expected a label, name, splat or prototype";
-        const badSlurpMessage = "a slurp must always be the last operand";
-        const badLabelMessage = "expected a name or string literal";
-        const badProtoMessage = "duplicate prototype specifiers";
+        const badValueMessage = "expected a Label, Name, Splat or Prototype";
+        const badSlurpMessage = "a Slurp must always be the last operand";
+        const badLabelMessage = "expected a Name or String Literal";
+        const badProtoMessage = "duplicate Prototypes";
 
         let prototypes = 0;
 
@@ -2079,7 +2079,7 @@ export class OpenBrace extends Opener {
 
                 operand.note("validated");
 
-            } else throw new LarkError("expected a label or splat", operand.location);
+            } else throw new LarkError("expected a Label or Splat", operand.location);
 
         } else if (this.lvalue) for (const operand of this) { // object breakdowns...
 
@@ -2164,8 +2164,8 @@ export class OpenBracket extends Caller {
         /* Validate an array literal, array breakdown or bracket notation, principly by iterating
         over its operands and validating any splats and slurps. */
 
-        const deslurp = location => { throw new LarkError("unexpected slurp operation", location) }
-        const desplat = location => { throw new LarkError("unexpected splat operation", location) }
+        const deslurp = location => { throw new LarkError("unexpected Slurp operation", location) }
+        const desplat = location => { throw new LarkError("unexpected Splat operation", location) }
 
         const notation = this.infixed;
         const operands = this[notation ? 1 : 0];
@@ -2192,7 +2192,7 @@ export class OpenBracket extends Caller {
             else if (lvalue && splatOperation) desplat(operand.location);
             else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
 
-                throw new LarkError("a slurp must always be the last operand", operand.location);
+                throw new LarkError("a Slurp must always be the last operand", operand.location);
 
             } else operand.note("validated"); // any spread that didn't throw already
         }
@@ -2290,9 +2290,9 @@ export class Reserved extends Word {
     /* This class implements reserved words, which always make it as far as the parser, as they are
     valid property names (so are only invalid in any other context). */
 
-    prefix(_) { throw new LarkError(`reserved word (${this.value})`, this.location) }
+    prefix(_) { throw new LarkError(`unexpected Reserved Word (${this.value})`, this.location) }
 
-    infix(_) { throw new LarkError(`reserved word (${this.value})`, this.location) }
+    infix(_) { throw new LarkError(`unexpected Reserved Word (${this.value})`, this.location) }
 }
 
 export class Return extends Keyword {
@@ -2312,7 +2312,7 @@ export class Return extends Keyword {
         /* Validate this `return` statement, then fix its expression node. */
 
         if (f.callstack.top) this.affix(f);
-        else throw new LarkError("unexpected `return` statement", this.location);
+        else throw new LarkError("unexpected Return Statement", this.location);
     }
 
     js(w) { return `return${this.length ? space + this[0].js(w) : empty}` }
@@ -2382,9 +2382,9 @@ export class Spread extends Operator {
 
         } else if (this.prefixed) {
 
-            throw new LarkError("unexpected slurp", this.location);
+            throw new LarkError("unexpected Slurp", this.location);
 
-        } else throw new LarkError("unexpected splat", this.location);
+        } else throw new LarkError("unexpected Splat", this.location);
     }
 }
 
@@ -2475,7 +2475,7 @@ export class When extends Operator {
         this.push(left, p.gatherExpression());
 
         if (p.on(Else)) p.advance();
-        else throw new LarkError("incomplete when-operation", this.location);
+        else throw new LarkError("incomplete When-Else Operation", this.location);
 
         return this.push(p.gatherExpression(this.LBP - 1));
     }
@@ -2536,7 +2536,7 @@ export class Yield extends Keyword {
 
         if (f.yieldstack.length === 0  || f.paramstack.top === true) {
 
-            throw new LarkError("unexpected `yield` operator", this.location);
+            throw new LarkError("unexpected Yield Operator", this.location);
 
         } else if (f.yieldstack.top === true) f.yieldstack.pop = this
 

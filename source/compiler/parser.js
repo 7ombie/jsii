@@ -37,7 +37,12 @@ export function * parse(source, {dev=false}={}) {
 
         /* This is the (often) recursive, block-level parsing function that wraps the Pratt parser
         to implement a statement grammar that replaces ASI with LIST (Linewise Implicit Statement
-        Termination). */
+        Termination).
+
+        Note: The main (`while`) loop uses a `skip` boolean to track whether to `skip` or `advance`
+        at the start of the next iteration, allowing it to skip the requierment that each statement
+        ends on a terminator when the following statement is allowed to follow the previous without
+        requiring a comma or newline (like the `else` statement in `if x {...} else {...}`). */
 
         let statement, skip = false;
 
@@ -57,11 +62,8 @@ export function * parse(source, {dev=false}={}) {
 
             if (on(CloseBrace) && nested) return advance();
 
-            if (statement instanceof Header && previous instanceof CloseBrace) {
-
-                skip = true; // statements can immediately follow a braced block
-
-            } else throw new LarkError("expected a terminator", token.location);
+            if (statement.is(Header) && previous.is(CloseBrace)) skip = true;
+            else throw new LarkError("expected a Terminator", token.location);
         }
 
         if (nested) throw new LarkError("nested end of file", token.location);
@@ -88,7 +90,7 @@ export function * parse(source, {dev=false}={}) {
 
         if (Classes.length === 0) return token;
 
-        for (const Class of Classes) if (token instanceof Class) return Class;
+        for (const Class of Classes) if (token.is(Class)) return Class;
 
         return false;
     }
@@ -127,7 +129,7 @@ export function * parse(source, {dev=false}={}) {
 
         if (result.expression) while (RBP < token.LBP) {
 
-            if (token instanceof Keyword) break;
+            if (token.is(Keyword)) break;
 
             current = token;
             token = advance();
@@ -145,7 +147,7 @@ export function * parse(source, {dev=false}={}) {
         const candidate = gather(RBP, context);
 
         if (candidate.expression) return candidate;
-        else throw new LarkError("expected an expression", candidate.location);
+        else throw new LarkError("expected an Expression", candidate.location);
     }
 
     function gatherCompoundExpression(closer) { // api function
@@ -184,7 +186,7 @@ export function * parse(source, {dev=false}={}) {
         not a variable. */
 
         if (on(Variable)) return advance(false);
-        else throw new LarkError("expected a variable", advance().location);
+        else throw new LarkError("expected a Variable", advance().location);
     }
 
     function gatherProperty() { // api function
@@ -195,7 +197,7 @@ export function * parse(source, {dev=false}={}) {
         and simply complaining otherwise. */
 
         if (on(Word) || (on(Operator) && token.named)) return advance(false);
-        else throw new LarkError("expected a property", token.location);
+        else throw new LarkError("expected a Property", token.location);
     }
 
     function gatherAssignees() { // api function
@@ -210,7 +212,7 @@ export function * parse(source, {dev=false}={}) {
 
         if (on(OpenBracket, OpenBrace)) return gather();
 
-        throw new LarkError("invalid assignee", token.location);
+        throw new LarkError("invalid Assignee", token.location);
     }
 
     function gatherParameters() { // api function
@@ -285,8 +287,8 @@ export function * parse(source, {dev=false}={}) {
 
             const candidate = gather();
 
-            if (candidate instanceof Keyword) return candidate;
-            else throw new LarkError("expected a formal statement", candidate.location);
+            if (candidate.is(Keyword)) return candidate;
+            else throw new LarkError("expected a Formal Statement", candidate.location);
         }
 
         // establish whether the block/body begins with an opening brace, and initialize a `Block`
@@ -335,7 +337,7 @@ export function * parse(source, {dev=false}={}) {
         if (value === null) return void delete labelspace.top[name.value];
 
         if (labelspace.top[name.value] === undefined) labelspace.top[name.value] = value;
-        else throw new LarkError("cannot reassign active labels", left.location);
+        else throw new LarkError("cannot reassign an active Label", left.location);
     }
 
     // initialze a hash, mapping the four notes used by compound expressions to the corresponding
