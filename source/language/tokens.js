@@ -2407,13 +2407,12 @@ export class SuperConstant extends Constant {
 
 export class Throw extends CommandStatement {
 
-    /* This class implements the `throw` operative keyword, which implies `new` in Lark, so
-    `throw Error(message)` compiles to `throw new Error(message)`. You cannot throw strings
-    or anything like that. */
+    /* This class implements `throw`, which is an operative keyword in Lark, but has the same
+    semantics as in JavaScript. */
 
     expresssion = true;
 
-    js(w) { return `throw new ${this[0].js(w)}` }
+    js(w) { return `throw ${this[0].js(w)}` }
 }
 
 export class TrueConstant extends Constant {

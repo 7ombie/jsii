@@ -1085,6 +1085,26 @@ that implements the main loop of the writer stage:
 Note: Naturally, you can use text literals as docstrings too. They're just expressions that the
 compiler will throw away (as they are not used for anything).
 
+Repeat-While
+------------
+
+Lark does not support JavaScript's do-while grammar (`do <block> while <predicate>`). In fact, Lark
+does not (and will never) support any kind of block-header grammar. Compound statements always have
+the (entire) header at the start, and the (entire) compound part at the end.
+
+Nonetheless, a loop that executes once unconditionally, then zero or more times conditionally, can
+be useful. To that end, Lark provides a `repeat` qualifier that qualifies `while` statements, to
+form the `repeat while <predicate> <block>` grammar. For example:
+
+    with var x = 8 repeat while x > 0 { put(x -= 1) }           # 7, 6, 5, 4, 3, 2, 1, 0
+
+That code would compile to this JavaScript:
+
+    {
+        let x = 8;
+        do { console.log(x -= 1) } while (x > 0);
+    }
+
 Object Literals
 ---------------
 
@@ -1117,6 +1137,10 @@ Map Literals
 ------------
 
     let scores = {{true: 1000, false: -2500}}   -> const scores = Object.freeze(new Map([[true, 1000], [false, -2500]]));
+
+
+ObjectMutability
+----------------
 
             create  delete  write   read
 pack        x       o       o       o

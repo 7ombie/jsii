@@ -30,7 +30,7 @@ const register = iife(function() {
     /* This IIFE returns a function that generates and returns incrementing Lark register names (as
     strings) for assigning to unsafe expressions, so they're safe to use more than once. */
 
-    let counter = 0; return () => lark(counter++);
+    let counter = 0n; return () => lark(counter++);
 });
 
 // api functions...
