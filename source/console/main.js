@@ -1,7 +1,7 @@
 import { lex } from "../compiler/lexer.js"
 import { parse } from "../compiler/parser.js"
 import { write } from "../compiler/writer.js"
-import { fix } from "../compiler/fixer.js"
+import { validate } from "../compiler/validator.js"
 import { put } from "../compiler/helpers.js"
 
 // window.lex = lex;

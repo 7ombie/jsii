@@ -1,6 +1,6 @@
 import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
 import { put, not, Stack } from "../compiler/helpers.js"
-import { fix } from "../compiler/fixer.js"
+import { validate } from "../compiler/validator.js"
 
 import { Header, Label } from "../language/tokens.js"
 
@@ -66,6 +66,6 @@ export function * write(source, {dev=false}={}) {
     let indentation = empty;
     let preambles = new Stack();
 
-    yield * walk(fix(source, {dev}));
+    yield * walk(validate(source, {dev}));
 }
 

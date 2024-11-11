@@ -57,9 +57,10 @@ export class Token extends Array {
     Subclasses occasionally add helper methods specific to the class, but do not change the shape
     of their instances.
 
-    The API methods (`token`, `prefix`, `infix`, `fix` and `js`) each take a reference to an API
-    object (`lexer`, `parser`, `fixer` or `writer`) as their first argument, and are individually
-    documented below (within their respective default implementations).
+    The API methods (`token`, `prefix`, `infix`, `validate` and `js`) each require a reference to
+    an API object (`lexer`, `parser`, `validator` or `writer`) as their first argument (which is
+    often destructured). Each method is individually documented below (within their respective
+    default implementations).
 
     Every token defines or inherits `LBP` and `RBP` properties (short for *left-binding-power*
     and *right-binding-power* respectively), refered to hereafter as *LBP* and *RBP*.
@@ -185,9 +186,16 @@ export class Token extends Array {
         throw new LarkError("invalid Token (in infix denotation)", this.location);
     }
 
-    fix(fixer) { this.affix(fixer) }
+    validate(validator) {
 
-    affix(fixer) { for (const operand of this) operand.fix(fixer, this) }
+        /* This method takes a reference to the Validator Stage API, and passes it to the internal
+        helper mathod `certify`, which just calls this method on each of the instance's children.
+        By itself, this just walks the AST without doing anything, but derived classes are able
+        to override this method with their own validation logic, then invoke `certify` instead
+        of having to iterate over themselves manually. */
+
+        this.certify(validator);
+    }
 
     js(writer) { // api method
 
@@ -234,6 +242,8 @@ export class Token extends Array {
 
         return false;
     }
+
+    certify(validator) { for (const operand of this) operand.validate(validator, this) }
 }
 
 export class Terminal extends Token {
@@ -453,7 +463,7 @@ export class Declaration extends Keyword {
         return this.push(gatherExpression());
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Iterate over the assignees, and make sure any nested breakdowns note "lvalue", and that
         slurps note "validated" when they are the last assignee within their respective breakdown,
@@ -482,7 +492,7 @@ export class Declaration extends Keyword {
             }
         });
 
-        this.affix(fixer);
+        this.certify(validator);
     }
 
     js(writer) {
@@ -518,9 +528,8 @@ export class PredicatedBlock extends Header {
 
     prefix({gatherBlock, gatherExpression}, context=undefined) {
 
-        /* Gather the predicate, then the block. If the `context` is `do`, use a functional
-        block (so `return` becomes legal). Otherwise, infer the blocktype from the `notes`
-        (the subclasses note either "SIMPLEBLOCK" or "LOOPBLOCK", as appropriate). */
+        /* Gather the predicate, then the block. If the `context` is `Do`, use a functional
+        block (so `return`, `yield` and `yield from` are legal). */
 
         return this.push(gatherExpression(), gatherBlock(context?.is(Do)));
     }
@@ -737,7 +746,7 @@ export class AssignmentOperator extends InfixOperator {
 
     infix({gatherExpression}, left) { return this.push(left, gatherExpression(this.LBP - 1)) }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* If this instance is a plain assignment operation (using `=`, so not including inplace
         assignment operations), then iterate over the assignees, and make sure that every nested
@@ -746,7 +755,7 @@ export class AssignmentOperator extends InfixOperator {
 
         The same logic is applied to the lvalues of `let` and `var` declarations. */
 
-        if (this.spelling !== equals) return this.affix(fixer);
+        if (this.spelling !== equals) return this.certify(validator);
 
         const message = "a Slurp must always be the last operand";
 
@@ -769,7 +778,7 @@ export class AssignmentOperator extends InfixOperator {
             }
         });
 
-        this.affix(fixer);
+        this.certify(validator);
     }
 }
 
@@ -1153,7 +1162,7 @@ export class FunctionLiteral extends Functional {
         else return this.push(new Parameters(this.location), gatherBlock(true));
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Push `true` to the `yieldstack` (indicating that this function are ready to be converted
         to a generator), then pop it after fixing the child operands and see if the stack-top holds
@@ -1170,15 +1179,13 @@ export class FunctionLiteral extends Functional {
         With all five stacks updated, affix any operands, then restore the previous state of the
         stacks (noting "yield_qualifier" as appropriate), before returning. */
 
-        const {awaitstack, yieldstack, blockstack, loopstack, callstack} = fixer;
+        const {awaitstack, yieldstack, blockstack, loopstack, callstack} = validator;
 
         awaitstack.top = this.async_qualifier;
-        yieldstack.top = true;
-        blockstack.top = false;
-        loopstack.top = false;
-        callstack.top = true;
+        yieldstack.top = true;  callstack.top = true;
+        blockstack.top = false; loopstack.top = false;
 
-        this.affix(fixer);
+        this.certify(validator);
 
         callstack.pop; loopstack.pop; blockstack.pop; awaitstack.pop;
 
@@ -1366,13 +1373,13 @@ export class Await extends CommandStatement {
 
     prefix({gatherExpression}) { return this.push(gatherExpression(this.RBP)) }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Validate this `await` expression, then fix its expression node. */
 
-        const {awaitstack, paramstack} = fixer;
+        const {awaitstack, paramstack} = validator;
 
-        if (awaitstack.top === true && paramstack.top === false) this.affix(fixer);
+        if (awaitstack.top === true && paramstack.top === false) this.certify(validator);
         else throw new LarkError("unexpected Await Operation", this.location);
     }
 
@@ -1396,7 +1403,7 @@ export class Break extends BranchStatement {
 
     /* This class implements the `break` statement. */
 
-    fix({loopstack, blockstack}) {
+    validate({loopstack, blockstack}) {
 
         /* Validate this `break` statement (any label has already been validated). */
 
@@ -1488,7 +1495,7 @@ export class Continue extends BranchStatement {
 
     /* This class implements the `continue` statement, just like JavaScript. */
 
-    fix({loopstack}) {
+    validate({loopstack}) {
 
         /* Validate this `continue` statement (any label has already been validated). */
 
@@ -1556,20 +1563,18 @@ export class Do extends PrefixOperator {
         else return this.push(gatherBlock(true));
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Configure the stacks like a function literal, noting yield, as a function will need to
         be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
         explicit function. However, in that case, this is simply redundant, as the functional
         operand will shadow this configuration with its own. */
 
-        const {yieldstack, awaitstack, callstack} = fixer;
+        const {yieldstack, awaitstack, callstack} = validator;
 
-        yieldstack.top = true;
-        awaitstack.top = false;
-        callstack.top = true;
+        yieldstack.top = true; callstack.top = true; awaitstack.top = false;
 
-        this.affix(fixer);
+        this.certify(validator);
 
         callstack.pop; awaitstack.pop;
 
@@ -1627,12 +1632,12 @@ export class Else extends PredicatedBlock {
         else return this.push(gatherBlock());
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Add a valid level to the block stack, affix the operands, then restore the stack to its
         original state. */
 
-        fixer.blockstack.top = true; this.affix(fixer); fixer.blockstack.pop;
+        validator.blockstack.top = true; this.certify(validator); validator.blockstack.pop;
     }
 
     js(writer) { return `else ${this.else_if ? this[0].js(writer) : writer.writeBlock(this[0])}` }
@@ -1714,17 +1719,16 @@ export class For extends Header {
         return this.push(expression, gatherBlock(context?.is(Do)));
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Add a valid level to the block and loop stacks, affix the operands, then restore both
         stacks to the original state. */
 
-        const {blockstack, loopstack} = fixer;
+        const {blockstack, loopstack} = validator;
 
-        blockstack.top = true;
-        loopstack.top = true;
+        blockstack.top = true; loopstack.top = true;
 
-        this.affix(fixer);
+        this.certify(validator);
 
         loopstack.pop; blockstack.pop;
     }
@@ -1783,12 +1787,12 @@ export class If extends PredicatedBlock {
 
     /* This class implements `if` statements. */
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Add a valid level to the block stack, affix the operands, then restore the stack to its
         original state. */
 
-        fixer.blockstack.top = true; this.affix(fixer); fixer.blockstack.pop;
+        validator.blockstack.top = true; this.certify(validator); validator.blockstack.pop;
     }
 }
 
@@ -2050,7 +2054,7 @@ export class OpenBrace extends Opener {
         } else return this.push(...operands);
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Validate a set, map, object literal or object breakdown, iterating over its operands
         and checking labels (particularly `__proto__` labels) and `as` operations, as well as
@@ -2106,7 +2110,7 @@ export class OpenBrace extends Opener {
             } else if (operand.is(Spread) && operand.infixed) operand.note("validated");
         }
 
-        this.affix(fixer);
+        this.certify(validator);
     }
 
     js(writer) {
@@ -2153,7 +2157,7 @@ export class OpenBracket extends Caller {
 
     infix({gatherCompoundExpression}, left) { return this.push(left, gatherCompoundExpression(CloseBracket)) }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Validate an array literal, array breakdown or bracket notation, principly by iterating
         over its operands and validating any splats and slurps. */
@@ -2193,7 +2197,7 @@ export class OpenBracket extends Caller {
 
         // finally, continue the recursion, and fix each operand...
 
-        this.affix(fixer);
+        this.certify(validator);
     }
 
     js(writer) { return super.js(writer, openBracket, closeBracket) }
@@ -2237,13 +2241,13 @@ export class Parameters extends Token {
 
     /* This class is used to group function parameters. */
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Update the `paramstack`, so any `await` and `yield` expressions that've been used as
         default arguments know to complain, fix any operands, then restore the previous state of
         the stack. */
 
-        fixer.paramstack.top = true; this.affix(fixer); fixer.paramstack.pop;
+        validator.paramstack.top = true; this.certify(validator); validator.paramstack.pop;
     }
 }
 
@@ -2299,11 +2303,11 @@ export class Return extends Keyword {
         else return this.push(gatherExpression());
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Validate this `return` statement, then fix its expression node. */
 
-        if (fixer.callstack.top) this.affix(fixer);
+        if (validator.callstack.top) this.certify(validator);
         else throw new LarkError("unexpected Return Statement", this.location);
     }
 
@@ -2482,17 +2486,16 @@ export class While extends PredicatedBlock {
 
     /* This class implements the `while` keyword. */
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Add a valid level to the block and loop stacks, affix the operands, then restore both
         stacks to their original state. */
 
-        const {blockstack, loopstack} = fixer;
+        const {blockstack, loopstack} = validator;
 
-        blockstack.top = true;
-        loopstack.top = true;
+        blockstack.top = true; loopstack.top = true;
 
-        this.affix(fixer);
+        this.certify(validator);
 
         loopstack.pop; blockstack.pop;
     }
@@ -2519,7 +2522,7 @@ export class Yield extends Keyword {
         else if (not(on(Terminator, Closer))) return this.push(gatherExpression());
     }
 
-    fix(fixer) {
+    validate(validator) {
 
         /* Require that there is a function above us to convert to a generator, and that we're not
         a default argument. Then, if the function is available for conversion (`yieldstack.top` is
@@ -2527,7 +2530,7 @@ export class Yield extends Keyword {
         top of the `yieldstack` with `this`. We only push `this` if the top is `true`, so that any
         problems can be immediately associated with the first yield-token that was encountered. */
 
-        const {yieldstack, paramstack} = fixer;
+        const {yieldstack, paramstack} = validator;
 
         if (yieldstack.length === 0  || paramstack.top === true) {
 
@@ -2535,7 +2538,7 @@ export class Yield extends Keyword {
 
         } else if (yieldstack.top === true) yieldstack.pop = this
 
-        this.affix(fixer);
+        this.certify(validator);
     }
 
     js(writer) {
