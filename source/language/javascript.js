@@ -94,17 +94,3 @@ export function is_not(w, value, type) {
 
     return `!(${is(w, value, type)})`;
 }
-
-export function is_equal(w, x, y) {
-
-    /* Renders the `==` operator, while trying to minimize parenthesis. */
-
-    return `${x.safe ? x.js(w) : `(${x.js(w)})` }.ƥisEqual(${y.js(w)})`;
-}
-
-export function is_not_equal(w, x, y) {
-
-    /* Implements the `!=` operator by inverting the `==` helper above. */
-
-    return x.safe ? `!${is_equal(w, x, y)}` : `!(${is_equal(w, x, y)})`;
-}

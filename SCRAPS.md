@@ -1147,6 +1147,37 @@ pack        x       o       o       o
 seal        x       x       o       o
 freeze      x       x       x       o
 
+Classwise Let Declarations
+--------------------------
+
+    "use strict"; class Foo {
+
+        constructor() { delete this.ƥ; delete this.constructor.ƥ }
+
+        salary = 50_000;
+
+        static ƥ = void Object.defineProperty(this, "stat", {
+                enumerable: true,
+                value: Object.freeze([900, 800, 200])
+            });
+
+        ƥ = void Object.defineProperty(this, "player", {
+                enumerable: true,
+                value: Object.freeze(2)
+            });
+
+        ƥ = void Object.defineProperty(this, "data", {
+                enumerable: true,
+                value: Object.freeze({score: 1500, items: [2, 9, 18, this.salary], __proto__: null})
+            });
+    }
+
+    let foo = Object.freeze(new Foo());
+    console.log(foo.ƥ, foo);
+    console.log(foo.player, foo.data.score, foo.data.items.map(item => `Item: ${item}`));
+    Foo.stat[0] = 1
+    console.log(foo);
+
 Math Operators
 --------------
 

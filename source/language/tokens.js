@@ -1659,11 +1659,11 @@ export class SkipAssignee extends PrefixOperator {
 
 export class Equal extends InfixOperator {
 
-    /* This concrete class implements the `==` operator, which compiles to `Object.is`. */
+    /* This concrete class implements the `==` operator, which compiles to `===`. */
 
     LBP = 8;
 
-    js(writer) { return js.is_equal(writer, ...this) }
+    js(writer) { return `${this[0].js(writer)} === ${this[1].js(writer)}` }
 }
 
 export class EOF extends Terminator {
@@ -1948,11 +1948,11 @@ export class Not extends GeneralOperator {
 
 export class NotEqual extends InfixOperator {
 
-    /* This class implements the `!=` operator. */
+    /* This class implements the `!=` operator, which compiles to the `!==` operator. */
 
     LBP = 8;
 
-    js(writer) { return js.is_not_equal(writer, ...this) }
+    js(writer) { return `${this[0].js(writer)} !== ${this[1].js(writer)}` }
 }
 
 export class NotGreater extends InfixOperator {
