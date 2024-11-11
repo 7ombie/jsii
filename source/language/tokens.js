@@ -483,11 +483,8 @@ export class Declaration extends Keyword {
 
             assignees.note("lvalue");
 
-            // if (assignees.is(Variable)) validator.scopestack.top[assignees.value] = true;
-
             for (const assignee of assignees) {
 
-                // if (assignee.is(Variable)) validator.scopestack.top[assignee.value] = true;
                 if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
                 else if (assignee.is(Label)) $(assignee[1]);
                 else if (assignee.is(Spread) && assignee.prefixed) {
@@ -499,7 +496,6 @@ export class Declaration extends Keyword {
         });
 
         this.certify(validator);
-        // put("--------->", JSON.stringify(validator.scopestack));
     }
 
     js(writer) {
@@ -1402,13 +1398,6 @@ export class Bang extends GeneralDotOperator {
 export class Block extends Token {
 
     /* Used to group statements into a block. */
-
-    // validate(validator) {
-
-    //     validator.scopestack.top = Object.create(null);
-    //     this.certify(validator);
-    //     validator.scopestack.pop;
-    // }
 }
 
 export class Break extends BranchStatement {
@@ -2499,22 +2488,6 @@ export class Variable extends Word {
 
         return this.push(gatherExpression());
     }
-
-    // validate(validator) {
-
-    //     put(this.notes, this.value)
-    //     const { scopestack } = validator;
-
-    //     for (let index = scopestack.length - 1; index >= 0; index--) {
-
-    //         const scope = scopestack[index];
-
-    //         if (scope[this.value] === undefined) scope[this.value] = false;
-    //         else break;
-    //     }
-
-    //     this.certify(validator);
-    // }
 
     js(writer) {
 
