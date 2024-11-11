@@ -2,7 +2,7 @@
 subclasses to JavaScript strings. This is convenient, as it allows us to keep all the really
 long string literals in one file. */
 
-import { put, not, lark, iife } from "../compiler/helpers.js"
+import { put, lark, iife } from "../compiler/helpers.js"
 
 // internal helpers...
 
@@ -25,15 +25,15 @@ function larkOrObjectMethod(w, expression, method, fallback) {
     return `(${mainRegister}=${expression.js(w)})?.ƥ${method}?.() ?? Object.${method}(${mainRegister} ?? ${fallback})`;
 }
 
-const register = iife(function() {
+// api functions...
 
-    /* This IIFE returns a function that generates and returns incrementing Lark register names (as
-    strings) for assigning to unsafe expressions, so they're safe to use more than once. */
+export const register = iife(function() {
+
+    /* This IIFE returns a function that generates and returns incrementing Lark register names
+    (as strings) for assigning to unsafe expressions, so they're safe to use more than once. */
 
     let counter = 0n; return () => lark(counter++);
 });
-
-// api functions...
 
 export function for_of(assignees, iterable, block) {
 

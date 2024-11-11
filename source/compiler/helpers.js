@@ -85,6 +85,8 @@ export class Stack extends Array {
         return result;
     }
 
+    get end() { return this.length - 1 }
+
     on(value, callback) {
 
         /* Chainable method that takes a map key and callback, and uses the given key to store its

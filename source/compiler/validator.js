@@ -17,16 +17,14 @@ export function * validate(source, {dev=false}={}) {
         for (const statement of statements) { statement.validate(api, null); yield statement }
     }
 
-    const globals = Object.create(null);
-
     const api = {
-        yieldstack: new Stack(),        // looks for `yield` and `yield from` inside functions
-        scopestack: new Stack(globals), // stores the namespaces that currently form the scope
-        awaitstack: new Stack(true),    // tracks whether we're in an async function or onside
-        paramstack: new Stack(false),   // tracks whether we're currently in a parameters list
-        blockstack: new Stack(false),   // tracks whether we're in a block (within a function)
-        loopstack:  new Stack(false),   // tracks whether we're in a loop (within in function)
-        callstack:  new Stack(false),   // tracks whether we're in any kind of function at all
+        yieldstack: new Stack(),                    // find `yield` and `yield from` inside functions
+        awaitstack: new Stack(true),                // whether we're in an async function or onside
+        paramstack: new Stack(false),               // whether we're currently in a parameters list
+        blockstack: new Stack(false),               // whether we're in a block (within a function)
+        loopstack:  new Stack(false),               // whether we're in a loop (within in function)
+        callstack:  new Stack(false),               // whether we're in any kind of function at all
+        scopestack: new Stack(Object.create(null)), // store the namespaces that form the scope
     };
 
     yield * walk(parse(source, {dev}));

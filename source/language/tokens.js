@@ -107,11 +107,10 @@ export class Token extends Array {
         "prefixed", "infixed", "lvalue",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "yield_from",
+        "ignore", "labelled", "validated", "tagged_template", "proto_label",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
-        "ignore", "labelled", "validated", "tagged_template",
         "oo_literal", "set_literal", "map_literal",
-        "proto_label", "object_label",
         "not_in", "not_of",
     ]));
 
@@ -474,19 +473,34 @@ export class Declaration extends Keyword {
 
         const message = "a Slurp must always be the last operand";
 
-        iife(this[0], function $(assignees) {
+        iife(this[0], function walk(assignees) {
 
             /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
             note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
             operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`), and
-            register any declared names to the hash on top of the `scopestack`. */
+            update the `scopestack` with any declared names. */
 
-            assignees.note("lvalue");
+            const {scopestack} = validator;
+
+            const update = function(assignee) {
+
+                if (not(assignee.is(Variable))) return;
+
+                if (scopestack.top[assignee.value] === "shadowed") {
+
+                    scopestack.top[assignee.value] = js.register();
+                    assignee.value = scopestack.top[assignee.value];
+
+                } else scopestack.top[assignee.value] = "declared";
+            };
+
+            update(assignees.note("lvalue"));
 
             for (const assignee of assignees) {
 
-                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
-                else if (assignee.is(Label)) $(assignee[1]);
+                if (assignee.is(Variable)) update(assignee);
+                else if (assignee.is(OpenBracket, OpenBrace)) walk(assignee);
+                else if (assignee.is(Label)) walk(assignee[1]);
                 else if (assignee.is(Spread) && assignee.prefixed) {
 
                     if (assignees.at(-1) === assignee) assignee.note("validated");
@@ -692,7 +706,7 @@ export class DotOperator extends InfixOperator {
 
     LBP = 17;
 
-    infix({gatherProperty}, left) { return this.push(left, gatherProperty()) }
+    infix({gatherProperty}, left) { return this.push(left, gatherProperty().note("lvalue")) }
 
     js(writer) { return `${this[0].js(writer)}${this.spelling}${this[1].value}` }
 }
@@ -1398,6 +1412,18 @@ export class Bang extends GeneralDotOperator {
 export class Block extends Token {
 
     /* Used to group statements into a block. */
+
+    validate(validator) {
+
+        /* Push a new namespace to the `scopestack`, then `certify` the statements inside this
+        block, before popping the `scopestack`. This is enough to maintain the correct stack of
+        blocks on the `scopestack`, leaving it to `Variable` and `Declaration` to eliminate any
+        TDZs and that kind of thing. */
+
+        validator.scopestack.top = Object.create(null);
+        this.certify(validator);
+        validator.scopestack.pop;
+    }
 }
 
 export class Break extends BranchStatement {
@@ -1485,7 +1511,7 @@ export class Label extends InfixOperator {
     js(writer) {
 
         if (this.validated) return `${this[0].js(writer)}: ${this[1].js(writer)}`;
-        else throw new LarkError("unexpected Label", this.location);
+        else throw new LarkError("unexpected Label", this[0].location);
     }
 }
 
@@ -2088,7 +2114,7 @@ export class OpenBrace extends Opener {
 
                 const [left, right] = operand.note("validated");
 
-                if (left.is(Variable)) left.note("object_label");
+                if (left.is(Variable)) left.note("lvalue");
                 else if (left.is(StringLiteral, Constant));
                 else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
@@ -2100,7 +2126,7 @@ export class OpenBrace extends Opener {
 
             } else if (operand.is(Variable)) {
 
-                operand.note("object_label");
+                operand.note("lvalue");
 
             } else if (operand.is(Spread) && operand.prefixed) {
 
@@ -2111,15 +2137,16 @@ export class OpenBrace extends Opener {
 
         } else operandsLoop: for (const operand of this) {          // object literals...
 
+            if (operand.is(Variable)) { operand.note("lvalue"); continue operandsLoop }
+
             operand.note("validated");
 
-            if (operand.is(Variable)) operand.note("object_label");
-            else if (operand.is(As) || (operand.is(Spread) && operand.infixed));
+            if (operand.is(As) || (operand.is(Spread) && operand.infixed));
             else if (operand.is(Label)) {
 
                 const left = operand[0];
 
-                if (left.is(Variable)) left.note("object_label");
+                if (left.is(Variable)) left.note("lvalue");
                 else if (left.is(StringLiteral, Constant));
                 else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
@@ -2206,7 +2233,7 @@ export class OpenBracket extends Caller {
 
             if (operand.is(Variable)) {
 
-                if (this.lvalue) operand.note("object_label");
+                if (this.lvalue) operand.note("lvalue");
 
             } else if (operand.is(Spread)) {
 
@@ -2475,6 +2502,30 @@ export class Variable extends Word {
         this.safe = false;
 
         return this.push(gatherExpression());
+    }
+
+    validate(validator) {
+
+        /* Update any variables that have not noted "lvalue" on their way through the parser, so
+        the `scopestack` is correct. */
+
+        if (this.lvalue) return this.certify(validator);
+
+        loop: for (let index = validator.scopestack.end; index >= 0; index--) {
+
+            const scope = validator.scopestack[index];
+            const value = scope[this.value];
+
+            if (Object.hasOwn(scope, this.value)) {
+
+                if (value === "shadowed") continue loop;
+                else if (value === "declared") break;
+                else this.value = value;
+
+            } else scope[this.value] = "shadowed";
+        }
+
+        this.certify(validator);
     }
 
     js(writer) {

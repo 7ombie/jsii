@@ -1,3 +1,12 @@
+let x = 0
+if true {
+    if 1 if 2 if 3 { put(x.foo * y) }
+    let x = 1, var y = 2, var z = 3
+    put(x, y, z)
+    let foo = 4
+    put(foo.bar)
+}
+
 let foo = thing
 let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
 [x, y, {foo, bar, spam: x, z: {z}, ...o}, ...f] = options
