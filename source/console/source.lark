@@ -1,6 +1,6 @@
 let foo = thing
-let s = [x, y, {foo, bar, spam: x, [z], __proto__: Number}, x] = foo
-[x, y, {foo, bar, spam: x, [z], [spam, eggs, ...foo], ...o }, ...f] = options
+let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
+[x, y, {foo, bar, spam: x, z: [z], ...o}, ...f] = options
 
 []
 {}
@@ -9,7 +9,7 @@ let s = [x, y, {foo, bar, spam: x, [z], __proto__: Number}, x] = foo
 
 {foo: 1, bar: 2, metavars...}
 point = {x: 1, y: 2}
-{ali, bob, cal, ...others} = people
+{23: {x: {y: {z: [x, y, x]}}}, ali, bob, cal, ...others} = people
 {as Array, length: 2, 0: false, 1: true}
 {__proto__: Object, name: "John", salary: 50000}
 john = {as Object, name: "John", salary: 50000}
@@ -22,9 +22,9 @@ var array = [1, 2, 3]
 var object = {x: 45, boo: 56, as Object}
 let index = x[x]
 
-{__proto__: Array, x: 1, y: 2, z: 3, ...foo} = obj
+{__proto__: Array, x: x, y: y, z: z, ...foo} = obj
 
-{x, foo, bar, pop, pip: 345, ...z} = options
+{x, foo, bar, pop, pip: c345, ...z} = options
 
 delete foo.bar
 delete foo["bar"]
@@ -139,7 +139,10 @@ function {
         }
         o is not sealed
         o is not frozen
-        function { moves: for thing in otherThing { break moves } }
+        function {
+
+            moves: for thing in otherThing { break moves, while 1 let x = 100 }
+        }
     }
 }
 
@@ -189,7 +192,7 @@ em = {{y..., z...}}
 {[]}
 []
 {x, y, z} = foo
-[1, 2, 3] = bar
+[a, [b, [c, [d]]]] = bar
 {x: 1, y: 2}
 {{y: 2, __proto__: Array, foo: bar}}
 
@@ -228,10 +231,12 @@ do for number in numbers yield number * 2
 # [number * 2 for number in numbers]
 [(do for number in numbers yield number * 2)...]
 
-function { return }
+function { var y = 0, var z = 1 }
 
 x when y else throw new Foo("spam and eggs")
 throw new Foo("spam and eggs")
 
 x not in y
 y not of x
+
+async function of x, y = foo(x.y[foo()]) { await x + y }

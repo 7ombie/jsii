@@ -95,7 +95,7 @@ export class Token extends Array {
     file) to know if an expression can be safely reused in the compiled code (`true`), or needs
     to be assigned to a Lark register during first evaluation, then referenced (`false`). */
 
-    location; empty; // initialized by the constructor
+    location; value; // initialized by the constructor
 
     LBP = 0;
     RBP = 0;
@@ -105,12 +105,13 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
-        "async_qualifier", "yield_qualifier", "not_qualifier",
+        "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
+        "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "yield_from",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
-        "ignore", "labelled", "validated", "tagged_template", "proto_label",
-        "for_loop", "for_in", "for_of", "for_on", "for_from",
+        "async_qualifier", "yield_qualifier", "not_qualifier",
+        "ignore", "labelled", "validated", "tagged_template",
         "oo_literal", "set_literal", "map_literal",
-        "else_if", "yield_from",
+        "proto_label", "object_label",
         "not_in", "not_of",
     ]));
 
@@ -477,13 +478,18 @@ export class Declaration extends Keyword {
 
             /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
             note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
-            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`). */
+            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`), and
+            register any declared names to the hash on top of the `scopestack`. */
 
             assignees.note("lvalue");
 
+            // if (assignees.is(Variable)) validator.scopestack.top[assignees.value] = true;
+
             for (const assignee of assignees) {
 
+                // if (assignee.is(Variable)) validator.scopestack.top[assignee.value] = true;
                 if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
+                else if (assignee.is(Label)) $(assignee[1]);
                 else if (assignee.is(Spread) && assignee.prefixed) {
 
                     if (assignees.at(-1) === assignee) assignee.note("validated");
@@ -493,6 +499,7 @@ export class Declaration extends Keyword {
         });
 
         this.certify(validator);
+        // put("--------->", JSON.stringify(validator.scopestack));
     }
 
     js(writer) {
@@ -893,16 +900,13 @@ export class NumberLiteral extends Terminal {
         // if a dot is present and followed by a decimal digit, continue to lex this number literal
         // as a float (leaving the dot to be parsed as a breadcrumb operator otherwise)...
 
-        let float = false;
-
         if (at(dot) && isDecimal && this.value[0] !== dot && peek(2n, decimal)) {
 
-            float = true;
-            this.value += advance();
+            this.note("float_notation").value += advance();
             gatherWhile(digits + underscore, this);
         }
 
-        if (float && this.value.at(-1) === underscore) { // trailing separator (again)...
+        if (this.float_notation && this.value.at(-1) === underscore) { // trailing separator...
 
             throw new LarkError("a Number Literal cannot end on an underscore", this.location);
         }
@@ -919,7 +923,7 @@ export class NumberLiteral extends Terminal {
             const unit = gatherWhile(alphas, new Token(location));
             const helper = NumberLiteral.units[unit.value];
 
-            this.value = helper(eval(this.value), float, location);
+            this.note("unit_notation").value = helper(eval(this.value), this.float_notation, location);
 
         } else if (atDouble(slash) || atDouble(backslash)) { // exponentiation...
 
@@ -929,8 +933,9 @@ export class NumberLiteral extends Terminal {
             advance(2n);
             gatherWhile(digits, exponent);
 
-            this.value += operator + exponent.value;
-        }
+            this.note("exponentiation_notation").value += operator + exponent.value;
+
+        } else if (not(this.float)) this.note("integer_notation");
     }
 
     prefix(_) { return this }
@@ -1397,6 +1402,13 @@ export class Bang extends GeneralDotOperator {
 export class Block extends Token {
 
     /* Used to group statements into a block. */
+
+    // validate(validator) {
+
+    //     validator.scopestack.top = Object.create(null);
+    //     this.certify(validator);
+    //     validator.scopestack.pop;
+    // }
 }
 
 export class Break extends BranchStatement {
@@ -1469,12 +1481,15 @@ export class Label extends InfixOperator {
 
             return this;
 
-        } else { // a key-value pair...
+        } else { // a key-value pair (note proto labels, which may or may not be significant)...
 
             super.infix(parser, left);
 
-            if (left.value === "__proto__") return this.note("proto_label");
-            else return this;
+            if (left.is(Variable, StringLiteral) && left.length === 0 && left.value === "__proto__") {
+
+                return this.note("proto_label");
+
+            } else return this;
         }
     }
 
@@ -2060,11 +2075,6 @@ export class OpenBrace extends Opener {
         and checking labels (particularly `__proto__` labels) and `as` operations, as well as
         any splats and slurps. */
 
-        const badValueMessage = "expected a Label, Name, Splat or Prototype";
-        const badSlurpMessage = "a Slurp must always be the last operand";
-        const badLabelMessage = "expected a Name or String Literal";
-        const badProtoMessage = "duplicate Prototypes";
-
         let prototypes = 0;
 
         if (this.set_literal) for (const operand of this) { // set literals...
@@ -2081,23 +2091,52 @@ export class OpenBrace extends Opener {
 
         } else if (this.lvalue) for (const operand of this) { // object breakdowns...
 
-            if (operand.is(Spread) && operand.prefixed) {
-
-                if (this.at(-1) === operand) operand.note("validated");
-                else throw new LarkError(badSlurpMessage, operand.location);
-            }
-
             if (operand.is(Label)) {
 
-                if (operand[0].is(Variable, StringLiteral)) operand.note("validated");
-                else throw new LarkError(badLabelMessage, operand[0].location);
-            }
+                const [left, right] = operand.note("validated");
+
+                if (left.is(Variable)) left.note("object_label");
+                else if (left.is(StringLiteral, Constant));
+                else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
+                else if (left.is(NumberLiteral) && left.integer_notation);
+                else throw new LarkError("expected a Key or Slurp", left.location);
+
+                if (right.is(Variable));
+                else if (right.is(OpenBrace, OpenBracket)) right.note("lvalue");
+                else throw new LarkError("expected a Name or nested Breakdown", right.location);
+
+            } else if (operand.is(Variable)) {
+
+                operand.note("object_label");
+
+            } else if (operand.is(Spread) && operand.prefixed) {
+
+                if (this.at(-1) === operand) operand.note("validated");
+                else throw new LarkError("a Slurp must always be the last operand", operand.location);
+
+            } else throw new LarkError("expected a Label or Slurp", operand.location);
 
         } else operandsLoop: for (const operand of this) { // object literals...
 
-            if (operand.is(Label, Variable, As)) operand.note("validated");
-            else if (operand.is(Spread) && operand.infixed) operand.note("validated");
-            else throw new LarkError(badValueMessage, operand.location);
+            operand.note("validated");
+
+            if (operand.is(Variable)) operand.note("object_label");
+            else if (operand.is(As) || (operand.is(Spread) && operand.infixed));
+            else if (operand.is(Label)) {
+
+                const left = operand[0];
+
+                if (left.is(Variable)) left.note("object_label");
+                else if (left.is(StringLiteral, Constant));
+                else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
+                else if (left.is(NumberLiteral) && left.integer_notation);
+                else {
+
+                    if (prototypes === 0) throw new LarkError("expected a Key or Spread", left.location);
+                    else throw new LarkError("expected a Key, Spread or Prototype", left.location);
+                }
+
+            } else throw new LarkError("expected a Key, Splat or Prototype", operand.location);
 
             if (operand.is(As) || operand.proto_label) {
 
@@ -2105,9 +2144,8 @@ export class OpenBrace extends Opener {
 
                 const location = operand.is(As) ? operand.location : operand[0].location;
 
-                throw new LarkError(badProtoMessage, location);
-
-            } else if (operand.is(Spread) && operand.infixed) operand.note("validated");
+                throw new LarkError("duplicate Prototypes", location);
+            }
         }
 
         this.certify(validator);
@@ -2178,21 +2216,32 @@ export class OpenBracket extends Caller {
         // now, loop over the operands, and validate any splats and slurps (leaving any labels
         // unvalidated, so they always throw (automatically, see `Label.js`)...
 
-        for (const operand of operands) if (operand.is(Spread)) {
+        for (const operand of operands) {
 
-            const slurpOperation = operand.prefixed;
-            const splatOperation = not(slurpOperation);
-            const lvalue = this.lvalue || operand.lvalue;
-            const rvalue = not(lvalue);
+            if (operand.is(Variable)) {
 
-            if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand.location);
-            else if (rvalue && slurpOperation) deslurp(operand.location);
-            else if (lvalue && splatOperation) desplat(operand.location);
-            else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
+                if (this.lvalue) operand.note("object_label");
 
-                throw new LarkError("a Slurp must always be the last operand", operand.location);
+            } else if (operand.is(Spread)) {
 
-            } else operand.note("validated"); // any spread that didn't throw already
+                const slurpOperation = operand.note("validated").prefixed;
+                const splatOperation = not(slurpOperation);
+                const lvalue = this.lvalue || operand.lvalue;
+                const rvalue = not(lvalue);
+
+                if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand.location);
+                else if (rvalue && slurpOperation) deslurp(operand.location);
+                else if (lvalue && splatOperation) desplat(operand.location);
+                else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
+
+                    throw new LarkError("a Slurp must always be the last operand", operand.location);
+                }
+
+            } else if (this.lvalue) {
+
+                if (operand.is(OpenBrace, OpenBracket)) operand.note("lvalue");
+                else throw new LarkError("expected a Name or Slurp", operand.location);
+            }
         }
 
         // finally, continue the recursion, and fix each operand...
@@ -2446,6 +2495,22 @@ export class Variable extends Word {
 
         return this.push(gatherExpression());
     }
+
+    // validate(validator) {
+
+    //     put(this.notes, this.value)
+    //     const { scopestack } = validator;
+
+    //     for (let index = scopestack.length - 1; index >= 0; index--) {
+
+    //         const scope = scopestack[index];
+
+    //         if (scope[this.value] === undefined) scope[this.value] = false;
+    //         else break;
+    //     }
+
+    //     this.certify(validator);
+    // }
 
     js(writer) {
 
