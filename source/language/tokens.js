@@ -2058,13 +2058,11 @@ export class OpenBrace extends Opener {
 
         if (operands.length === 1 && operands[0].is(OpenBracket)) {
 
-            if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
-            else return this.note("set_literal").push(...operands[0][0]);
+            return this.note("set_literal").push(...operands[0][0]);
 
         } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
 
-            if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
-            else return this.note("map_literal").push(...operands[0]);
+            return this.note("map_literal").push(...operands[0]);
 
         } else return this.push(...operands);
     }
@@ -2077,17 +2075,23 @@ export class OpenBrace extends Opener {
 
         let prototypes = 0;
 
-        if (this.set_literal) for (const operand of this) { // set literals...
+        if (this.set_literal) {  // set literals...
 
-            if (operand.is(Spread) && operand.infixed) operand.note("validated");
+            if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
+            else for (const operand of this) {
 
-        } else if (this.map_literal) for (const operand of this) { // map literals...
+                if (operand.is(Spread) && operand.infixed) operand.note("validated");
+            }
 
-            if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) {
+        } else if (this.map_literal) { // map literals...
 
-                operand.note("validated");
+            if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
 
-            } else throw new LarkError("expected a Label or Splat", operand.location);
+            for (const operand of this) {
+
+                if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) operand.note("validated");
+                else throw new LarkError("expected a Label or Splat", operand.location);
+            }
 
         } else if (this.lvalue) for (const operand of this) { // object breakdowns...
 

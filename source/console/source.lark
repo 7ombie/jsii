@@ -1,6 +1,6 @@
 let foo = thing
 let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
-[x, y, {foo, bar, spam: x, z: [z], ...o}, ...f] = options
+[x, y, {foo, bar, spam: x, z: {z}, ...o}, ...f] = options
 
 []
 {}
