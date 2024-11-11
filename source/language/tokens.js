@@ -2064,7 +2064,7 @@ export class OpenBrace extends Opener {
 
         let prototypes = 0;
 
-        if (this.set_literal) {  // set literals...
+        if (this.set_literal) {                                     // set literals...
 
             if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
             else for (const operand of this) {
@@ -2072,7 +2072,7 @@ export class OpenBrace extends Opener {
                 if (operand.is(Spread) && operand.infixed) operand.note("validated");
             }
 
-        } else if (this.map_literal) { // map literals...
+        } else if (this.map_literal) {                              // map literals...
 
             if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
 
@@ -2082,7 +2082,7 @@ export class OpenBrace extends Opener {
                 else throw new LarkError("expected a Label or Splat", operand.location);
             }
 
-        } else if (this.lvalue) for (const operand of this) { // object breakdowns...
+        } else if (this.lvalue) for (const operand of this) {       // object breakdowns...
 
             if (operand.is(Label)) {
 
@@ -2109,7 +2109,7 @@ export class OpenBrace extends Opener {
 
             } else throw new LarkError("expected a Label or Slurp", operand.location);
 
-        } else operandsLoop: for (const operand of this) { // object literals...
+        } else operandsLoop: for (const operand of this) {          // object literals...
 
             operand.note("validated");
 
@@ -2193,21 +2193,14 @@ export class OpenBracket extends Caller {
         /* Validate an array literal, array breakdown or bracket notation, principly by iterating
         over its operands and validating any splats and slurps. */
 
-        const deslurp = location => { throw new LarkError("unexpected Slurp operation", location) }
-        const desplat = location => { throw new LarkError("unexpected Splat operation", location) }
+        const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
+        const badSplat = location => { throw new LarkError("unexpected Splat", location) }
 
         const notation = this.infixed;
         const operands = this[notation ? 1 : 0];
-        const emptyBracketNotation = notation && operands.length < 1;
-        const multiBracketNotation = notation && operands.length > 1;
 
-        // first, check that any bracket notation always contains exactly one operand...
-
-        if (emptyBracketNotation) throw new LarkError("expected an operand", operands.location);
-        if (multiBracketNotation) throw new LarkError("too many operands", operands[1].location);
-
-        // now, loop over the operands, and validate any splats and slurps (leaving any labels
-        // unvalidated, so they always throw (automatically, see `Label.js`)...
+        if (notation && operands.length < 1) throw new LarkError("expected an operand", operands.location);
+        if (notation && operands.length > 1) throw new LarkError("too many operands", operands[1].location);
 
         for (const operand of operands) {
 
@@ -2222,13 +2215,10 @@ export class OpenBracket extends Caller {
                 const lvalue = this.lvalue || operand.lvalue;
                 const rvalue = not(lvalue);
 
-                if (notation) slurpOperation ? deslurp(operand.location) : desplat(operand.location);
-                else if (rvalue && slurpOperation) deslurp(operand.location);
-                else if (lvalue && splatOperation) desplat(operand.location);
-                else if (lvalue && slurpOperation && operands.at(-1) !== operand) {
-
-                    throw new LarkError("a Slurp must always be the last operand", operand.location);
-                }
+                if (notation) slurpOperation ? badSlurp(operand.location) : badSplat(operand.location);
+                else if (lvalue && slurpOperation && operands.at(-1) !== operand) badSlurp(operand.location);
+                else if (lvalue && splatOperation) badSplat(operand.location);
+                else if (rvalue && slurpOperation) badSlurp(operand.location);
 
             } else if (this.lvalue) {
 
@@ -2236,8 +2226,6 @@ export class OpenBracket extends Caller {
                 else throw new LarkError("expected a Name or Slurp", operand.location);
             }
         }
-
-        // finally, continue the recursion, and fix each operand...
 
         this.certify(validator);
     }
