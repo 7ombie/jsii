@@ -105,13 +105,14 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
+        "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "yield_from",
         "ignore", "labelled", "validated", "tagged_template", "proto_label",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "oo_literal", "set_literal", "map_literal",
-        "not_in", "not_of",
+        "not_in", "not_of", "labelled_result",
     ]));
 
     constructor(location, value=empty) {
@@ -548,7 +549,7 @@ export class PredicatedBlock extends Header {
         /* Gather the predicate, then the block. If the `context` is `Do`, use a functional
         block (so `return`, `yield` and `yield from` are legal). */
 
-        return this.push(gatherExpression(), gatherBlock(context?.is(Do)));
+        return this.push(gatherExpression(), gatherBlock(context?.is(Do, OpenBrace)));
     }
 
     js(w) { return `${this.value} (${this[0].js(w)}) ${w.writeBlock(this[1])}` }
@@ -646,7 +647,7 @@ export class Operator extends Token {
 
         if (offset > BigInt(value.length)) throw new LarkError(`invalid Operator (${value})`, location);
 
-        const [start, end] = [value.slice(0n, -offset), value.slice(-offset)];
+        const [start, end] = [value.slice(0, Number(-offset)), value.slice(Number(-offset))];
 
         if (operators.includes(start)) return [start, ...Operator.slice(end, 1n, location)];
         else return Operator.slice(value, offset + 1n, location);
@@ -1511,6 +1512,7 @@ export class Label extends InfixOperator {
     js(writer) {
 
         if (this.validated) return `${this[0].js(writer)}: ${this[1].js(writer)}`;
+        else if (this.labelled_result) return `[${this[0].js(writer)}, ${this[1].js(writer)}]`;
         else throw new LarkError("unexpected Label", this[0].location);
     }
 }
@@ -2211,7 +2213,20 @@ export class OpenBracket extends Caller {
     /* This class implements the open-bracket delimiter, which is used for array literals, array
     breakdowns and bracket notation. */
 
-    prefix({gatherCompoundExpression}) { return this.push(gatherCompoundExpression(CloseBracket)) }
+    prefix({advance, gather, gatherCompoundExpression, on}) {
+
+        /* If the parser is `on` an instance of a `Header` subclass (`For`, `While`, `If` and
+        `ElseIf`). */
+
+        if (on(Header)) {
+
+            this.push(gather(0, this));
+
+            if (on(CloseBracket)) { advance(); return this.note("array_comprehension") }
+            else throw new LarkError("expected a CloseBracket", this.location);
+
+        } else return this.push(gatherCompoundExpression(CloseBracket));
+    }
 
     infix({gatherCompoundExpression}, left) { return this.push(left, gatherCompoundExpression(CloseBracket)) }
 
@@ -2219,6 +2234,26 @@ export class OpenBracket extends Caller {
 
         /* Validate an array literal, array breakdown or bracket notation, principly by iterating
         over its operands and validating any splats and slurps. */
+
+        if (this.array_comprehension) {
+
+            /* Configure the stacks like a function literal, noting yield, as a function will need to
+            be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
+            explicit function. However, in that case, this is simply redundant, as the functional
+            operand will shadow this configuration with its own. */
+        
+            const {yieldstack, awaitstack, callstack} = validator;
+
+            yieldstack.top = true; callstack.top = true; awaitstack.top = false;
+
+            this.certify(validator);
+
+            callstack.pop; awaitstack.pop;
+
+            if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+
+            return;
+        }
 
         const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
         const badSplat = location => { throw new LarkError("unexpected Splat", location) }
@@ -2257,7 +2292,21 @@ export class OpenBracket extends Caller {
         this.certify(validator);
     }
 
-    js(writer) { return super.js(writer, openBracket, closeBracket) }
+    js(writer) {
+
+        if (this.array_comprehension) {
+
+            const literal = new FunctionLiteral(this.location);
+            const name = new SkipAssignee(this.location);
+            const parameters = new Parameters(this.location);
+            const block = new Block(this.location).push(this[0])
+
+            if (this.yield_qualifier) literal.note("yield_qualifier");
+
+            return `[...${literal.push(name, parameters, block).js(writer)}()]`;
+
+        } else return super.js(writer, openBracket, closeBracket);
+    }
 }
 
 export class OpenInterpolation extends Opener {
@@ -2354,10 +2403,15 @@ export class Return extends Keyword {
 
     prefix({on, gatherExpression}) {
 
-        /* Gather a `return` statement, with an optional expression. */
+        /* Gather a `return` statement, with an optional expression, which can optionally use a
+        labelled expression. */
 
         if (on(Terminator, Closer)) return this;
-        else return this.push(gatherExpression());
+        else this.push(gatherExpression());
+
+        if (this[0].is(Label)) this[0].note("labelled_result");
+
+        return this;
     }
 
     validate(validator) {
@@ -2599,8 +2653,23 @@ export class Yield extends Keyword {
 
     prefix({advance, on, gatherExpression}) {
 
-        if (on(From)) { advance(); return this.note("yield_from").push(gatherExpression()) }
-        else if (not(on(Terminator, Closer))) return this.push(gatherExpression());
+        /* Parse a `yield` operation with an optional expression that may optionally be a labelled
+        expression, or parse a `yield from` operation with a required (unlabelled) expression. */
+
+        if (on(Terminator, Closer)) return this;
+
+        if (on(From)) {
+
+            advance(); return this.note("yield_from").push(gatherExpression());
+
+        } else {
+
+            this.push(gatherExpression());
+
+            if (this[0].is(Label)) this[0].note("labelled_result");
+
+            return this;
+        }
     }
 
     validate(validator) {
