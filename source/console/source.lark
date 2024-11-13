@@ -1,6 +1,7 @@
 [ for numbers in results for number in numbers if number % 2 == 0 yield 2 ** number ]
-{[ for number in numbers if number % 2 == 0 yield "score": 50_000 ]}
-{{ for number in numbers if number % 2 == 0 yield "score": 50_000 }}
+{[ for number in numbers if number % 2 == 0 yield 50_000 ]}
+{{ for number in numbers if number % 2 == 0 yield ["score", number * 50_000] }}
+{ for numbers in results for number in numbers if number % 2 == 0 yield [number, 2 ** number] }
 
 let foo = thing
 let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
@@ -87,7 +88,7 @@ spam.com """
 
 html.tag "
 line one: onside
-  line two: indented \(1, 2) spaces
+  line two: indented \(1, 2) spaces    
 line three: onside \(3, 4, 5) again
 "
 

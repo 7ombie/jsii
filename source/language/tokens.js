@@ -112,7 +112,7 @@ export class Token extends Array {
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "oo_literal", "set_literal", "map_literal",
-        "not_in", "not_of", "labelled_result",
+        "not_in", "not_of",
     ]));
 
     constructor(location, value=empty) {
@@ -1544,7 +1544,6 @@ export class Label extends InfixOperator {
     js(writer) {
 
         if (this.validated) return `${this[0].js(writer)}: ${this[1].js(writer)}`;
-        else if (this.labelled_result) return `[${this[0].js(writer)}, ${this[1].js(writer)}]`;
         else throw new LarkError("unexpected Label", this[0].location);
     }
 }
@@ -2105,7 +2104,12 @@ export class OpenBrace extends Opener {
 
         if (on(Header)) {
 
-            this.push(gather(0, this).note("map_comprehension"));
+            /* This block handles object comprehensions and nested map comprehensions (which have
+            the same grammar as object comprehensions, but wrapped in braces). The block puts the
+            "object_comprehension" note on the top-level object, and the "map_comprehension" note
+            on its operand, so things work out correctly in the end. */
+
+            this.note("object_comprehension").push(gather(0, this).note("map_comprehension"));
 
             if (on(CloseBrace)) { advance(); return this }
             else throw new LarkError("expected a CloseBrace", advance(false).location);
@@ -2140,12 +2144,10 @@ export class OpenBrace extends Opener {
 
         let prototypes = 0;
 
-        if (this.set_comprehension || this.map_comprehension) {
+        if (this.set_comprehension || this.map_comprehension || this.object_comprehension) {
 
             /* Configure the stacks like a function literal, noting yield, as a function will need to
-            be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
-            explicit function. However, in that case, this is simply redundant, as the functional
-            operand will shadow this configuration with its own. */
+            be synthesized by the Writer Stage to compile the comprehension. */
 
             const {yieldstack, awaitstack, callstack} = validator;
 
@@ -2246,7 +2248,7 @@ export class OpenBrace extends Opener {
 
         /* Render a set, map, array literal or array breakdown. */
 
-        if (this.set_comprehension || this.map_comprehension) {
+        if (this.object_comprehension || this.set_comprehension || this.map_comprehension) {
 
             const literal = new FunctionLiteral(this.location);
             const name = new SkipAssignee(this.location);
@@ -2255,8 +2257,15 @@ export class OpenBrace extends Opener {
 
             if (this.yield_qualifier) literal.note("yield_qualifier");
 
-            if (this.set_comprehension) return `new Set(${literal.push(name, parameters, block).js(writer)}())`;
-            else return `new Map(${literal.push(name, parameters, block).js(writer)}())`;
+            if (this.object_comprehension) {
+
+                return `Object.fromEntries(${literal.push(name, parameters, block).js(writer)}())`;
+
+            } else if (this.set_comprehension) {
+
+                return `new Set(${literal.push(name, parameters, block).js(writer)}())`;
+
+            } else return `new Map(${literal.push(name, parameters, block).js(writer)}())`;
 
         } else if (this.set_literal) {
 
@@ -2488,11 +2497,7 @@ export class Return extends Keyword {
         labelled expression. */
 
         if (on(Terminator, Closer)) return this;
-        else this.push(gatherExpression());
-
-        if (this[0].is(Label)) this[0].note("labelled_result");
-
-        return this;
+        else return this.push(gatherExpression());
     }
 
     validate(validator) {
@@ -2738,18 +2743,8 @@ export class Yield extends Keyword {
 
         if (on(Terminator, Closer)) return this;
 
-        if (on(From)) {
-
-            advance(); return this.note("yield_from").push(gatherExpression());
-
-        } else {
-
-            this.push(gatherExpression());
-
-            if (this[0].is(Label)) this[0].note("labelled_result");
-
-            return this;
-        }
+        if (on(From)) { advance(); return this.note("yield_from").push(gatherExpression()) }
+        else return this.push(gatherExpression());
     }
 
     validate(validator) {
