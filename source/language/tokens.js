@@ -2290,7 +2290,7 @@ export class OpenBracket extends Caller {
             this.push(gather(0, this));
 
             if (on(CloseBracket)) { advance(); return this.note("array_comprehension") }
-            else throw new LarkError("expected a CloseBracket", this.location);
+            else throw new LarkError("expected a CloseBracket", advance(false).location);
 
         } else return this.push(gatherCompoundExpression(CloseBracket));
     }
