@@ -2107,11 +2107,13 @@ export class OpenBrace extends Opener {
 
         if (operands.length === 1 && operands[0].is(OpenBracket)) {
 
-            return this.note("set_literal").push(...operands[0][0]);
+            if (operands[0][0].is(For)) return this.note("set_comprehension").push(...operands[0]);
+            else return this.note("set_literal").push(...operands[0][0]);
 
         } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
 
-            return this.note("map_literal").push(...operands[0]);
+            if (operands[0].is(For)) return this.note("map_comprehension").push(...operands);
+            else return this.note("map_literal").push(...operands[0]);
 
         } else return this.push(...operands);
     }
@@ -2124,19 +2126,40 @@ export class OpenBrace extends Opener {
 
         let prototypes = 0;
 
-        if (this.set_literal) {                                     // set literals...
+        if (this.set_comprehension || this.map_comprehension) {
+
+            /* Configure the stacks like a function literal, noting yield, as a function will need to
+            be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
+            explicit function. However, in that case, this is simply redundant, as the functional
+            operand will shadow this configuration with its own. */
+
+            const {yieldstack, awaitstack, callstack} = validator;
+
+            yieldstack.top = true; callstack.top = true; awaitstack.top = false;
+
+            this.certify(validator);
+
+            callstack.pop; awaitstack.pop;
+
+            if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+
+            return;
+        }
+
+        if (this.set_literal || this.set_comprehension) {           // set literals...
 
             if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
+            else if (this.set_comprehension) return this.certify(validator);
             else for (const operand of this) {
 
                 if (operand.is(Spread) && operand.infixed) operand.note("validated");
             }
 
-        } else if (this.map_literal) {                              // map literals...
+        } else if (this.map_literal || this.map_comprehension) {    // map literals...
 
             if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
-
-            for (const operand of this) {
+            else if (this.map_comprehension) return this.certify(validator);
+            else for (const operand of this) {
 
                 if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) operand.note("validated");
                 else throw new LarkError("expected a Label or Splat", operand.location);
@@ -2209,7 +2232,19 @@ export class OpenBrace extends Opener {
 
         /* Render a set, map, array literal or array breakdown. */
 
-        if (this.set_literal) {
+        if (this.set_comprehension || this.map_comprehension) {
+
+            const literal = new FunctionLiteral(this.location);
+            const name = new SkipAssignee(this.location);
+            const parameters = new Parameters(this.location);
+            const block = new Block(this.location).push(this[0])
+
+            if (this.yield_qualifier) literal.note("yield_qualifier");
+
+            if (this.set_comprehension) return `new Set(${literal.push(name, parameters, block).js(writer)}())`;
+            else return `new Map(${literal.push(name, parameters, block).js(writer)}())`;
+
+        } else if (this.set_literal) {
 
             if (this.length === 0) return "new Set()";
             else return `new Set([${this.map(operand => operand.js(writer)).join(comma + space)}])`;
@@ -2273,7 +2308,7 @@ export class OpenBracket extends Caller {
             be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
             explicit function. However, in that case, this is simply redundant, as the functional
             operand will shadow this configuration with its own. */
-        
+
             const {yieldstack, awaitstack, callstack} = validator;
 
             yieldstack.top = true; callstack.top = true; awaitstack.top = false;

@@ -8,9 +8,9 @@ const result = await fetch("source.lark");
 const source = await result.text();
 const underline = Array(128).fill("-").join("");
 
-put(`SOURCE...\n${underline}\n${source}${underline}`);
+put(`SOURCE...\n${underline}\n${source}\n${underline}`);
 
-// for (const token of lex(source)) put("token:", token);
-// for (const statement of parse(source, {dev: true})) put("basic statement:", statement);
-// for (const statement of fix(source, {dev: true})) put(statement);
+// for (const token of lex(source)) put("Token:", token);
+// for (const statement of parse(source, {dev: true})) put("Parse Tree:", statement);
+// for (const statement of validate(source, {dev: true})) put("Statement:", statement);
 for (const string of write(source, {dev: true})) put(string);

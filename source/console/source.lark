@@ -1,11 +1,5 @@
-let x = 0
-if true {
-    if 1 if 2 { put(x.foo * y) }
-    let x = 1, var y = 2, var foo = zebra
-    put(x, y, z)
-    let z = 4
-    put(foo.bar, y)
-}
+[ for numbers in results for number in numbers if number % 2 == 0 yield 2 ** number ]
+{[ for number in numbers if number % 2 == 0 yield "score": 50_000 ]}
 
 let foo = thing
 let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
@@ -234,6 +228,12 @@ conspiracy_theory is not Types[20 * 8.x]
 
 foo bar spam eggs (1, 2, 3)
 
+# (number * 2 for number in numbers)
+do for number in numbers yield number * 2
+
+# [number * 2 for number in numbers]
+[(do for number in numbers yield number * 2)...]
+
 function { var y = 0, var z = 1 }
 
 x when y else throw new Foo("spam and eggs")
@@ -243,16 +243,3 @@ x not in y
 y not of x
 
 async function of x, y = foo(x.y[foo()]) { await x + y }
-
-# (number * 2 for number in numbers)
-do for number in numbers yield number * 2
-
-# [number * 2 for number in numbers if number % 2 == 0]
-[for number in numbers if number % 2 == 0 yield number * 3: 2]
-
-# [number * 2 for number in numbers if number % 2 == 0]
-#{for number in numbers if number % 2 == 0 yield number * 2}
-
-function {
-    return elle: 1_000_000 * love
-}
