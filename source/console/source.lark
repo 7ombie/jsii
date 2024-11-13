@@ -1,10 +1,10 @@
 let x = 0
 if true {
-    if 1 if 2 if 3 { put(x.foo * y) }
-    let x = 1, var y = 2, var z = 3
+    if 1 if 2 { put(x.foo * y) }
+    let x = 1, var y = 2, var foo = zebra
     put(x, y, z)
-    let foo = 4
-    put(foo.bar)
+    let z = 4
+    put(foo.bar, y)
 }
 
 let foo = thing

@@ -468,38 +468,70 @@ export class Declaration extends Keyword {
 
         /* Iterate over the assignees, and make sure any nested breakdowns note "lvalue", and that
         slurps note "validated" when they are the last assignee within their respective breakdown,
-        complaining if they are not. The exact same logic is applied to the lvalues of assignment
-        operations too (see `AssignmentOperator`), but not inplace-assignment (as updating a name
-        cannot use a breakdown). */
+        complaining if they're not. Similar logic is applied to the lvalues of assignments (see
+        `AssignmentOperator`), but not inplace-assignments, as they do not use breakdowns).
 
-        const message = "a Slurp must always be the last operand";
+        This method also coordinates with the `validate` methods of `Block` and `Variable` via the
+        `validator.scopestack` to eliminate TDZs (Temporal Dead Zones). */
+
+        const correctForTemporalDistortions = function(assignee) {
+
+            /* Take an assignee, note "lvalue" for it, then figure out its place within the block,
+            and update the `scopestack` as required.
+
+            If the name of the assignee's not present in the current namespace, it's declared there
+            with its value set to "<declared>".
+
+            If the name exists in the current namespace, and has the value "<declared>" or the name
+            of a register ("ƥ0", "ƥ1", "ƥ2"...), then it's a syntax error to declare it again.
+
+            If the name exists, and the value is "<shadowed>", it's nonlocal, and there are one or
+            more references to it inside some nested block above this declaration, so declaring it
+            here would create a temporal dead zone. Instead, we generate a register name, then set
+            the `value` property of this declaration to the register name, and store *that* value
+            (instead of "<declared") in the namespace on top of the `scopestack`.
+
+            The `Variable` class walks the `scopestack` backwards (from innermost to outermost) and
+            adds its name to every namespace that does not declare it, setting the value associated
+            with that name to "<shadowed>", up to (but not including) whichever namespace declares
+            the name, if any do, and tagging every namespace on the `scopestack` when `Variable`
+            fails to find its declaration.
+
+            If a given `Variable` finds its declaration (and breaks), it first checks for any value
+            other than "<declared>", and when present, the `Variable` instance copies the value, so
+            names that use registers get copied to all of their references (updating their `value`
+            properties to the name of the register). */
+
+            const [value, scope] = [assignee.note("lvalue").value, validator.scopestack.top];
+
+            if (scope[value] === "<shadowed>") { // the same name is referenced through this block
+
+                scope[value] = js.register();
+                assignee.value = scope[value];
+
+            } else if (scope[value] !== undefined) { // the name is declared or registered here
+
+                throw new LarkError(duplicate(assignee), location);
+
+            } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
+        };
+
+        const duplicate = assignee => `duplicate declaration (${this.value} ${assignee.value})`;
+
+        const [location, message] = [this.location, "a Slurp must always be the last operand"];
 
         iife(this[0], function walk(assignees) {
 
             /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
             note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
             operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`), and
-            update the `scopestack` with any declared names. */
+            pass any variables to `correctForTemporalDistortions` to eliminate TDZ. */
 
-            const {scopestack} = validator;
-
-            const update = function(assignee) {
-
-                if (not(assignee.is(Variable))) return;
-
-                if (scopestack.top[assignee.value] === "shadowed") {
-
-                    scopestack.top[assignee.value] = js.register();
-                    assignee.value = scopestack.top[assignee.value];
-
-                } else scopestack.top[assignee.value] = "declared";
-            };
-
-            update(assignees.note("lvalue"));
+            if (assignees.is(Variable)) correctForTemporalDistortions(assignees);
 
             for (const assignee of assignees) {
 
-                if (assignee.is(Variable)) update(assignee);
+                if (assignee.is(Variable)) correctForTemporalDistortions(assignee);
                 else if (assignee.is(OpenBracket, OpenBrace)) walk(assignee);
                 else if (assignee.is(Label)) walk(assignee[1]);
                 else if (assignee.is(Spread) && assignee.prefixed) {
@@ -2572,11 +2604,10 @@ export class Variable extends Word {
 
             if (Object.hasOwn(scope, this.value)) {
 
-                if (value === "shadowed") continue loop;
-                else if (value === "declared") break;
+                if (value === "<shadowed>" || value === "<declared>") break loop;
                 else this.value = value;
 
-            } else scope[this.value] = "shadowed";
+            } else scope[this.value] = "<shadowed>";
         }
 
         this.certify(validator);
