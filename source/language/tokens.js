@@ -2084,7 +2084,7 @@ export class OpenBrace extends Opener {
 
     expression = true;
 
-    prefix({gatherCompoundExpression}) {
+    prefix({advance, on, gather, gatherCompoundExpression}) {
 
         /* Parse a set, a map or an object literal or breakdown, splatting all of the operands from
         the resulting `CompoundExpression` into the current instance, while noting the grammar used
@@ -2103,17 +2103,31 @@ export class OpenBrace extends Opener {
         only used to express bracket notation and array literals and breakdowns (so the resulting
         `CompoundExpression` directly contains the operands). */
 
+        if (on(Header)) {
+
+            this.push(gather(0, this).note("map_comprehension"));
+
+            if (on(CloseBrace)) { advance(); return this }
+            else throw new LarkError("expected a CloseBrace", advance(false).location);
+        }
+
         const operands = gatherCompoundExpression(CloseBrace);
 
         if (operands.length === 1 && operands[0].is(OpenBracket)) {
 
-            if (operands[0][0].is(For)) return this.note("set_comprehension").push(...operands[0]);
-            else return this.note("set_literal").push(...operands[0][0]);
+            if (operands[0][0].is(For)) {
+
+                return this.note("set_comprehension").push(...operands[0]);
+
+            } else return this.note("set_literal").push(...operands[0][0]);
 
         } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
 
-            if (operands[0].is(For)) return this.note("map_comprehension").push(...operands);
-            else return this.note("map_literal").push(...operands[0]);
+            if (operands[0][0]?.map_comprehension) {
+
+                return this.note("map_comprehension").push(...operands[0]);
+
+            } else return this.note("map_literal").push(...operands[0]);
 
         } else return this.push(...operands);
     }
@@ -2146,7 +2160,7 @@ export class OpenBrace extends Opener {
             return;
         }
 
-        if (this.set_literal || this.set_comprehension) {           // set literals...
+        if (this.set_literal) {                                     // set literals...
 
             if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
             else if (this.set_comprehension) return this.certify(validator);
@@ -2155,7 +2169,7 @@ export class OpenBrace extends Opener {
                 if (operand.is(Spread) && operand.infixed) operand.note("validated");
             }
 
-        } else if (this.map_literal || this.map_comprehension) {    // map literals...
+        } else if (this.map_literal) {                              // map literals...
 
             if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
             else if (this.map_comprehension) return this.certify(validator);
