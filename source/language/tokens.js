@@ -244,7 +244,42 @@ export class Token extends Array {
         return false;
     }
 
-    certify(validator) { for (const operand of this) operand.validate(validator, this) }
+    certify(validator) { // internal helper
+
+        /* This method is invoked by the `validate` method to recursively validate each of its
+        operands. All of the tokens inherit `validate`, so invoking `validate` will walk the
+        AST. When subclasses need to do any post-parsing validation or rewriting, they can
+        override `validate`, do what they need to do, then invoke `certify(validator)` to
+        continue the recursion once they're done.
+
+        See `certifyAsFunctional` below for an example of how this helper is used. */
+
+        for (const operand of this) operand.validate(validator, this);
+    }
+
+    certifyAsFunctional(validator) { // internal helper
+
+        /* Configure the `yieldstack`, `awaitstack` and `callstack` just like a function literal,
+        noting `yield`, as a function will need to be synthesized by the Writer Stage to compile
+        the block that belongs to the instance that uses this method (an instance of `OpenBrace`,
+        `OpenBracket` or `Do`, which all convert compound statements (`if`, `while`, `for` etc)
+        to IIFEs, which automatically become generators if they yield). By calling this method,
+        IIFEs and comprehensions ensure that the blocks of the branches and loops they convert
+        to functions are able to use `return`, `yield` and `yield from`.
+
+        Note: It's redundant when `Do` invokes this method on a `function`, as functional blocks
+        will already push and pop the same state to the same stacks, but it does no harm. */
+
+        const {yieldstack, awaitstack, callstack} = validator;
+
+        yieldstack.top = true; callstack.top = true; awaitstack.top = false;
+
+        this.certify(validator);
+
+        callstack.pop; awaitstack.pop;
+
+        if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+    }
 }
 
 export class Terminal extends Token {
@@ -1254,6 +1289,18 @@ export class FunctionLiteral extends Functional {
 
         return context === writer ? `(${javascript})` : javascript;
     }
+
+    static synthesize(location, body, yielding) {
+
+        const literal = new FunctionLiteral(location);
+        const name = new SkipAssignee(location);
+        const parameters = new Parameters(location);
+        const block = new Block(location).push(body);
+
+        if (yielding) literal.note("yield_qualifier");
+
+        return literal.push(name, parameters, block);
+    }
 }
 
 export class ClassLiteral extends Functional {
@@ -1626,23 +1673,7 @@ export class Do extends PrefixOperator {
         else return this.push(gatherBlock(true));
     }
 
-    validate(validator) {
-
-        /* Configure the stacks like a function literal, noting yield, as a function will need to
-        be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
-        explicit function. However, in that case, this is simply redundant, as the functional
-        operand will shadow this configuration with its own. */
-
-        const {yieldstack, awaitstack, callstack} = validator;
-
-        yieldstack.top = true; callstack.top = true; awaitstack.top = false;
-
-        this.certify(validator);
-
-        callstack.pop; awaitstack.pop;
-
-        if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
-    }
+    validate(validator) { this.certifyAsFunctional(validator) }
 
     js(writer) {
 
@@ -1658,15 +1689,7 @@ export class Do extends PrefixOperator {
         }
 
         if (this[0].is(Functional)) return `${this[0].js(writer)}()`;
-
-        const literal = new FunctionLiteral(this.location);
-        const name = new SkipAssignee(this.location);
-        const parameters = new Parameters(this.location);
-        const block = new Block(this.location).push(this[0])
-
-        if (this.yield_qualifier) literal.note("yield_qualifier");
-
-        return `${literal.push(name, parameters, block).js(writer)}()`;
+        else return FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
     }
 }
 
@@ -2146,20 +2169,7 @@ export class OpenBrace extends Opener {
 
         if (this.set_comprehension || this.map_comprehension || this.object_comprehension) {
 
-            /* Configure the stacks like a function literal, noting yield, as a function will need to
-            be synthesized by the Writer Stage to compile the comprehension. */
-
-            const {yieldstack, awaitstack, callstack} = validator;
-
-            yieldstack.top = true; callstack.top = true; awaitstack.top = false;
-
-            this.certify(validator);
-
-            callstack.pop; awaitstack.pop;
-
-            if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
-
-            return;
+            return this.certifyAsFunctional(validator);
         }
 
         if (this.set_literal) {                                     // set literals...
@@ -2250,22 +2260,11 @@ export class OpenBrace extends Opener {
 
         if (this.object_comprehension || this.set_comprehension || this.map_comprehension) {
 
-            const literal = new FunctionLiteral(this.location);
-            const name = new SkipAssignee(this.location);
-            const parameters = new Parameters(this.location);
-            const block = new Block(this.location).push(this[0])
+            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
 
-            if (this.yield_qualifier) literal.note("yield_qualifier");
-
-            if (this.object_comprehension) {
-
-                return `Object.fromEntries(${literal.push(name, parameters, block).js(writer)}())`;
-
-            } else if (this.set_comprehension) {
-
-                return `new Set(${literal.push(name, parameters, block).js(writer)}())`;
-
-            } else return `new Map(${literal.push(name, parameters, block).js(writer)}())`;
+            if (this.object_comprehension) return `Object.fromEntries(${literal}())`;
+            else if (this.set_comprehension) return `new Set(${literal}())`;
+            else return `new Map(${literal}())`;
 
         } else if (this.set_literal) {
 
@@ -2325,25 +2324,7 @@ export class OpenBracket extends Caller {
         /* Validate an array literal, array breakdown or bracket notation, principly by iterating
         over its operands and validating any splats and slurps. */
 
-        if (this.array_comprehension) {
-
-            /* Configure the stacks like a function literal, noting yield, as a function will need to
-            be synthesized by the Writer Stage to compile the `do` block, unless it's applied to an
-            explicit function. However, in that case, this is simply redundant, as the functional
-            operand will shadow this configuration with its own. */
-
-            const {yieldstack, awaitstack, callstack} = validator;
-
-            yieldstack.top = true; callstack.top = true; awaitstack.top = false;
-
-            this.certify(validator);
-
-            callstack.pop; awaitstack.pop;
-
-            if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
-
-            return;
-        }
+        if (this.array_comprehension) return this.certifyAsFunctional(validator);
 
         const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
         const badSplat = location => { throw new LarkError("unexpected Splat", location) }
@@ -2386,14 +2367,9 @@ export class OpenBracket extends Caller {
 
         if (this.array_comprehension) {
 
-            const literal = new FunctionLiteral(this.location);
-            const name = new SkipAssignee(this.location);
-            const parameters = new Parameters(this.location);
-            const block = new Block(this.location).push(this[0])
+            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
 
-            if (this.yield_qualifier) literal.note("yield_qualifier");
-
-            return `[...${literal.push(name, parameters, block).js(writer)}()]`;
+            return `Array.from(${literal}())`;
 
         } else return super.js(writer, openBracket, closeBracket);
     }
