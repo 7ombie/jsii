@@ -368,9 +368,29 @@ export function * parse(source, {dev=false}={}) {
         on
     };
 
-    const labelspace = new Stack({});
-    const whitespace = new Stack(true).on(false, ignoreInsignificantNewlines);
+    class WhitespaceStack extends Stack {
 
+        /* Extend the `Stack` class to invoke `ignoreInsignificantNewlines` whenever the value on
+        top of the stack changes (`ignoreInsignificantNewlines` only ignores newlines if they are
+        actually insignificant at the momemnt it's invoked). */
+
+        set top(value) {
+
+            super.top = value;
+            ignoreInsignificantNewlines();
+        }
+
+        set pop(value) {
+
+            super.pop = value;
+            ignoreInsignificantNewlines();
+
+            return this.top;
+        }
+    }
+
+    const labelspace = new Stack({});
+    const whitespace = new WhitespaceStack(true);
     const tokens = lex(source, {dev});
 
     let token, previous;
