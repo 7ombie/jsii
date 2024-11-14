@@ -275,11 +275,13 @@ export class Token extends Array {
 
         const {yieldstack, awaitstack, callstack, atstack} = validator;
 
-        yieldstack.top = true; callstack.top = true; awaitstack.top = false;
+        yieldstack.top = true; callstack.top = true; awaitstack.top = false; atstack.top = false;
 
         this.certify(validator);
 
         callstack.pop; awaitstack.pop;
+
+        if (atstack.top.is?.(At)) throw new LarkError("unexpected Attributed Parameter", atstack.pop.location);
 
         if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
     }
@@ -1378,7 +1380,7 @@ export class At extends Token {
     validate(validator) {
 
         if (this.at_name) throw new LarkError("decorators not implemented", this.location);
-        else if (not(validator.callstack)) throw LarkError("unexpected Attributed Parameter", this.location);
+        else if (not(validator.callstack.top)) throw LarkError("unexpected Attributed Parameter", this.location);
         else if (validator.atstack.top === false) validator.atstack.top = this;
     }
 
