@@ -221,7 +221,8 @@ export function * parse(source, {dev=false}={}) {
         is returned.
 
         Note: This function ensures that parameters are always valid expressions, but does not check
-        for `yield` or `await` expressions in default arguments (leaving that to later stages).
+        for `yield` or `await` expressions in default arguments (as that's handled by the Validator
+        Stage).
 
         Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 

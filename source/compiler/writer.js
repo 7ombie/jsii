@@ -23,11 +23,11 @@ export function * write(source, {dev=false}={}) {
 
         for (const statement of statements) if (not(statement.ignore)) {
 
-            const terminated = statement.is(Header, Label);
-            const javascript = statement.js(api, api);
+            const js = statement.js(api, null);
+            const terminated = statement.terminated;
 
             yield * preambles.top.map(preamble => indentation + preamble);
-            yield indentation + javascript + (terminated ? empty : semicolon);
+            yield indentation + js + (terminated ? empty : semicolon);
 
             preambles.top.length = 0;
         }
@@ -37,9 +37,9 @@ export function * write(source, {dev=false}={}) {
 
     function writeBlock(block) { // api function
 
-        /* Take a `Block` instance. Increase the indentation, `walk` the block and render each
-        statement, before joining them with newlines and wrapping the result in curly braces.
-        Finally, restore the previous indentation level, before returning the result. */
+        /* Take a `Block` instance and `walk` its (statement) operands, rendering each one, before
+        joining them with newlines. The indentation (inside the block) is increased one level, and
+        the block is wrapped in curly braces. */
 
         indentation += space + space;
 

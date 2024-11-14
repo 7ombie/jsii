@@ -1,3 +1,15 @@
+do let x = 1 then for x in numbers if x if y function { yield @0 }
+let g = do var counter = 0 then while true { yield counter, counter += 1 }
+do let args = getArguments() then return throw new Foo([args...])
+
+var i = 0 then while i < array.length { put(array[i]), i += 1 }
+
+let f = function if x do {
+    if x {
+        yield x
+    }
+}
+
 do for number of Array(8).fill(0) yield number * 2
 [ for number in numbers yield 2 ** number ]
 {[ for number in numbers if number % 2 == 0 yield 50_000 ]}
@@ -241,10 +253,10 @@ function {
     let z = name + 1
 }
 
-x when y else throw new Foo("spam and eggs")
-throw new Foo("spam and eggs")
+x when y else throw new SyntaxError("spam and eggs")
+throw new TypeError("spam and eggs")
 
 x not in y
 y not of x
 
-async function of x, y = foo(x.y[foo()]) { await x + y }
+async function of x, y = foo(x.y[foo()]) { await alloc Foo(x + y, z) }

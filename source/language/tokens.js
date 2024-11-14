@@ -108,14 +108,15 @@ export class Token extends Array {
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
         "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
+        "ignore", "labelled", "validated", "tagged_template", "proto_label", "terminated",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "yield_from",
-        "ignore", "labelled", "validated", "tagged_template", "proto_label",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "oo_literal", "set_literal", "map_literal",
         "at_name", "at_parameter",
         "not_in", "not_of",
+        "then_statement",
     ]));
 
     constructor(location, value=empty) {
@@ -491,7 +492,7 @@ export class Declaration extends Keyword {
     freezing a *primitive object*, freezes the object (though the resulting value is still equal
     to its primitive equivalent, according to Lark equality). */
 
-    prefix({advance, gatherAssignees, gatherExpression, on}) {
+    prefix({advance, gather, gatherAssignees, gatherExpression, on}) {
 
         /* Gather a `let` or `var` declaration, which always has an assignees before the assign
         operator, and always has an expression after it. */
@@ -501,7 +502,12 @@ export class Declaration extends Keyword {
         if (on(Assign)) advance();
         else throw new LarkError("expected the Assigment Symbol");
 
-        return this.push(gatherExpression());
+        this.push(gatherExpression());
+
+        if (on(Then)) advance();
+        else return this;
+
+        return this.note("then_statement").push(gather());
     }
 
     validate(validator) {
@@ -589,8 +595,21 @@ export class Declaration extends Keyword {
 
         /* Render a Lark `let` or `var` declaration using JavaScript's `const` or `let`. */
 
-        if (this.spelling === "var") return `let ${this[0].js(writer)} = ${this[1].js(writer)}`;
-        else return `const ${this[0].js(writer)} = Object.freeze(${this[1].js(writer)})`;
+        if (this.then_statement) {
+
+            this.notes.delete("then_statement");
+
+            const block = writer.writeBlock(new Block(this.location).push(this, this[2]));
+
+            this.note("terminated");
+
+            return block;
+
+        } else {
+
+            if (this.spelling === "var") return `let ${this[0].js(writer)} = ${this[1].js(writer)}`;
+            else return `const ${this[0].js(writer)} = Object.freeze(${this[1].js(writer, true)})`;
+        }
     }
 }
 
@@ -609,6 +628,8 @@ export class Header extends Keyword {
 
     /* This is the abstract base class for statements that have a block. It is imported by the
     parser, which uses it to implement LIST correctly.*/
+
+    notes = new Set(["terminated"]);
 }
 
 export class PredicatedBlock extends Header {
@@ -696,6 +717,7 @@ export class Operator extends Token {
             case "packed": return new Packed(location, value);
             case "seal": return new Seal(location, value);
             case "sealed": return new Sealed(location, value);
+            case "then": return new Then(location, value);
             case "when": return new When(location, value);
         }
     }
@@ -1292,7 +1314,7 @@ export class FunctionLiteral extends Functional {
         }
     }
 
-    js(writer, context) {
+    js(writer, safe=false) {
 
         /* Render a function that may be async, a generator, both or neither. */
 
@@ -1305,7 +1327,7 @@ export class FunctionLiteral extends Functional {
 
         const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
 
-        return context === writer ? `(${javascript})` : javascript;
+        return safe ? javascript : openParen + javascript + closeParen;
     }
 
     static synthesize(location, body, yielding) {
@@ -1379,7 +1401,7 @@ export class At extends Token {
 
     validate(validator) {
 
-        if (this.at_name) throw new LarkError("decorators not implemented", this.location);
+        if (this.at_name) throw new LarkError("decorators are not implemented yet", this.location);
         else if (not(validator.callstack.top)) throw LarkError("unexpected Attributed Parameter", this.location);
         else if (validator.atstack.top === false) validator.atstack.top = this;
     }
@@ -1609,6 +1631,7 @@ export class Label extends InfixOperator {
     expressions, and for labelling control-flow blocks. */
 
     LBP = 1;
+    notes = new Set(["terminated"]);
 
     infix(parser, left) {
 
@@ -1716,10 +1739,12 @@ export class Dev extends Keyword {
     js(writer) { return this[0].js(writer) }
 }
 
-export class Do extends PrefixOperator {
+export class Do extends Keyword {
 
     /* This class implements the `do` keyword, which prefixes blocks and functions to create IIFEs
     (which Lark uses as a more flexible version of block-statements). */
+
+    expression = true;
 
     prefix({on, gather, gatherBlock}) {
 
@@ -1729,17 +1754,22 @@ export class Do extends PrefixOperator {
 
     validate(validator) { this.certifyAsFunctional(validator) }
 
-    js(writer) {
+    js(writer, context=undefined) {
 
-        /* Render a statement with a `do` qualifier, which can be a do-block (which compiles to an
-        IIFE with no name or arguments etc), a control-flow block (optionally containing `return`
-        statements, which compiles to an IIFE with the statement inside), or a function (which
-        just gets dangling-dogballs appended). */
+        /* Render a statement with a `do` qualifier. */
 
         if (this[0].is(Block)) {
 
-            if (this.yield_qualifier) return `function *() ${writer.writeBlock(this[0])}()`;
-            else return `function() ${writer.writeBlock(this[0])}()`;
+            if (this.yield_qualifier) {
+
+                if (context === true) return `function *() ${writer.writeBlock(this[0])}()`;
+                else return `(function *() ${writer.writeBlock(this[0])}())`;
+
+            } else if (context === true) {
+
+                return `function() ${writer.writeBlock(this[0])}()`;
+
+            } else return `(function() ${writer.writeBlock(this[0])}())`;
         }
 
         if (this[0].is(Functional)) return `${this[0].js(writer)}()`;
@@ -2321,11 +2351,11 @@ export class OpenBrace extends Opener {
 
         if (this.object_comprehension || this.set_comprehension || this.map_comprehension) {
 
-            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
+            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier)
 
-            if (this.object_comprehension) return `Object.fromEntries(${literal}())`;
-            else if (this.set_comprehension) return `new Set(${literal}())`;
-            else return `new Map(${literal}())`;
+            if (this.object_comprehension) return `Object.fromEntries(${literal.js(writer, true)}())`;
+            else if (this.set_comprehension) return `new Set(${literal.js(writer, true)}())`;
+            else return `new Map(${literal.js(writer, true)}())`;
 
         } else if (this.set_literal) {
 
@@ -2428,9 +2458,9 @@ export class OpenBracket extends Caller {
 
         if (this.array_comprehension) {
 
-            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
+            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier);
 
-            return `Array.from(${literal}())`;
+            return `Array.from(${literal.js(writer, true)}())`;
 
         } else return super.js(writer, openBracket, closeBracket);
     }
@@ -2450,6 +2480,19 @@ export class OpenParen extends Caller {
     prefix({gatherCompoundExpression}) { return this.push(gatherCompoundExpression(CloseParen)) }
 
     infix({gatherCompoundExpression}, left) { return this.push(left, gatherCompoundExpression(CloseParen)) }
+
+    validate(validator) {
+
+        if (this.prefixed) {
+
+            if (this[0].length === 1) return this;
+            else throw new LarkError("unexpected Tuple Literal", this.location);
+        }
+
+        for (const operand of this[1]) if (operand.is(Spread) && operand.infixed) operand.note("validated");
+
+        this.certify(validator);
+    }
 
     js(writer) { return super.js(writer, openParen, closeParen) }
 }
@@ -2502,6 +2545,7 @@ export class Plus extends GeneralOperator {
     js(writer) {
 
         if (this[0].at_parameter) return `ƥargs[${this.value}${this[0].value.slice(1)}]`;
+        else return super.js(writer);
     }
 }
 
@@ -2641,6 +2685,12 @@ export class SuperConstant extends Constant {
     /* This class implements the `super` constant. */
 }
 
+export class Then extends Constant {
+
+    /* This class implements the `then` operator, used by `let-when`, `var-when`, `when-then`
+    etc. It's always handled by some other token. */
+}
+
 export class Throw extends CommandStatement {
 
     /* This class implements `throw`, which is an operative keyword in Lark, but has the same
@@ -2648,10 +2698,10 @@ export class Throw extends CommandStatement {
 
     expression = true;
 
-    js(writer, context) {
+    js(writer, context=undefined) {
 
-        if (context === writer) return `throw ${this[0].js(writer)}`;
-        else return `(() => { throw ${this[0].js(writer)} })()`;
+        if (context === null) return `throw ${this[0].js(writer)}`;
+        else return `(()=>{throw ${this[0].js(writer)}})()`;
     }
 }
 
@@ -2742,7 +2792,7 @@ export class When extends Operator {
         return this.push(gatherExpression(this.LBP - 1));
     }
 
-    js(writer) { return `${this[1].js(writer)} ? ${this[0].js(writer)} : ${this[2].js(writer)}` }
+    js(writer) { return `(${this[1].js(writer)} ? ${this[0].js(writer)} : ${this[2].js(writer)})` }
 }
 
 export class While extends PredicatedBlock {
