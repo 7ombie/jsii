@@ -18,6 +18,7 @@ export function * validate(source, {dev=false}={}) {
     }
 
     const api = {
+        atstack:    new Stack(),                    // find attributed parameters inside functions
         yieldstack: new Stack(),                    // find `yield` and `yield from` inside functions
         awaitstack: new Stack(true),                // whether we're in an async function or onside
         paramstack: new Stack(false),               // whether we're currently in a parameters list

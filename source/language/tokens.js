@@ -273,7 +273,7 @@ export class Token extends Array {
         Note: It's redundant when `Do` invokes this method on a `function`, as functional blocks
         will already push and pop the same state to the same stacks, but it does no harm. */
 
-        const {yieldstack, awaitstack, callstack} = validator;
+        const {yieldstack, awaitstack, callstack, atstack} = validator;
 
         yieldstack.top = true; callstack.top = true; awaitstack.top = false;
 
@@ -1265,17 +1265,29 @@ export class FunctionLiteral extends Functional {
         With all five stacks updated, affix any operands, then restore the previous state of the
         stacks (noting "yield_qualifier" as appropriate), before returning. */
 
-        const {awaitstack, yieldstack, blockstack, loopstack, callstack} = validator;
+        const {awaitstack, yieldstack, blockstack, loopstack, callstack, atstack} = validator;
 
         awaitstack.top = this.async_qualifier;
-        yieldstack.top = true;  callstack.top = true;
-        blockstack.top = false; loopstack.top = false;
+        blockstack.top = false;
+        loopstack.top  = false;
+        atstack.top    = false;
+        yieldstack.top = true;
+        callstack.top  = true;
 
         this.certify(validator);
 
-        callstack.pop; loopstack.pop; blockstack.pop; awaitstack.pop;
+        callstack.pop;
+        loopstack.pop;
+        blockstack.pop;
+        awaitstack.pop;
 
         if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+
+        if (atstack.top.is?.(At)) {
+
+            if (this[1].length) throw new LarkError("unexpected Attributed Parameter", atstack.pop.location);
+            else { atstack.pop; this.note("at_parameter") }
+        }
     }
 
     js(writer, context) {
@@ -1285,10 +1297,11 @@ export class FunctionLiteral extends Functional {
         const keyword = this.async_qualifier ? "async function" : "function";
         const modifier = this.yield_qualifier ? space + asterisk : empty;
         const name = this[0].is(Variable) ? space + this[0].value : empty;
-        const parameters = this[1].map(parameter => parameter.js(writer)).join(comma + space);
+        const params = this[1].map(parameter => parameter.js(writer)).join(comma + space);
+        const parameters = this.at_parameter ? "...ƥargs" : params;
         const block = writer.writeBlock(this[2]);
 
-        const javascript = `${keyword}${modifier}${name}(${parameters||"...ƥargs"}) ${block}`;
+        const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
 
         return context === writer ? `(${javascript})` : javascript;
     }
@@ -1344,11 +1357,15 @@ export class At extends Token {
 
     /* This concrete class implements at-names (like `@foo` and `@bar`), which are reserved for use
     with decorators, and attributed parameters (like `@1` or `-@1`), which reference arguments when
-    the `of` part is ommited from the function header. */
+    the `of` part is ommited from the function header.
+
+    Note: Signed attributed parameters are handled by `Plus` and `Minus`. */
 
     expression = true;
 
     static * lex({at, gatherWhile}, location) {
+
+        /* Gather and yield an at-name xor an at-parameter. */
 
         const token = new At(location, atSign);
 
@@ -1358,11 +1375,16 @@ export class At extends Token {
 
     prefix() { return this }
 
-    validate() { if (this.at_name) throw new LarkError("decorators not implemented", this.location) }
+    validate(validator) {
+
+        if (this.at_name) throw new LarkError("decorators not implemented", this.location);
+        else if (not(validator.callstack)) throw LarkError("unexpected Attributed Parameter", this.location);
+        else if (validator.atstack.top === false) validator.atstack.top = this;
+    }
 
     js() {
 
-        /* Render an unsigned attributed parameter (see `Plus` and `Minus` for sign handling). */
+        /* Render an unsigned attributed parameter (see `Plus` and `Minus` for signed parameters). */
 
         return `ƥargs[${this.value.slice(1)}]` }
 }
