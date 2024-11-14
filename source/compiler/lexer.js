@@ -2,6 +2,7 @@ import { put, not } from "../compiler/helpers.js"
 import { LarkError } from "../compiler/error.js"
 
 import {
+    atSign,
     closeParen,
     comma,
     delimiters,
@@ -19,6 +20,7 @@ import {
 } from "../compiler/ascii.js"
 
 import {
+    At,
     Delimiter,
     NumberLiteral,
     Operator,
@@ -168,6 +170,10 @@ export function * lex(source, {dev=false}={}) {
             } else if (on(operationals)) {
 
                 yield * Operator.lex(api, location);
+
+            } else if (on(atSign)) {
+
+                yield * At.lex(api, location);
 
             } else if (on(wordInitials)) {
 

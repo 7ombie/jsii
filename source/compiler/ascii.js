@@ -1,7 +1,7 @@
 // start by exporting all of the non-alphanumeric singles...
 
 export const [empty, space, newline, tab, carriage] = ["", " ", "\n", "\t", "\r"];
-export const [bang, atsign, pound, dollar, modulo] = ["!", "@", "#", "$", "%"];
+export const [bang, atSign, pound, dollar, modulo] = ["!", "@", "#", "$", "%"];
 export const [caret, ampersand, asterisk, tilde] = ["^", "&", "*", "~"];
 export const [backtick, apostrophe, quote, equals] = ["`", "'", "\"", "="];
 export const [lesser, greater, comma, dot] = ["<", ">", ",", "."];

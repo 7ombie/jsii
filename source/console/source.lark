@@ -68,7 +68,7 @@ do if item.meets(requirements) {
 
 do while x > y { x -= 1, return y }
 
-function f { return true }.bind(fish)
+function f { return @0 * -@1 }.bind(fish)
 
 function j of x, y, z { yield false }
 async function spam { return 1 }

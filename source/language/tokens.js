@@ -10,6 +10,7 @@ import { LarkError } from "../compiler/error.js"
 import {
     alphas,
     asterisk,
+    atSign,
     backslash,
     backtick,
     bases,
@@ -34,6 +35,7 @@ import {
     space,
     operationals,
     wordCharacters,
+    wordInitials,
     underscore,
 } from "../compiler/ascii.js"
 
@@ -112,6 +114,7 @@ export class Token extends Array {
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "oo_literal", "set_literal", "map_literal",
+        "at_name", "at_parameter",
         "not_in", "not_of",
     ]));
 
@@ -150,7 +153,7 @@ export class Token extends Array {
         return this.value;
     }
 
-    static * token(l) { // api method
+    static * token(lexer) { // api method
 
         /* This method instantiates tokens, based on the source. It is the only API method that
         is invoked by the Lexer Stage. It is static as it wraps the constructor method to allow
@@ -1285,7 +1288,7 @@ export class FunctionLiteral extends Functional {
         const parameters = this[1].map(parameter => parameter.js(writer)).join(comma + space);
         const block = writer.writeBlock(this[2]);
 
-        const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
+        const javascript = `${keyword}${modifier}${name}(${parameters||"...ƥargs"}) ${block}`;
 
         return context === writer ? `(${javascript})` : javascript;
     }
@@ -1335,6 +1338,33 @@ export class As extends PrefixOperator {
         if (this.validated) return `__proto__: ${this[0].js(writer)}`;
         else throw new LarkError("unexpected As Operation", this.location);
     }
+}
+
+export class At extends Token {
+
+    /* This concrete class implements at-names (like `@foo` and `@bar`), which are reserved for use
+    with decorators, and attributed parameters (like `@1` or `-@1`), which reference arguments when
+    the `of` part is ommited from the function header. */
+
+    expression = true;
+
+    static * lex({at, gatherWhile}, location) {
+
+        const token = new At(location, atSign);
+
+        if (at(wordInitials)) yield gatherWhile(wordCharacters, token).note("at_name");
+        else if (at(decimal)) yield gatherWhile(decimal, token).note("at_parameter");
+    }
+
+    prefix() { return this }
+
+    validate() { if (this.at_name) throw new LarkError("decorators not implemented", this.location) }
+
+    js() {
+
+        /* Render an unsigned attributed parameter (see `Plus` and `Minus` for sign handling). */
+
+        return `ƥargs[${this.value.slice(1)}]` }
 }
 
 export class And extends InfixOperator {
@@ -1975,10 +2005,17 @@ export class LSHIFT extends InfixOperator {
 
 export class Minus extends GeneralOperator {
 
-    /* This class implements the unary and binary minus operators (`-`). */
+    /* This class implements the `-` operators (unary and binary), as well as negative attributed
+    parameters (like `-@1` etc). */
 
     LBP = 14;
     RBP = 11;
+
+    js(writer) {
+
+        if (this[0].at_parameter) return `ƥargs.at(${this.value}${this[0].value.slice(1)})`;
+        else return super.js(writer);
+    }
 }
 
 export class Modulo extends InfixOperator {
@@ -2432,10 +2469,16 @@ export class Pass extends Keyword {
 
 export class Plus extends GeneralOperator {
 
-    /* This class implements the `+` operators (unary and binary). */
+    /* This class implements the `+` operators (unary and binary), as well as explicitly positive
+    attributed parameters (`+@1` etc). */
 
     LBP = 11;
     RBP = 14;
+
+    js(writer) {
+
+        if (this[0].at_parameter) return `ƥargs[${this.value}${this[0].value.slice(1)}]`;
+    }
 }
 
 export class Private extends ClassQualifier {
