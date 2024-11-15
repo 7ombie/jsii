@@ -21,7 +21,7 @@ export function * write(source, {dev=false}={}) {
 
         preambles.top = [];
 
-        for (const statement of statements) if (not(statement.ignore)) {
+        for (const statement of statements) if (not(statement.ignored)) {
 
             const js = statement.js(api, null);
             const terminated = statement.terminated;

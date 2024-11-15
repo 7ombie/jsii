@@ -18,6 +18,7 @@ import {
     closeBrace,
     closeBracket,
     closeParen,
+    colon,
     comma,
     decimal,
     dollar,
@@ -108,11 +109,12 @@ export class Token extends Array {
     static notables = Object.freeze(new Set([
         "prefixed", "infixed", "lvalue",
         "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
-        "ignore", "labelled", "validated", "tagged_template", "proto_label", "terminated",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
+        "property_descriptor", "tagged_template", "proto_label",
         "async_qualifier", "yield_qualifier", "not_qualifier",
+        "ignored", "labelled", "validated", "terminated",
         "oo_literal", "set_literal", "map_literal",
         "yield_from", "proto_from",
         "at_name", "at_parameter",
@@ -892,6 +894,39 @@ export class AssignmentOperator extends InfixOperator {
         });
 
         this.certify(validator);
+
+        // now that the lvalue has been validated, check if it's a property descriptor, and if so,
+        // note "property_descriptor" on this instance too, so `js(writer)` knows what to do...
+
+        if (this[0].property_descriptor) this.note("property_descriptor");
+    }
+
+    js(writer) {
+
+        /* If the lvalue is a property descriptor, render it here, else pass `writer` along to the
+        `super.js` method (for infix operators), and let that method render the operation. Special-
+        casing descriptors is required as they will bind more tightly than the assignment, which is
+        both required in the Lark source and redudant in the JS output. We need to turn expressions
+        like `x.y.z[enumerable: true] = 1_000` into this:
+
+            Object.defineProperty(x.y, "z", {enumerable: true, value: 1_000})
+
+        The `OpenBracket` class implements the renderer for the `defineProperty` invocation, but is
+        not able to access the assignment (its parent node) to get the expression to provide as its
+        `value` key in the third argument, so must depend on this class to handle that situation as
+        a special-case, synthesize an extra label (`value: 1_000`) for it, then render and return
+        the `OpenBracket` instance (instead of the assignment). */
+
+        if (this.property_descriptor) {
+
+            const location = this[0][1].location;
+            const [key, value] = [new Variable(location, "value"), this[1]];
+
+            this[0][1].push(new Label(location).note("validated").push(key, value));
+
+            return this[0].js(writer);
+
+        } else return super.js(writer);
     }
 }
 
@@ -1710,7 +1745,7 @@ export class Dev extends Keyword {
         omitted from the output correctly (without the semicolon we would get if `js` simply
         returned an empty string). */
 
-        if (dev) this.note("ignore");
+        if (dev) this.note("ignored");
 
         return this.push(gather());
     }
@@ -2391,8 +2426,8 @@ export class OpenBracket extends Caller {
 
     validate(validator) {
 
-        /* Validate an array literal, array breakdown or bracket notation, principly by iterating
-        over its operands and validating any splats and slurps. */
+        /* Validate an array literal or breakdown, bracket notation or property descriptor, by
+        iterating over its operands and validating any splats, slurps, labels etc. */
 
         if (this.array_comprehension) return this.certifyAsFunctional(validator);
 
@@ -2402,12 +2437,26 @@ export class OpenBracket extends Caller {
         const notation = this.infixed;
         const operands = this[notation ? 1 : 0];
 
-        if (notation && operands.length < 1) throw new LarkError("expected an operand", operands.location);
-        if (notation && operands.length > 1) throw new LarkError("too many operands", operands[1].location);
+        const flags = Object.freeze(new Set(["configurable", "enumerable", "writable"]));
+
+        // begin by iterating over the operands (without recursion), branching on any operand types
+        // that need to be validated, and making sure that they're valid in the current context and
+        // that the operands and this instance have any notes they're going to need downstream...
 
         for (const operand of operands) {
 
-            if (operand.is(Variable)) {
+            if (operand.is(Label)) {
+
+                if (not(notation)) throw new LarkError("unexpected Label", operand[0].location);
+
+                if (operand[0].is(Variable, StringLiteral) && flags.has(operand[0].value)) {
+
+                    this.note("property_descriptor");
+                    operand.note("validated");
+
+                } else throw new LarkError("unrecognized Descriptor", operand[0].location);
+
+            } else if (operand.is(Variable)) {
 
                 if (this.lvalue) operand.note("lvalue");
 
@@ -2423,23 +2472,60 @@ export class OpenBracket extends Caller {
                 else if (lvalue && splatOperation) badSplat(operand.location);
                 else if (rvalue && slurpOperation) badSlurp(operand.location);
 
-            } else if (this.lvalue) {
-
-                if (operand.is(OpenBrace, OpenBracket)) operand.note("lvalue");
-                else throw new LarkError("expected a Name or Slurp", operand.location);
-            }
+            } else if (this.lvalue && operand.is(OpenBrace, OpenBracket)) operand.note("lvalue");
         }
+
+        // if the method has established that the instance is bracket notation and not a property
+        // descriptor, check its length is exactly `1`, and complain otherwise...
+
+        if (notation && not(this.property_descriptor)) {
+
+            if (operands.length < 1) throw new LarkError("expected an operand", operands.location);
+            if (operands.length > 1) throw new LarkError("too many operands", operands[1].location);
+        }
+
+        // if the instance has been classified as a property descriptor, go over its operands again,
+        // and confirm that they are all labels (in case the label that causes the bracket notation
+        // to be reclassified as a descriptor appears after a non-label)...
+
+        if (this.property_descriptor) for (const operand of operands) if (operand.is(Label)) continue;
+        else throw new LarkError("expected a Label", operand.location);
+
+        // finally, call `certify` to continue the recursion, validating the operands (as the loop
+        // above only validates the operands of the compound expression, and only in that context...
 
         this.certify(validator);
     }
 
     js(writer) {
 
+        /* Render an array comprehension or property descriptor here, passing any array literals and
+        breakdowns, along with bracket notation, up to the generic compound expression renderer that
+        `Opener` provides (`super.js`).
+
+        Note: It's not possible to render property descriptors here without the `AssignmentOperator`
+        class assisting, as the assigned value is that node's rvalue (this instance is its lvalue).
+        See `AssignmentOperator.prototype.js` for more information on how it works. */
+
         if (this.array_comprehension) {
 
             const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier);
 
             return `Array.from(${literal.js(writer, true)}())`;
+
+        } else if (this.property_descriptor) {
+
+            const left = this[0];
+
+            if (left.is(Dot) || (left.is(OpenBracket) && left.infixed && not(left.property_descriptor))) {
+
+                const target = left[0].js(writer);
+                const name = left.is(Dot) ? `"${left[1].value}"` : left[1][0].js(writer);
+                const descriptor = this[1].map(label => label.js(writer)).join(colon + space);
+
+                return `Object.defineProperty(${target}, ${name}, {${descriptor}})`;
+
+            } else throw new LarkError("required a Breadcrumb Operation or Bracket Notation", left[1].location);
 
         } else return super.js(writer, openBracket, closeBracket);
     }

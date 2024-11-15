@@ -260,3 +260,8 @@ x not in y
 y not of x
 
 async function of x, y = foo(x.y[foo()]) { await alloc Foo(x + y, z) }
+
+x.name[writable: false, enumerable: false] = 1_000
+ali[bob].cal()[foo + bar][enumerable: true] = {proto from GameObject}
+x[name][writable: false, enumerable: false] = 1_000
+ali[bob].cal()["foo + bar"][enumerable: true] = freeze {proto from GameObject, results...}
