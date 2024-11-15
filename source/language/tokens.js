@@ -1,10 +1,9 @@
 /* This module defines `Token` and all of its subclasses, forming a single token hierarchy that
 implements all of the language specifics. */
 
-import * as js from "../language/javascript.js"
 import { constants, keywords, operators, reserved } from "../language/spellings.js"
 
-import { put, not, iife } from "../compiler/helpers.js"
+import { put, not, iife, lark } from "../compiler/helpers.js"
 import { LarkError } from "../compiler/error.js"
 
 import {
@@ -149,7 +148,7 @@ export class Token extends Array {
         return new Proxy(this, {get});
     }
 
-    get spelling() {
+    get spelling() { // api property
 
         /* This API property specifies the JavaScript spelling for the given token, defaulting
         to the Lark spelling of the same token. */
@@ -279,11 +278,15 @@ export class Token extends Array {
 
         const {yieldstack, awaitstack, callstack, atstack} = validator;
 
-        yieldstack.top = true; callstack.top = true; awaitstack.top = false; atstack.top = false;
+        callstack.top = true;
+        yieldstack.top = true;
+        awaitstack.top = false;
+        atstack.top = false;
 
         this.certify(validator);
 
-        callstack.pop; awaitstack.pop;
+        callstack.pop;
+        awaitstack.pop;
 
         if (atstack.top.is?.(At)) throw new LarkError("unexpected Attribute", atstack.pop.location);
 
@@ -394,8 +397,6 @@ export class Constant extends Word {
     safe = true;
     expression = true;
 
-    prefix() { return this }
-
     static subclass(location, value) {
 
         switch (value) {
@@ -408,6 +409,8 @@ export class Constant extends Word {
             case "void": return new VoidConstant(location, value);
         }
     }
+
+    prefix() { return this }
 }
 
 export class Keyword extends Word {
@@ -495,6 +498,68 @@ export class Declaration extends Keyword {
     freezing a *primitive object*, freezes the object (though the resulting value is still equal
     to its primitive equivalent, according to Lark equality). */
 
+    static declare(validator, assignee, location) {
+
+        /* Take a reference to the Validator Stage API, an assignee and a location, note "lvalue"
+        for the assignee, then figure out its place within the block, updating the `scopestack`
+        as required (the `location` argument is only used for error messages).
+
+        If the name of the assignee's not present in the current namespace, it's declared there
+        with its value set to "<declared>".
+
+        If the name exists in the current namespace, and has the value "<declared>" or the name
+        of a register ("ƥ0", "ƥ1", "ƥ2"...), then it's a syntax error to declare it again.
+
+        If the name exists, and the value is "<shadowed>", it's nonlocal, and there are one or
+        more references to it inside some nested block above this declaration, so declaring it
+        here would create a temporal dead zone. Instead, we generate a register name, then set
+        the `value` property of this declaration to the register name, and store *that* value
+        (instead of "<declared") in the namespace on top of the `scopestack`.
+
+        The `Variable` class walks the `scopestack` backwards (from innermost to outermost) and
+        adds its name to every namespace that does not declare it, setting the value associated
+        with that name to "<shadowed>", up to (but not including) whichever namespace declares
+        the name, if any do, and tagging every namespace on the `scopestack` when `Variable`
+        fails to find its declaration.
+
+        If a given `Variable` finds its declaration (and breaks), it first checks for any value
+        other than "<declared>", and when present, the `Variable` instance copies the value, so
+        names that use registers get copied to all of their references (updating their `value`
+        properties to the name of the register). */
+
+        const [value, scope] = [assignee.note("lvalue").value, validator.scopestack.top];
+
+        if (scope[value] === "<shadowed>") { // the same name is referenced through this block
+
+            scope[value] = Variable.register();
+            assignee.value = scope[value];
+
+        } else if (scope[value] !== undefined) { // the name is declared or registered here
+
+            throw new LarkError(`duplicate declaration (${assignee.value})`, location);
+
+        } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
+    }
+
+    static validate(validator, assignees, location) {
+
+        /* Take a reference to the Validator Stage API object, an assignees token and a location.
+        Note "lvalue" on the `assignees` argument, then recursively walks any breakdowns, as well
+        as the lefthand operand of labels, to note "validate" and "lvalue" on slurps, complaining
+        if any are not the last operand in their breakdown (`[[x, ...y], ...z] = array`). When an
+        assignee is an instance of `Variable`, it's passed to `Declaration.declare` to eliminate
+        any associated TDZ. */
+
+        if (assignees.is(Variable)) Declaration.declare(validator, assignees, location);
+
+        for (const assignee of assignees) {
+
+            if (assignee.is(Variable, OpenBracket, OpenBrace)) Declaration.validate(validator, assignee, location);
+            else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) assignee.note("validated");
+            else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], location);
+        }
+    }
+
     prefix({advance, gather, gatherAssignees, gatherExpression, on}) {
 
         /* Gather a `let` or `var` declaration, which always has an assignees before the assign
@@ -515,82 +580,7 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Iterate over the assignees, and make sure any nested breakdowns note "lvalue", and that
-        slurps note "validated" when they are the last assignee within their respective breakdown,
-        complaining if they're not. Similar logic is applied to the lvalues of assignments (see
-        `AssignmentOperator`), but not inplace-assignments, as they do not use breakdowns).
-
-        This method also coordinates with the `validate` methods of `Block` and `Variable` via the
-        `validator.scopestack` to eliminate TDZs (Temporal Dead Zones). */
-
-        const correctForTemporalDistortions = function(assignee) {
-
-            /* Take an assignee, note "lvalue" for it, then figure out its place within the block,
-            and update the `scopestack` as required.
-
-            If the name of the assignee's not present in the current namespace, it's declared there
-            with its value set to "<declared>".
-
-            If the name exists in the current namespace, and has the value "<declared>" or the name
-            of a register ("ƥ0", "ƥ1", "ƥ2"...), then it's a syntax error to declare it again.
-
-            If the name exists, and the value is "<shadowed>", it's nonlocal, and there are one or
-            more references to it inside some nested block above this declaration, so declaring it
-            here would create a temporal dead zone. Instead, we generate a register name, then set
-            the `value` property of this declaration to the register name, and store *that* value
-            (instead of "<declared") in the namespace on top of the `scopestack`.
-
-            The `Variable` class walks the `scopestack` backwards (from innermost to outermost) and
-            adds its name to every namespace that does not declare it, setting the value associated
-            with that name to "<shadowed>", up to (but not including) whichever namespace declares
-            the name, if any do, and tagging every namespace on the `scopestack` when `Variable`
-            fails to find its declaration.
-
-            If a given `Variable` finds its declaration (and breaks), it first checks for any value
-            other than "<declared>", and when present, the `Variable` instance copies the value, so
-            names that use registers get copied to all of their references (updating their `value`
-            properties to the name of the register). */
-
-            const [value, scope] = [assignee.note("lvalue").value, validator.scopestack.top];
-
-            if (scope[value] === "<shadowed>") { // the same name is referenced through this block
-
-                scope[value] = js.register();
-                assignee.value = scope[value];
-
-            } else if (scope[value] !== undefined) { // the name is declared or registered here
-
-                throw new LarkError(duplicate(assignee), location);
-
-            } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
-        };
-
-        const duplicate = assignee => `duplicate declaration (${this.value} ${assignee.value})`;
-
-        const [location, message] = [this.location, "a Slurp must always be the last operand"];
-
-        iife(this[0], function walk(assignees) {
-
-            /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
-            note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
-            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`), and
-            pass any variables to `correctForTemporalDistortions` to eliminate TDZ. */
-
-            if (assignees.is(Variable)) correctForTemporalDistortions(assignees);
-
-            for (const assignee of assignees) {
-
-                if (assignee.is(Variable)) correctForTemporalDistortions(assignee);
-                else if (assignee.is(OpenBracket, OpenBrace)) walk(assignee);
-                else if (assignee.is(Label)) walk(assignee[1]);
-                else if (assignee.is(Spread) && assignee.prefixed) {
-
-                    if (assignees.at(-1) === assignee) assignee.note("validated");
-                    else throw new LarkError(message, assignee.location);
-                }
-            }
-        });
-
+        Declaration.validate(validator, this[0], this.location);
         this.certify(validator);
     }
 
@@ -721,6 +711,7 @@ export class Operator extends Token {
             case "seal": return new Seal(location, value);
             case "sealed": return new Sealed(location, value);
             case "then": return new Then(location, value);
+            case "type": return new Type(location, value);
             case "when": return new When(location, value);
         }
     }
@@ -1322,8 +1313,9 @@ export class FunctionLiteral extends Functional {
         the `blockstack` and `loopstack` so `break` and `continue` statements know that they cannot
         reach any higher block than this.
 
-        With all five stacks updated, affix any operands, then restore the previous state of the
-        stacks (noting "yield_qualifier" as appropriate), before returning. */
+        With the stacks updated, validate the second and third operands (the parameters and block),
+        but not the function's name (if any), before restoring the previous state of the stacks and
+        noting "yield_qualifier" as appropriate, before returning. */
 
         const {awaitstack, yieldstack, blockstack, loopstack, callstack, atstack} = validator;
 
@@ -1334,7 +1326,7 @@ export class FunctionLiteral extends Functional {
         yieldstack.top = true;
         callstack.top  = true;
 
-        this.certify(validator);
+        for (const operand of this.slice(1)) operand.validate(validator);
 
         callstack.pop;
         loopstack.pop;
@@ -1345,8 +1337,12 @@ export class FunctionLiteral extends Functional {
 
         if (atstack.top.is?.(At)) {
 
-            if (this[1].length) throw new LarkError("unexpected Attribute", atstack.pop.location);
-            else { atstack.pop; this.note("at_parameter") }
+            if (this[1].length === 0) {
+
+                atstack.pop;
+                this.note("at_parameter");
+
+            } else throw new LarkError("unexpected Attribute", atstack.pop.location);
         }
     }
 
@@ -1367,6 +1363,10 @@ export class FunctionLiteral extends Functional {
     }
 
     static synthesize(location, body, yielding) {
+
+        /* This static helper generates a function literal instance, based on a location, a block
+        of (zero or more) statements that constitute the function body, and a boolean that's used
+        to indicate whether to synthesize a generator function (`true`) or not (`false`). */
 
         const literal = new FunctionLiteral(location);
         const name = new SkipAssignee(location);
@@ -1926,11 +1926,11 @@ export class For extends Header {
         const [assignees, iterable, statements] = this;
         const block = writer.writeBlock(statements);
 
-        if (iterable.is(Spread)) return js.for_of(assignees.js(writer), iterable.js(writer), block);
+        if (iterable.is(Spread)) return `for (const ${assignees.js(writer)} of ƥentries(${iterable.js(writer)})) ${block}`;
 
-        if (this.for_in) return js.for_of(assignees.js(writer), js.values(writer, iterable), block);
+        if (this.for_in) return `for (const ${assignees.js(writer)} of ƥvalues(${iterable.js(writer)})) ${block}`;
 
-        if (this.for_of) return js.for_of(assignees.js(writer), js.keys(writer, iterable), block);
+        if (this.for_of) return `for (const ${assignees.js(writer)} of ƥkeys(${iterable.js(writer)}))) ${block}`;
 
         const keyword = this.for_from ? "for await" : "for";
         const operator = this.for_on ? "in" : "of";
@@ -1992,7 +1992,7 @@ export class In extends InfixOperator {
 
     LBP = 8;
 
-    js(writer) { return `(${js.values(writer, this[1])}).includes(${this[0].js(writer)})` }
+    js(writer) { return `ƥin(${this[0].js(writer)}, ${this[1].js(writer)})` }
 }
 
 export class InfinityConstant extends Constant {
@@ -2009,6 +2009,8 @@ export class Is extends InfixOperator {
 
     infix({advance, gatherExpression, on}, left) {
 
+        /* Parse one of the infix or suffix operations that start with `is` (as listed above). */
+
         this.push(left);
 
         if (on(Not)) { this.note(`${advance(false).value}_qualifier`) }
@@ -2020,23 +2022,25 @@ export class Is extends InfixOperator {
 
     js(writer) {
 
-        /* Render an `is` or `is not`, `is packed`, `is not packed`, `is sealed`, `is not sealed`,
-        `is frozen` or `is not frozen` operation. */
+        /* Render an `is` or an `is not` infix operation or an `is packed`, `is not packed`,
+        `is sealed`, `is not sealed`, `is frozen` or `is not frozen` suffix operation. */
+
+        const [x, y] = this.map(operand => operand.js(writer));
 
         if (this.not_qualifier) {
 
-            if (this.packed_qualifier) return `Object.isExtensible(${this[0].js(writer)})`;
-            if (this.sealed_qualifier) return `!Object.isSealed(${this[0].js(writer)})`;
-            if (this.frozen_qualifier) return `!Object.isFrozen(${this[0].js(writer)})`;
+            if (this.packed_qualifier) return `ƥisNotPacked(${x})`;
+            if (this.sealed_qualifier) return `ƥisNotSealed(${x})`;
+            if (this.frozen_qualifier) return `ƥisNotFrozen(${x})`;
 
-            return js.is_not(writer, ...this);
+            return `ƥisNot(${x}, ${y})`;
         }
 
-        if (this.packed_qualifier) return `!Object.isExtensible(${this[0].js(writer)})`;
-        if (this.sealed_qualifier) return `Object.isSealed(${this[0].js(writer)})`;
-        if (this.frozen_qualifier) return `Object.isFrozen(${this[0].js(writer)})`;
+        if (this.packed_qualifier) return `ƥisPacked(${x})`;
+        if (this.sealed_qualifier) return `ƥisSealed(${x})`;
+        if (this.frozen_qualifier) return `ƥisFrozen(${x})`;
 
-        return js.is(writer, ...this);
+        return `ƥis(${x}, ${y})`;
     }
 }
 
@@ -2127,8 +2131,8 @@ export class Not extends GeneralOperator {
 
         /* Render a `not` prefix operation or a `not in` or `not of` infix operation. */
 
-        if (this.not_of) return `(${js.keys(writer, this[1])}).includes(${this[0].js(writer)})`;
-        else if (this.not_in) return `(${js.values(writer, this[1])}).includes(${this[0].js(writer)})`;
+        if (this.not_of) return `!ƥof(${this[0].js(writer)}, ${this[1].js(writer)})`;
+        else if (this.not_in) return `!ƥin(${this[0].js(writer)}, ${this[1].js(writer)})`;
         else return super.js(writer);
     }
 }
@@ -2588,7 +2592,14 @@ export class Parameters extends Token {
         default arguments know to complain, fix any operands, then restore the previous state of
         the stack. */
 
-        validator.paramstack.top = true; this.certify(validator); validator.paramstack.pop;
+        const {paramstack, scopestack} = validator;
+
+        paramstack.top = true;
+        scopestack.top = Object.create(null);
+        Declaration.validate(validator, this, this.location);
+        this.certify(validator);
+        scopestack.pop;
+        paramstack.pop;
     }
 }
 
@@ -2755,13 +2766,8 @@ export class Spread extends Operator {
 
         if (this.validated) {
 
-            if (this.for_loop) {
-
-                const expression = this[0].safe ? this[0].js(writer) : `(${this[0].js(writer)})`;
-
-                return `${expression}?.ƥentries?.() ?? []`;
-
-            } else return this[0].safe ? `...${this[0].js(writer)}` : `...(${this[0].js(writer)})`;
+            if (this.for_loop) return this[0].js(writer);
+            else return this[0].safe ? `...${this[0].js(writer)}` : `...(${this[0].js(writer)})`;
 
         } else if (this.prefixed) {
 
@@ -2794,6 +2800,25 @@ export class Then extends Constant {
     etc. It's always handled by some other token. */
 }
 
+export class Type extends PrefixOperator {
+
+    /* This class implements Lark's `type of` operator, which is similar to JavaScript's `typeof`,
+    except better, supporting tag strings (including "Null" and "Undefined"), as well as API types
+    (like "HTMLAudioElement" and "GPUInternalError"), hidden types (like "AsyncGeneratorFunction"),
+    the names of user defined classes (like "Type" and "PrefixOperator"), as well as returning the
+    type "Object" for any object with a null prototype. */
+
+    prefix({advance, on, gatherExpression}) {
+
+        if (on(Of)) advance();
+        else throw new LarkError("expected an Of Operator", advance(false).location);
+
+        return this.push(gatherExpression());
+    }
+
+    js(writer) { return `ƥtypeOf(${this[0].js(writer)})` }
+}
+
 export class Throw extends CommandStatement {
 
     /* This class implements `throw`, which is an operative keyword in Lark, but has the same
@@ -2824,6 +2849,16 @@ export class Variable extends Word {
     expression that invokes the first name on the expression that the second name introduces. The
     expression may just be the second name, but can be any expression that begin with a name, and
     this works recursively (so `a b c d(1, 2, 3)` compiles to `a(b(c(d(1, 2, 3))))`). */
+
+    static #counter = 0; // used to generate lark register names (ƥ0, ƥ1, ƥ2...) - see `register`
+
+    static register() {
+
+        /* This static helper generates and returns incrementing Lark register names (as strings),
+        one per invocation. */
+
+        return lark(this.#counter++);
+    }
 
     safe = true;
     expression = true;

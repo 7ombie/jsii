@@ -47,6 +47,7 @@ export const operators = [
     "seal",
     "sealed",
     "then",
+    "type",
     "when",
     "+=",
     "-=",

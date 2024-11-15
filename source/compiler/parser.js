@@ -242,7 +242,7 @@ export function * parse(source, {dev=false}={}) {
             result.push(gatherExpression());
 
             if (on(Comma)) advance();
-            else if (on(OpenBrace)) break;
+            else if (on(OpenBrace, Keyword)) break;
             else throw new LarkError("expected a Comma or Block", token.location);
         }
 
