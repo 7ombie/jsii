@@ -28,16 +28,16 @@ let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
 {foo: 1, bar: 2, metavars...}
 point = {x: 1, y: 2}
 {23: {x: {y: {z: [x, y, x]}}}, ali, bob, cal, ...others} = people
-{as Array, length: 2, 0: false, 1: true}
+{proto Array, length: 2, 0: false, 1: true}
 {__proto__: Object, name: "John", salary: 50000}
-john = {as Object, name: "John", salary: 50000}
+john = {Object, name: "John", salary: 50000}
 
 {[a, b, c, __proto__...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
 
 let map = {{y: 2, __proto__: Array, foo: bar}}
 var array = [1, 2, 3]
-var object = {x: 45, boo: 56, as Object}
+var object = {x: 45, boo: 56, proto Object}
 let index = x[x]
 
 {__proto__: Array, x: x, y: y, z: z, ...foo} = obj
@@ -230,8 +230,8 @@ while true continue
 point = {x: 1, y: 2}
 {ali, bob, cal, ...others} = people
 {__proto__: Array, length: 2, 0: false, 1: true}
-{as Object, name: "John", salary: 50000}
-john = {as Object, name: "John", salary: 50000}
+{proto Object, name: "John", salary: 50000}
+john = {proto from Object, name: "John", salary: 50000}
 
 {[a, b, c, d...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}

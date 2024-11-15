@@ -110,10 +110,11 @@ export class Token extends Array {
         "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
         "ignore", "labelled", "validated", "tagged_template", "proto_label", "terminated",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
-        "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "yield_from",
+        "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "oo_literal", "set_literal", "map_literal",
+        "yield_from", "proto_from",
         "at_name", "at_parameter",
         "not_in", "not_of",
         "then_statement",
@@ -282,7 +283,7 @@ export class Token extends Array {
 
         callstack.pop; awaitstack.pop;
 
-        if (atstack.top.is?.(At)) throw new LarkError("unexpected Attributed Parameter", atstack.pop.location);
+        if (atstack.top.is?.(At)) throw new LarkError("unexpected Attribute", atstack.pop.location);
 
         if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
     }
@@ -702,7 +703,6 @@ export class Operator extends Token {
             case "<<=": return new AssignLSHIFT(location, value);
             case ">>=": return new AssignRSHIFT(location, value);
             case ">>>=": return new AssignARSHIFT(location, value);
-            case "as": return new As(location, value);
             case "and": return new And(location, value);
             case "freeze": return new Freeze(location, value);
             case "frozen": return new Frozen(location, value);
@@ -715,6 +715,7 @@ export class Operator extends Token {
             case "or": return new Or(location, value);
             case "pack": return new Pack(location, value);
             case "packed": return new Packed(location, value);
+            case "proto": return new Proto(location, value);
             case "seal": return new Seal(location, value);
             case "sealed": return new Sealed(location, value);
             case "then": return new Then(location, value);
@@ -1309,7 +1310,7 @@ export class FunctionLiteral extends Functional {
 
         if (atstack.top.is?.(At)) {
 
-            if (this[1].length) throw new LarkError("unexpected Attributed Parameter", atstack.pop.location);
+            if (this[1].length) throw new LarkError("unexpected Attribute", atstack.pop.location);
             else { atstack.pop; this.note("at_parameter") }
         }
     }
@@ -1359,31 +1360,13 @@ export class SubclassLiteral extends Functional {
     expression = true;
 }
 
-export class As extends PrefixOperator {
-
-    /* This class implements the `as` prefix-operator, which provides a nicer way of setting the
-    prototype of object literals, where `as Object` is short for `__proto__: Object` (though the
-    latter is also valid).
-
-    Note: Each object literal is limited to specifying one protocol (at most), either using `as`
-    xor using the magic `__proto__` label. Using `as` is recommended. It's nicer, and `__proto__`
-    is a regular key in many contexts, while `as Type` only means one thing, and can only appear
-    in one context. */
-
-    js(writer) {
-
-        if (this.validated) return `__proto__: ${this[0].js(writer)}`;
-        else throw new LarkError("unexpected As Operation", this.location);
-    }
-}
-
 export class At extends Token {
 
     /* This concrete class implements at-names (like `@foo` and `@bar`), which are reserved for use
-    with decorators, and attributed parameters (like `@1` or `-@1`), which reference arguments when
-    the `of` part is ommited from the function header.
+    with decorators, and attributes (like `@0` and `-@1`), which reference arguments to the current
+    invocation (when the `of` part is ommited from the function header).
 
-    Note: Signed attributed parameters are handled by `Plus` and `Minus`. */
+    Note: Signed attributes are parsed by `Plus` and `Minus`. */
 
     expression = true;
 
@@ -1402,15 +1385,11 @@ export class At extends Token {
     validate(validator) {
 
         if (this.at_name) throw new LarkError("decorators are not implemented yet", this.location);
-        else if (not(validator.callstack.top)) throw LarkError("unexpected Attributed Parameter", this.location);
+        else if (not(validator.callstack.top)) throw LarkError("unexpected Attribute", this.location);
         else if (validator.atstack.top === false) validator.atstack.top = this;
     }
 
-    js() {
-
-        /* Render an unsigned attributed parameter (see `Plus` and `Minus` for signed parameters). */
-
-        return `ƥargs[${this.value.slice(1)}]` }
+    js() { return `ƥargs[${this.value.slice(1)}]` }
 }
 
 export class And extends InfixOperator {
@@ -2059,8 +2038,8 @@ export class LSHIFT extends InfixOperator {
 
 export class Minus extends GeneralOperator {
 
-    /* This class implements the `-` operators (unary and binary), as well as negative attributed
-    parameters (like `-@1` etc). */
+    /* This class implements the `-` operators (unary and binary), as well as negative attributes
+    (like `-@1` (which refers to the last argument)). */
 
     LBP = 14;
     RBP = 11;
@@ -2315,7 +2294,7 @@ export class OpenBrace extends Opener {
 
             operand.note("validated");
 
-            if (operand.is(As) || (operand.is(Spread) && operand.infixed));
+            if (operand.is(Proto) || (operand.is(Spread) && operand.infixed));
             else if (operand.is(Label)) {
 
                 const left = operand[0];
@@ -2332,11 +2311,11 @@ export class OpenBrace extends Opener {
 
             } else throw new LarkError("expected a Key, Splat or Prototype", operand.location);
 
-            if (operand.is(As) || operand.proto_label) {
+            if (operand.is(Proto) || operand.proto_label) {
 
                 if (++prototypes < 2) { this.note("oo_literal"); continue operandsLoop }
 
-                const location = operand.is(As) ? operand.location : operand[0].location;
+                const location = operand.is(Proto) ? operand.location : operand[0].location;
 
                 throw new LarkError("duplicate Prototypes", location);
             }
@@ -2537,7 +2516,11 @@ export class Pass extends Keyword {
 export class Plus extends GeneralOperator {
 
     /* This class implements the `+` operators (unary and binary), as well as explicitly positive
-    attributed parameters (`+@1` etc). */
+    attributes (`+@1` etc).
+
+    Note: In Lark, explicitly positive attributes are required when negating an argument (`-+@0`
+    would negate the first argument, and `--@1` would negate the last argument, for example).
+    This is one reason for the lack of `++` and `--` operators in Lark. */
 
     LBP = 11;
     RBP = 14;
@@ -2553,6 +2536,40 @@ export class Private extends ClassQualifier {
 
     /* This class implements private-statements, used inside classes to declare private properties,
     which are referenced using the `!` infix dot operator. */
+}
+
+export class Proto extends PrefixOperator {
+
+    /* This class implements the `proto` and `proto from` prefix-operators, which provide a nicer
+    way of setting the prototype in object literals. The `proto` operator uses the expression as
+    the prototype, while `proto from` uses its `prototype` property. For example:
+
+        {proto o, x: 1, y: 2}          -> {__proto__: o, x: 1, y: 2}
+        {proto from T, x: 1, y: 2}     -> {__proto__: T.prototype, x: 1, y: 2}
+
+    Note: Lark still recognizes `__proto__` keys as magical.
+
+    Note: While rare in practice, JavaScript accepts `__proto__` keys as magical even when they're
+    expressed indirectly. Lark cannot reliably detect that expressions like `o["__\("proto")__"]`
+    are magical, so cannot enforce the requirement that object literals only specify prototypes
+    once. Still, we detect keys directly named `__proto__` and the string "__proto__" (outside
+    of brackets), and include them with `proto` and `proto from` expressions in the count, so
+    more than one obvious prototype specifier is a syntax error. */
+
+    prefix({advance, on, gatherExpression}) {
+
+        if (on(From)) { advance(); this.note("proto_from") }
+
+        return this.push(gatherExpression());
+    }
+
+    js(writer) {
+
+        if (not(this.validated)) throw new LarkError("unexpected Prototype", this.location);
+
+        if (this.proto_from) return `__proto__: ${this[0].js(writer)}.prototype`;
+        else return `__proto__: ${this[0].js(writer)}`;
+    }
 }
 
 export class Raise extends InfixOperator {
