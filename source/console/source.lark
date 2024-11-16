@@ -257,3 +257,8 @@ x not in y
 y not of x
 
 async function of x, y = foo(x.y[foo()]) { await x + y }
+for spagetti of spagetti { log(spagetti) }
+let spagetti = 0
+
+let x = 0
+do { console.log(x), let x = 1, console.log(x) }

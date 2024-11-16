@@ -498,11 +498,11 @@ export class Declaration extends Keyword {
     freezing a *primitive object*, freezes the object (though the resulting value is still equal
     to its primitive equivalent, according to Lark equality). */
 
-    static declare(validator, assignee, location) {
+    static declare(validator, assignee) {
 
-        /* Take a reference to the Validator Stage API, an assignee and a location, note "lvalue"
-        for the assignee, then figure out its place within the block, updating the `scopestack`
-        as required (the `location` argument is only used for error messages).
+        /* Take a reference to the Validator Stage API and an assignee belonging to a declaration
+        or parameter. Note "lvalue" for the assignee, then figure out its place within the block,
+        updating the `scopestack` as required.
 
         If the name of the assignee's not present in the current namespace, it's declared there
         with its value set to "<declared>".
@@ -536,27 +536,27 @@ export class Declaration extends Keyword {
 
         } else if (scope[value] !== undefined) { // the name is declared or registered here
 
-            throw new LarkError(`duplicate declaration (${assignee.value})`, location);
+            throw new LarkError(`duplicate declaration (${assignee.value})`, assignee.location);
 
         } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
     }
 
-    static validate(validator, assignees, location) {
+    static validate(validator, assignees) {
 
-        /* Take a reference to the Validator Stage API object, an assignees token and a location.
-        Note "lvalue" on the `assignees` argument, then recursively walks any breakdowns, as well
-        as the lefthand operand of labels, to note "validate" and "lvalue" on slurps, complaining
-        if any are not the last operand in their breakdown (`[[x, ...y], ...z] = array`). When an
-        assignee is an instance of `Variable`, it's passed to `Declaration.declare` to eliminate
-        any associated TDZ. */
+        /* Take a reference to the Validator Stage API object and an assignees token. Note "lvalue"
+        on the `assignees` argument, then recursively walk any breakdowns, as well as the lefthand
+        operand of labels, to note "validate" and "lvalue" on slurps, complaining if any are not
+        the last operand in their respective breakdown (`[[x, ...y], ...z] = arrays`). When an
+        assignee is an instance of `Variable`, it's passed to `Declaration.declare` to
+        eliminate any associated TDZ. */
 
-        if (assignees.is(Variable)) Declaration.declare(validator, assignees, location);
+        if (assignees.is(Variable)) Declaration.declare(validator, assignees);
 
         for (const assignee of assignees) {
 
-            if (assignee.is(Variable, OpenBracket, OpenBrace)) Declaration.validate(validator, assignee, location);
+            if (assignee.is(Variable, OpenBracket, OpenBrace)) Declaration.validate(validator, assignee);
             else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) assignee.note("validated");
-            else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], location);
+            else if (assignee.is(Label)) Declaration.validate(validator, assignee[1]);
         }
     }
 
@@ -580,13 +580,32 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        Declaration.validate(validator, this[0], this.location);
+        /* Intercept the Validation Stage, and apply `Declaration.validate` to the assignees, then
+        certify the operands. */
+
+        Declaration.validate(validator, this[0]);
         this.certify(validator);
     }
 
     js(writer) {
 
-        /* Render a Lark `let` or `var` declaration using JavaScript's `const` or `let`. */
+        /* Render a Lark `let` or `var` declaration. When declarations include `then` clauses (like
+        `let i = 0 then while i < array.length { console.dir(array[i]), i += 1 }`), then the method
+        wraps the declaration and the statement after the `then` operator in a block statement. For
+        example, the code just mentioned compiles to something like this:
+
+            {
+                let i = 0;
+                while (i < array.length) {
+                    console.dir(array[i]);
+                    i += 1;
+                }
+            }
+
+        Note: As Lark's `let` and `var` declarations are regular statements, you can use the `then`
+        operator recursively (like `let max = 0xFF then var [x, y] = [0, 0] then while x { etc }`)
+        to define any number of locals (which can be further combined with other formal statements,
+        as well as the `do` qualifier, `return`, `yield` and `yield from`, in various ways). */
 
         if (this.then_statement) {
 
@@ -1905,16 +1924,36 @@ export class For extends Header {
 
     validate(validator) {
 
-        /* Add a valid level to the block and loop stacks, affix the operands, then restore both
-        stacks to the original state. */
+        /* Add another level to the block, loop and scope stacks, before validating the iterable,
+        passing the assignees to `Declaration.validate`, validating the block, then restoring all
+        of the stacks to their prior state.
 
-        const {blockstack, loopstack} = validator;
+        Note: The sequence iterable-declaration-block is important for TDZ to work correctly with
+        for-loops. In JavaScript, `for (const x of x) { etc }` is illegal as it references `x` on
+        the righthand side, but `x` was clobbered by the (hoisted, but uninitialized) declaration
+        `for (const x ...` that preceds it (lexically).
 
-        blockstack.top = true; loopstack.top = true;
+        Note: In Lark, `for n in n { etc }` is not just valid, it's simple and intuitive: All of
+        Lark's declarators (`let` `var` and `for`) introduce bindings at the exact moment they
+        execute, and the binding does not exist prior to that point, so references reference
+        outer scopes (see the note below that describes the output):
 
-        this.certify(validator);
+            let x = 0
+            do { console.log(x), let x = 1, console.log(x) }
 
-        loopstack.pop; blockstack.pop;
+        Note: That example logs `0`, then `1`. */
+
+        const {blockstack, loopstack, scopestack} = validator;
+
+        loopstack.top = true;
+        blockstack.top = true;
+        scopestack.top = Object.create(null);
+        this[1].validate(validator);
+        Declaration.validate(validator, this[0]);
+        this[2].validate(validator);
+        scopestack.pop;
+        blockstack.pop;
+        loopstack.pop;
     }
 
     js(writer) {
@@ -2596,7 +2635,7 @@ export class Parameters extends Token {
 
         paramstack.top = true;
         scopestack.top = Object.create(null);
-        Declaration.validate(validator, this, this.location);
+        Declaration.validate(validator, this);
         this.certify(validator);
         scopestack.pop;
         paramstack.pop;
