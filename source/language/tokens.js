@@ -567,13 +567,11 @@ export class Declaration extends Keyword {
 
         this.push(gatherAssignees());
 
-        if (on(Assign)) advance();
-        else throw new LarkError("expected the Assigment Symbol");
+        if (on(Assign)) { advance() } else throw new LarkError("expected the Assigment Symbol");
 
         this.push(gatherExpression());
 
-        if (on(Then)) advance();
-        else return this;
+        if (on(Then)) { advance() } else return this;
 
         return this.note("then_statement").push(gather());
     }
@@ -1831,8 +1829,7 @@ export class Else extends PredicatedBlock {
 
         /* Parse an `else` or `else if` block. */
 
-        if (on(If)) return this.note("else_if").push(gather());
-        else return this.push(gatherBlock());
+        return on(If) ? this.note("else_if").push(gather()) : this.push(gatherBlock());
     }
 
     validate(validator) {
@@ -2736,8 +2733,7 @@ export class Return extends Keyword {
         /* Gather a `return` statement, with an optional expression, which can optionally use a
         labelled expression. */
 
-        if (on(Terminator, Closer)) return this;
-        else return this.push(gatherExpression());
+        return on(Terminator, Closer) ? this : this.push(gatherExpression());
     }
 
     validate(validator) {
@@ -2849,8 +2845,7 @@ export class Type extends PrefixOperator {
 
     prefix({advance, on, gatherExpression}) {
 
-        if (on(Of)) advance();
-        else throw new LarkError("expected an Of Operator", advance(false).location);
+        if (on(Of)) { advance() } else throw new LarkError("expected an Of Operator", advance(false).location);
 
         return this.push(gatherExpression());
     }
@@ -2867,8 +2862,7 @@ export class Throw extends CommandStatement {
 
     js(writer, context=undefined) {
 
-        if (context === null) return `throw ${this[0].js(writer)}`;
-        else return `(()=>{throw ${this[0].js(writer)}})()`;
+        return (context === null) ? `throw ${this[0].js(writer)}` : `(()=>{throw ${this[0].js(writer)}})()`;
     }
 }
 
@@ -2942,8 +2936,7 @@ export class Variable extends Word {
         /* Render a name, or an invocation of the name (passing the expression that followed it) if
         the implicit invocation grammar was accepted during the Parser Stage. */
 
-        if (this.length) return `${this.value}(${this[0].js(writer)})`;
-        else return this.value;
+        return this.length ? `${this.value}(${this[0].js(writer)})` : this.value;
     }
 }
 
@@ -2963,8 +2956,7 @@ export class When extends Operator {
 
         this.push(left, gatherExpression());
 
-        if (on(Else)) advance();
-        else throw new LarkError("incomplete When-Else Operation", this.location);
+        if (on(Else)) { advance() } else throw new LarkError("incomplete When-Else Operation", this.location);
 
         return this.push(gatherExpression(this.LBP - 1));
     }
