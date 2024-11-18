@@ -195,13 +195,12 @@ export class Token extends Array {
 
     validate(validator) {
 
-        /* This method takes a reference to the Validator Stage API, and passes it to the internal
-        helper mathod `certify`, which just calls this method on each of the instance's children.
-        By itself, this just walks the AST without doing anything, but derived classes are able
-        to override this method with their own validation logic, then invoke `certify` instead
-        of having to iterate over themselves manually. */
+        /* This method takes a reference to the Validator Stage API, and calls this method on each
+        operand, passing the API along. By itself, this just walks the AST without doing anything,
+        but derived classes are able to override this method with their own validation logic, and
+        then validate their operands the same way as this method to keep the recursion going. */
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) { // api method
@@ -250,31 +249,22 @@ export class Token extends Array {
         return false;
     }
 
-    certify(validator) { // internal helper
-
-        /* This method is invoked by the `validate` method to recursively validate each of its
-        operands. All of the tokens inherit `validate`, so invoking `validate` will walk the
-        AST. When subclasses need to do any post-parsing validation or rewriting, they can
-        override `validate`, do what they need to do, then invoke `certify(validator)` to
-        continue the recursion once they're done.
-
-        See `certifyAsFunctional` below for an example of how this helper is used. */
-
-        for (const operand of this) operand.validate(validator, this);
-    }
-
-    certifyAsFunctional(validator) { // internal helper
+    validateFunctional(validator) { // internal helper
 
         /* Configure the `yieldstack`, `awaitstack` and `callstack` just like a function literal,
         noting `yield`, as a function will need to be synthesized by the Writer Stage to compile
-        the block that belongs to the instance that uses this method (an instance of `OpenBrace`,
-        `OpenBracket` or `Do`, which all convert compound statements (`if`, `while`, `for` etc)
-        to IIFEs, which automatically become generators if they yield). By calling this method,
-        IIFEs and comprehensions ensure that the blocks of the branches and loops they convert
-        to functions are able to use `return`, `yield` and `yield from`.
+        the block that belongs to the instance that uses this method, an instance of `OpenBrace`,
+        `OpenBracket` or `Do` that converts a compound statement to an IIFE (which automatically
+        becomes a generator if the block yields). IIFEs (including comprehensions) use this logic
+        to ensure that the blocks of the branches and loops they convert to functions are able to
+        use `return`, `yield` and `yield from`.
 
-        Note: It's redundant when `Do` invokes this method on a `function`, as functional blocks
-        will already push and pop the same state to the same stacks, but it does no harm. */
+        Note: The actual `FunctionLiteral` class has its own, more extensive version of the logic
+        in this method, as a proper `function` can have attributes (like `@0`) and can be `async`
+        qualified.
+
+        Note: This is defined here because it's used by a diverse set of subclasses, without an
+        obvious intermediate base class to provide this logic. */
 
         const {yieldstack, awaitstack, callstack, atstack} = validator;
 
@@ -283,7 +273,7 @@ export class Token extends Array {
         awaitstack.top = false;
         atstack.top = false;
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
 
         callstack.pop;
         awaitstack.pop;
@@ -578,11 +568,12 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Intercept the Validation Stage, and apply `Declaration.validate` to the assignees, then
-        certify the operands. */
+        /* Intercept the Validation Stage, and apply the (static) `Declaration.validate` method to
+        the declaration's assignees, before continuing the validation walk. */
 
         Declaration.validate(validator, this[0]);
-        this.certify(validator);
+
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) {
@@ -878,7 +869,12 @@ export class AssignmentOperator extends InfixOperator {
 
         The same logic is applied to the lvalues of `let` and `var` declarations. */
 
-        if (this.spelling !== equals) return this.certify(validator);
+        if (this.spelling !== equals) {
+
+            for (const operand of this) operand.validate(validator);
+
+            return;
+        }
 
         const message = "a Slurp must always be the last operand";
 
@@ -901,7 +897,7 @@ export class AssignmentOperator extends InfixOperator {
             }
         });
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
 
         // now that the lvalue has been validated, check if it's a property descriptor, and if so,
         // note "property_descriptor" on this instance too, so `js(writer)` knows what to do...
@@ -1581,8 +1577,11 @@ export class Await extends CommandStatement {
 
         const {awaitstack, paramstack} = validator;
 
-        if (awaitstack.top === true && paramstack.top === false) this.certify(validator);
-        else throw new LarkError("unexpected Await Operation", this.location);
+        if (awaitstack.top === true && paramstack.top === false) {
+
+            for (const operand of this) operand.validate(validator);
+
+        } else throw new LarkError("unexpected Await Operation", this.location);
     }
 
     js(writer) { return `await ${this[0].js(writer)}` }
@@ -1602,13 +1601,15 @@ export class Block extends Token {
 
     validate(validator) {
 
-        /* Push a new namespace to the `scopestack`, then `certify` the statements inside this
+        /* Push a new namespace to the `scopestack`, then `validate` the statements inside this
         block, before popping the `scopestack`. This is enough to maintain the correct stack of
         blocks on the `scopestack`, leaving it to `Variable` and `Declaration` to eliminate any
         TDZs and that kind of thing. */
 
         validator.scopestack.top = Object.create(null);
-        this.certify(validator);
+
+        for (const operand of this) operand.validate(validator);
+
         validator.scopestack.pop;
     }
 }
@@ -1783,7 +1784,7 @@ export class Do extends Keyword {
         else return this.push(gatherBlock(true));
     }
 
-    validate(validator) { this.certifyAsFunctional(validator) }
+    validate(validator) { this.validateFunctional(validator) }
 
     js(writer, context=undefined) {
 
@@ -1834,10 +1835,14 @@ export class Else extends PredicatedBlock {
 
     validate(validator) {
 
-        /* Add a valid level to the block stack, affix the operands, then restore the stack to its
-        original state. */
+        /* Add a valid level to the block stack, validate the operands, then restore the stack to
+        its original state. */
 
-        validator.blockstack.top = true; this.certify(validator); validator.blockstack.pop;
+        validator.blockstack.top = true;
+
+        for (const operand of this) operand.validate(validator);
+
+        validator.blockstack.pop;
     }
 
     js(writer) { return `else ${this.else_if ? this[0].js(writer) : writer.writeBlock(this[0])}` }
@@ -2012,7 +2017,11 @@ export class If extends PredicatedBlock {
         /* Add a valid level to the block stack, affix the operands, then restore the stack to its
         original state. */
 
-        validator.blockstack.top = true; this.certify(validator); validator.blockstack.pop;
+        validator.blockstack.top = true;
+
+        for (const operand of this) operand.validate(validator);
+
+        validator.blockstack.pop;
     }
 }
 
@@ -2314,14 +2323,21 @@ export class OpenBrace extends Opener {
 
         if (this.set_comprehension || this.map_comprehension || this.object_comprehension) {
 
-            return this.certifyAsFunctional(validator);
+            this.validateFunctional(validator);
+
+            return;
         }
 
         if (this.set_literal) {                                     // set literals...
 
             if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
-            else if (this.set_comprehension) return this.certify(validator);
-            else for (const operand of this) {
+            else if (this.set_comprehension) {
+
+                for (const operand of this) operand.validate(validator);
+
+                return;
+
+            } else for (const operand of this) {
 
                 if (operand.is(Spread) && operand.infixed) operand.note("validated");
             }
@@ -2329,8 +2345,13 @@ export class OpenBrace extends Opener {
         } else if (this.map_literal) {                              // map literals...
 
             if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
-            else if (this.map_comprehension) return this.certify(validator);
-            else for (const operand of this) {
+            else if (this.map_comprehension) {
+
+                for (const operand of this) operand.validate(validator);
+
+                return;
+
+            } else for (const operand of this) {
 
                 if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) operand.note("validated");
                 else throw new LarkError("expected a Label or Splat", operand.location);
@@ -2396,7 +2417,7 @@ export class OpenBrace extends Opener {
             }
         }
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) {
@@ -2469,7 +2490,12 @@ export class OpenBracket extends Caller {
         /* Validate an array literal or breakdown, bracket notation or property descriptor, by
         iterating over its operands and validating any splats, slurps, labels etc. */
 
-        if (this.array_comprehension) return this.certifyAsFunctional(validator);
+        if (this.array_comprehension) {
+
+            this.validateFunctional(validator);
+
+            return;
+        }
 
         const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
         const badSplat = location => { throw new LarkError("unexpected Splat", location) }
@@ -2531,10 +2557,10 @@ export class OpenBracket extends Caller {
         if (this.property_descriptor) for (const operand of operands) if (operand.is(Label)) continue;
         else throw new LarkError("expected a Label", operand.location);
 
-        // finally, call `certify` to continue the recursion, validating the operands (as the loop
+        // finally, call `validate` to continue the recursion, validating the operands (as the loop
         // above only validates the operands of the compound expression, and only in that context...
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) {
@@ -2596,7 +2622,7 @@ export class OpenParen extends Caller {
 
         for (const operand of this[1]) if (operand.is(Spread) && operand.infixed) operand.note("validated");
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) { return super.js(writer, openParen, closeParen) }
@@ -2633,7 +2659,9 @@ export class Parameters extends Token {
         paramstack.top = true;
         scopestack.top = Object.create(null);
         Declaration.validate(validator, this);
-        this.certify(validator);
+
+        for (const operand of this) operand.validate(validator);
+
         scopestack.pop;
         paramstack.pop;
     }
@@ -2740,7 +2768,7 @@ export class Return extends Keyword {
 
         /* Validate this `return` statement, then fix its expression node. */
 
-        if (validator.callstack.top) this.certify(validator);
+        if (validator.callstack.top) for (const operand of this) operand.validate(validator);
         else throw new LarkError("unexpected Return Statement", this.location);
     }
 
@@ -2913,7 +2941,12 @@ export class Variable extends Word {
         /* Update any variables that have not noted "lvalue" on their way through the parser, so
         the `scopestack` is correct. */
 
-        if (this.lvalue) return this.certify(validator);
+        if (this.lvalue) {
+
+            for (const operand of this) operand.validate(validator);
+
+            return;
+        }
 
         loop: for (let index = validator.scopestack.end; index >= 0; index--) {
 
@@ -2928,7 +2961,7 @@ export class Variable extends Word {
             } else scope[this.value] = "<shadowed>";
         }
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) {
@@ -2977,7 +3010,7 @@ export class While extends PredicatedBlock {
 
         blockstack.top = true; loopstack.top = true;
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
 
         loopstack.pop; blockstack.pop;
     }
@@ -3025,7 +3058,7 @@ export class Yield extends Keyword {
 
         } else if (yieldstack.top === true) yieldstack.pop = this
 
-        this.certify(validator);
+        for (const operand of this) operand.validate(validator);
     }
 
     js(writer) {
