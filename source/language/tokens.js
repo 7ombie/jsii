@@ -182,7 +182,8 @@ export class Token extends Array {
         being qualified, so it can validate its blocks, which may contain statements (`return`
         or `await`, for example) that are only valid when specific qualifiers apply. */
 
-        throw new LarkError("invalid Token (in prefix denotation)", this.location);
+        if (parser.on(Terminator)) throw new LarkError("unexpected Terminator", this.location);
+        else throw new LarkError("invalid Token (in prefix denotation)", this.location);
     }
 
     infix(parser, left) { // api method
@@ -191,7 +192,8 @@ export class Token extends Array {
         the infix position (with something before them), and takes its `left` operand (as an AST
         node) instead of a context. The default implementation just throws an exception. */
 
-        throw new LarkError("invalid Token (in infix denotation)", this.location);
+        if (parser.on(Terminator)) throw new LarkError("unexpected Terminator", this.location);
+        else throw new LarkError("invalid Token (in infix denotation)", this.location);
     }
 
     validate(validator) {
@@ -531,32 +533,36 @@ export class Declaration extends Keyword {
             throw new LarkError(`duplicate declaration (${assignee.value})`, assignee.location);
 
         } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
+
+        return assignee;
     }
 
-    static validate(validator, assignees) {
+    static validate(validator, assignees, results=[]) {
 
         /* Take a reference to the Validator Stage API object and an assignees token. Note "lvalue"
         on the `assignees` argument, then recursively walk any breakdowns, as well as the lefthand
         operand of labels, to note "validate" and "lvalue" on slurps, complaining if any are not
         the last operand in their respective breakdown (`[[x, ...y], ...z] = arrays`). When an
-        assignee is an instance of `Variable`, it's passed to `Declaration.declare` to
-        eliminate any associated TDZ. */
+        assignee is an instance of `Variable`, it's passed to `Declaration.declare` , which
+        declares the name and eliminates any associated TDZ. */
 
-        if (assignees.is(Variable)) Declaration.declare(validator, assignees);
+        if (assignees.is(Variable)) results.push(Declaration.declare(validator, assignees));
         else for (const assignee of assignees) {
 
             assignee.note("lvalue");
 
             if (assignee.is(Variable, OpenBrace, CompoundExpression)) {
 
-                Declaration.validate(validator, assignee);
+                Declaration.validate(validator, assignee, results);
 
             } else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) {
 
-                Declaration.declare(validator, assignee.note("validated")[0]);
+                results.push(Declaration.declare(validator, assignee.note("validated")[0]));
 
-            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1]);
+            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], results);
         }
+
+        return results;
     }
 
     prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}) {
@@ -580,7 +586,7 @@ export class Declaration extends Keyword {
         /* Intercept the Validation Stage, and apply the (static) `Declaration.validate` method to
         the declaration's assignees, before continuing the validation walk. */
 
-        Declaration.validate(validator, this[0].note("lvalue"));
+        this.push(...Declaration.validate(validator, this[0].note("lvalue")));
 
         for (const operand of this) operand.validate(validator);
     }
@@ -608,19 +614,40 @@ export class Declaration extends Keyword {
 
         if (this.then_statement) {
 
-            try { // defer
+            const block = new Block(this.location);
 
-                this[2].unshift(this);
-                this.notes.delete("then_statement");
+            iife(this, function compile(declaration) {
 
-                return writer.writeBlock(this[2]);
+                /* This helper pushes the `let` or `var` statement to the nonlocal `block`, then
+                either recurs on a nested declaration or stops recuring, and directly pushes the
+                block that follows the declaration. The result is a single block with all of the
+                declarations, followed by the block that follows `then`. This is instead of each
+                declaration nesting the next declaration and the final block in a redundant tree
+                of block statements. */
 
-            } finally { this.note("terminated") }
+                const location = declaration[0].location;
+                const args = declaration.slice(0, 2);
+                const names = declaration.slice(3);
+
+                if (declaration instanceof Var) block.push(new Var(location).push(...args, ...names));
+                else block.push(new Let(location).push(...args, ...names));
+
+                if (declaration[2]?.[0]?.is(Token)) {
+
+                    if (declaration[2][0].then_statement) compile(declaration[2][0]);
+                    else block.push(declaration[2][0]);
+                }
+            });
+
+            return writer.writeBlock(block);
 
         } else {
 
-            if (this.spelling === "var") return `let ${this[0].js(writer)} = ${this[1].js(writer)}`;
-            else return `const ${this[0].js(writer)} = Object.freeze(${this[1].js(writer, true)})`;
+            const [names, declarator] = [this.slice(2), this instanceof Let ? "const" : "let"];
+
+            writer.preamble(`${declarator} ${this[0].js(writer)} = ${this[1].js(writer)}`);
+
+            if (this instanceof Let) names.map(name => writer.proamble(`Object.freeze(${name.value})`));
         }
     }
 }

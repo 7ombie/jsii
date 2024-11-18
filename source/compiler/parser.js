@@ -18,6 +18,7 @@ import {
     OpenBracket,
     Operator,
     Parameters,
+    Reserved,
     Terminator,
     Variable,
     Word
@@ -209,10 +210,9 @@ export function * parse(source, {dev=false}={}) {
         token.expression = false;
 
         if (on(Variable)) return gatherVariable();
-
-        if (on(OpenBracket, OpenBrace)) return gather();
-
-        throw new LarkError("invalid Assignee", token.location);
+        else if (on(OpenBracket, OpenBrace)) return gather();
+        else if (on(Reserved)) throw new LarkError(`Reserved Word (${token.value})`, token.location);
+        else throw new LarkError("invalid Assignee", token.location);
     }
 
     function gatherParameters() { // api function

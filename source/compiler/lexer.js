@@ -185,10 +185,12 @@ export function * lex(source, {dev=false}={}) {
 
             } else if (on(delimiters)) {
 
-                if (interpolating && on(closeParen)) return; // interpolation exit point
+                if (interpolating && on(closeParen)) return;    // interpolation exit point
                 else yield * Delimiter.lex(api, location);
 
             } else throw new LarkError(`unexpected Character (${character})`, location);
+
+            if (not(on(newline)) && source[index + 1n] === undefined) yield * Terminator.lex(api, locate() + 1n);
 
             advance();
         }

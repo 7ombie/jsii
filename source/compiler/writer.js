@@ -20,6 +20,7 @@ export function * write(source, {dev=false}={}) {
         the block that contains it. */
 
         preambles.top = [];
+        proambles.top = [];
 
         for (const statement of statements) if (not(statement.ignored)) {
 
@@ -27,12 +28,16 @@ export function * write(source, {dev=false}={}) {
             const terminated = statement.terminated;
 
             yield * preambles.top.map(preamble => indentation + preamble);
-            yield indentation + js + (terminated ? empty : semicolon);
 
-            preambles.top.length = 0;
+            if (js !== undefined) yield indentation + js + (terminated ? empty : semicolon);
+
+            yield * proambles.top.map(proamble => indentation + proamble);
+
+            preambles.top.length = proambles.top.length = 0;
         }
 
         preambles.pop;
+        proambles.pop;
     }
 
     function writeBlock(block) { // api function
@@ -58,13 +63,22 @@ export function * write(source, {dev=false}={}) {
         preambles.top.push(string + (terminate ? semicolon : empty));
     }
 
+    function proamble(string, terminate=true) { // api function
+
+        /* Take a proamble string and an optional bool. Push the string to the `proambles` array,
+        concatenating a semicolon to the end if `terminated` is truthy (the default). */
+
+        proambles.top.push(string + (terminate ? semicolon : empty));
+    }
+
     // gather the api functions and flags into the api object, initialize the internal state, then
     // walk the parse tree, yielding the results (as strings), one top-level statement at a time...
 
-    const api = {preamble, write, writeBlock, dev};
+    const api = {preamble, proamble, write, writeBlock, dev};
 
     let indentation = empty;
     let preambles = new Stack();
+    let proambles = new Stack();
 
     yield * walk(validate(source, {dev}));
 }
