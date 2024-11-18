@@ -1,3 +1,4 @@
+pud.david[] = 1
 console.log(x, y)
 [...x] = foo
 [foo, {x: y}] = foo

@@ -885,7 +885,7 @@ export class AssignmentOperator extends InfixOperator {
             return;
         }
 
-        if (this[0].is(OpenBracket) && this[0].infixed);
+        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].infixed)); // ignore
         else Declaration.validate(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
@@ -2534,8 +2534,8 @@ export class OpenBracket extends Caller {
 
         if (notation && not(this.property_descriptor)) {
 
-            if (operands.length < 1) throw new LarkError("expected an operand", operands.location);
-            if (operands.length > 1) throw new LarkError("too many operands", operands[1].location);
+            if (operands.length < 1) this.note("property_descriptor");
+            else if (operands.length > 1) throw new LarkError("too many operands", operands[1].location);
         }
 
         // if the instance has been classified as a property descriptor, go over its operands again,
