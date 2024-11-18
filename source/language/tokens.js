@@ -111,10 +111,11 @@ export class Token extends Array {
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
-        "property_descriptor", "tagged_template", "proto_label",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "ignored", "labelled", "validated", "terminated",
+        "property_descriptor", "property_description",
         "oo_literal", "set_literal", "map_literal",
+        "tagged_template", "proto_label",
         "yield_from", "proto_from",
         "at_name", "at_parameter",
         "not_in", "not_of",
@@ -891,9 +892,12 @@ export class AssignmentOperator extends InfixOperator {
         for (const operand of this) operand.validate(validator);
 
         // now that the lvalue has been validated, check if it's a property descriptor, and if so,
-        // note "property_descriptor" on this instance too, so `js(writer)` knows what to do...
+        // note "property_descriptor" on this instance too, so `js(writer)` knows what to do (we
+        // also accept property descriptions, as empty brackets note "property_description" even
+        // though it might be a descriptor with no flags, as there's no way to know that until
+        // this method establishes that the empty 'bracket notation' is being assigned to...
 
-        if (this[0].property_descriptor) this.note("property_descriptor");
+        if (this[0].property_descriptor || this[0].property_description) this.note("property_descriptor");
     }
 
     js(writer) {
@@ -2534,7 +2538,7 @@ export class OpenBracket extends Caller {
 
         if (notation && not(this.property_descriptor)) {
 
-            if (operands.length < 1) this.note("property_descriptor");
+            if (operands.length < 1) this.note("property_description");
             else if (operands.length > 1) throw new LarkError("too many operands", operands[1].location);
         }
 
@@ -2553,13 +2557,20 @@ export class OpenBracket extends Caller {
 
     js(writer) {
 
-        /* Render an array comprehension or property descriptor here, passing any array literals and
-        breakdowns, along with bracket notation, up to the generic compound expression renderer that
-        `Opener` provides (`super.js`).
+        /* Render an array comprehension, property descriptor or property description, passing any
+        array literals, breakdowns and bracket notation up to the generic renderer that `Opener`
+        provides (`super.js`) for compound expressions, and handling comprehensions, property
+        descriptors and property descriptions here.
 
         Note: It's not possible to render property descriptors here without the `AssignmentOperator`
-        class assisting, as the assigned value is that node's rvalue (this instance is its lvalue).
-        See `AssignmentOperator.prototype.js` for more information on how it works. */
+        class assisting, as the assigned value is that node's rvalue (this instance is its lvalue),
+        so the `js` method of the `AssignmentOperator` class checks for property descriptors, and
+        adds a label to the descriptor, where the key is "value" and the value is the rvalue of
+        the assignment, then renders and returns `this` instead of an assignment.
+
+        Note: Property descriptions do not have an assignment (and must be empty).
+
+        Note: Property descriptors and descriptions both note "property_descriptor". */
 
         if (this.array_comprehension) {
 
@@ -2567,17 +2578,29 @@ export class OpenBracket extends Caller {
 
             return `Array.from(${literal.js(writer, true)}())`;
 
-        } else if (this.property_descriptor) {
+        } else if (this.property_descriptor || this.property_description) {
 
             const left = this[0];
+            const recurring = left.property_descriptor || left.property_description;
 
-            if (left.is(Dot) || (left.is(OpenBracket) && left.infixed && not(left.property_descriptor))) {
+            if (left.is(Dot) || (left.is(OpenBracket) && left.infixed && not(recurring))) {
 
-                const target = left[0].js(writer);
-                const name = left.is(Dot) ? `"${left[1].value}"` : left[1][0].js(writer);
-                const descriptor = this[1].map(label => label.js(writer)).join(colon + space);
+                if (this[1].map(label => label[0].value).includes("value")) {               // descriptor...
 
-                return `Object.defineProperty(${target}, ${name}, {${descriptor}})`;
+                    const target = left[0].js(writer);
+                    const name = left.is(Dot) ? `\`${left[1].value}\`` : left[1][0].js(writer);
+                    const descriptor = this[1].map(label => label.js(writer)).join(colon + space);
+
+                    return `Object.defineProperty(${target}, ${name}, {${descriptor}})`;
+
+                } else if (this.property_description) {                                    // description...
+
+                    const target = left[0].js(writer);
+                    const name = left.is(Dot) ? `\`${left[1].value}\`` : left[1][0].js(writer);
+
+                    return `Object.getOwnPropertyDescriptor(${target}, ${name})`;
+
+                } else throw new LarkError("Property Descriptor without Assignment", this.location); // fail
 
             } else throw new LarkError("required a Breadcrumb Operation or Bracket Notation", left.location);
 

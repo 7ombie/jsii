@@ -1,4 +1,8 @@
-pud.david[] = 1
+pud.david[enumerable: true] = 1
+jackie[ted][] = 1
+pud["david"][enumerable: true] = 1
+jackie["ted"][]
+
 console.log(x, y)
 [...x] = foo
 [foo, {x: y}] = foo
