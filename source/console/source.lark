@@ -1,4 +1,8 @@
-do let x = 0 then var y = 0 then { console.log(x), let x = 1, console.log(x), return 1 }
+console.log(x, y)
+[...x] = foo
+[foo, {x: y}] = foo
+console.log(x)
+foo.x[enumerable: true] = 1
 
 function return 1
 function f return 1
@@ -12,11 +16,9 @@ do for number of Array(8).fill(0) yield number * 2
 {{ for number in numbers if number % 2 == 0 yield ["score", number * 50_000] }}
 { for numbers in results for number in numbers if number % 2 == 0 yield [number, 2 ** number] }
 
-let foo = thing
 let bar = thing
 
-let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
-[x, y, {foo, bar, spam: x, z: {z}, ...o}, ...f] = options
+let stuff = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
 
 []
 {}
@@ -25,7 +27,7 @@ let s = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
 
 {foo: 1, bar: 2, metavars...}
 point = {x: 1, y: 2}
-{23: {x: {y: {z: [x, y, x]}}}, ali, bob, cal, ...others} = people
+{23: {x: {y: {z: needMoreNames}}}, ali, bob, cal, ...others} = people
 {proto Array, length: 2, 0: false, 1: true}
 {__proto__: o, name: "John", salary: 50000}
 john = {proto from Object, name: "John", salary: 50000}
@@ -38,9 +40,9 @@ var array = [1, 2, 3]
 var object = {x: 45, boo: 56, proto Object}
 let index = x[x]
 
-{__proto__: Array, x: x, y: y, z: z, ...foo} = obj
+{__proto__: Array, x: snake, y: apple, z: garden, ...Eden} = obj
 
-{x, foo, bar, pop, pip: c345, ...z} = options
+{babylon, hanging, tower, pop, pip: c345, ...z} = options
 
 delete foo.bar
 delete foo["bar"]
@@ -102,7 +104,7 @@ spam.com """
 
 html.tag "
 line one: onside
-  line two: indented \(1, 2) spaces    
+  line two: indented \(1, 2) spaces
 line three: onside \(3, 4, 5) again
 "
 
@@ -189,8 +191,8 @@ freeze 1 + 2 when x * y else spam + eggs
 
 options = {[foo, bar, rest...]}
 moreOptions = {{foo: 1, bar: 2, map: map}}
-[x, y, ...z] = foo
-{x, y, z} = bar
+[thor, odin, bill] = foo
+{jim, jenkins, jobe} = bar
 a[1] *= 1
 
 a = [1, 2, x...]
@@ -210,8 +212,8 @@ em = {{y..., z...}}
 {{}}
 {[]}
 []
-{x, y, z} = foo
-[a, [b, [c, [d]]]] = bar
+{jimmy, james, jimbob} = foo
+[k, [l, [m, [n]]]] = bar
 {x: 1, y: 2}
 {{y: 2, __proto__: Array, foo: bar}}
 
@@ -225,11 +227,11 @@ while true continue
 
 
 {foo: 1, bar: 2, metavars.x...}
-point = {x: 1, y: 2}
-{ali, bob, cal, ...others} = people
+point2 = {x: 1, y: 2}
+{sam, jam, mam, ...rest} = people
 {__proto__: Array, length: 2, 0: false, 1: true}
 {proto from Object, name: "John", salary: 50000}
-john = {proto p, name: "John", salary: 50000}
+johno = {proto p, name: "John", salary: 50000}
 
 {[a, b, c, d...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
@@ -261,5 +263,5 @@ async function of x, y = foo(x.y[foo()]) { await x + y }
 for spagetti of spagetti { log(spagetti) }
 let spagetti = 0
 
-let x = 0
-do { console.log(x), let x = 1, console.log(x) }
+let tdz = 0
+do { console.log(tdz), let tdz = 1, console.log(tdz) }

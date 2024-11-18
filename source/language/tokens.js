@@ -517,7 +517,7 @@ export class Declaration extends Keyword {
         names that use registers get copied to all of their references (updating their `value`
         properties to the name of the register). */
 
-        const [value, scope] = [assignee.note("lvalue").value, validator.scopestack.top];
+        const [value, scope] = [assignee.value, validator.scopestack.top];
 
         if (scope[value] === "<shadowed>") { // the same name is referenced through this block
 
@@ -541,12 +541,19 @@ export class Declaration extends Keyword {
         eliminate any associated TDZ. */
 
         if (assignees.is(Variable)) Declaration.declare(validator, assignees);
+        else for (const assignee of assignees) {
 
-        for (const assignee of assignees) {
+            assignee.note("lvalue");
 
-            if (assignee.is(Variable, OpenBracket, OpenBrace)) Declaration.validate(validator, assignee);
-            else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) assignee.note("validated");
-            else if (assignee.is(Label)) Declaration.validate(validator, assignee[1]);
+            if (assignee.is(Variable, OpenBrace, CompoundExpression)) {
+
+                Declaration.validate(validator, assignee);
+
+            } else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) {
+
+                Declaration.declare(validator, assignee.note("validated")[0]);
+
+            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1]);
         }
     }
 
@@ -557,7 +564,7 @@ export class Declaration extends Keyword {
 
         this.push(gatherAssignees());
 
-        if (on(Assign)) { advance() } else throw new LarkError("expected the Assigment Symbol");
+        if (on(Assign)) { advance() } else throw new LarkError("expected the Assigment Symbol", advance(false).location);
 
         this.push(gatherExpression());
 
@@ -571,7 +578,7 @@ export class Declaration extends Keyword {
         /* Intercept the Validation Stage, and apply the (static) `Declaration.validate` method to
         the declaration's assignees, before continuing the validation walk. */
 
-        Declaration.validate(validator, this[0]);
+        Declaration.validate(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
     }
@@ -878,26 +885,8 @@ export class AssignmentOperator extends InfixOperator {
             return;
         }
 
-        const message = "a Slurp must always be the last operand";
-
-        iife(this[0], function $(assignees) {
-
-            /* Note "lvalue" for the `assignees` operand, then recursively walk any breakdowns to
-            note "validate" and "lvalue" on all valid slurps, complaining if any are not the last
-            operand within their respective (nested) breakdown (`[[x, ...y], ...z] = array`). */
-
-            assignees.note("lvalue");
-
-            for (const assignee of assignees) {
-
-                if (assignee.is(OpenBracket, OpenBrace, CompoundExpression)) $(assignee);
-                else if (assignee.is(Spread) && assignee.prefixed) {
-
-                    if (assignees.at(-1) === assignee) assignee.note("validated", "lvalue");
-                    else throw new LarkError(message, assignee.location);
-                }
-            }
-        });
+        if (this[0].is(OpenBracket) && this[0].infixed);
+        else Declaration.validate(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
@@ -2381,7 +2370,7 @@ export class OpenBrace extends Opener {
                 if (this.at(-1) === operand) operand.note("validated");
                 else throw new LarkError("a Slurp must always be the last operand", operand.location);
 
-            } else throw new LarkError("expected a Label or Slurp", operand.location);
+            } else throw new LarkError("expected a Name, Label or Slurp", operand.location);
 
         } else operandsLoop: for (const operand of this) {          // object literals...
 
@@ -2590,7 +2579,7 @@ export class OpenBracket extends Caller {
 
                 return `Object.defineProperty(${target}, ${name}, {${descriptor}})`;
 
-            } else throw new LarkError("required a Breadcrumb Operation or Bracket Notation", left[1].location);
+            } else throw new LarkError("required a Breadcrumb Operation or Bracket Notation", left.location);
 
         } else return super.js(writer, openBracket, closeBracket);
     }
