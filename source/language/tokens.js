@@ -338,7 +338,7 @@ export class Opener extends Delimiter {
         the `OpenParen` and `OpenBracket` classes to write grouped expressions, invocations, array
         literals and bracketed notation. */
 
-        const join = operands => operands.map(operand => operand.js(writer)).join(comma + space);
+        const join = operands => operands.map(operand => operand.js(writer, true)).join(comma + space);
 
         if (this.infixed) return this[0].js(writer) + opener + join(this[1]) + closer;
         else return opener + join(this[0]) + closer;
@@ -1800,8 +1800,11 @@ export class Do extends Keyword {
             } else return `(function() ${writer.writeBlock(this[0])}.call(this))`;
         }
 
-        if (this[0].is(Functional)) return `${this[0].js(writer)}()`;
-        else return FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer);
+        if (this[0].is(Functional)) return `${this[0].js(writer)}.call(this)`;
+
+        const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier).js(writer, context);
+
+        return `${literal}.call(this)`;
     }
 }
 
@@ -2253,7 +2256,7 @@ export class OpenBrace extends Opener {
 
     expression = true;
 
-    prefix({advance, on, gather, gatherCompoundExpression}) {
+    prefix({gatherCompoundExpression}) {
 
         /* Parse a set, a map or an object literal or breakdown, splatting all of the operands from
         the resulting `CompoundExpression` into the current instance, while noting the grammar used
@@ -2272,36 +2275,15 @@ export class OpenBrace extends Opener {
         only used to express bracket notation and array literals and breakdowns (so the resulting
         `CompoundExpression` directly contains the operands). */
 
-        if (on(Header)) {
-
-            /* This block handles object comprehensions and nested map comprehensions (which have
-            the same grammar as object comprehensions, but wrapped in braces). The block puts the
-            "object_comprehension" note on the top-level object, and the "map_comprehension" note
-            on its operand, so things work out correctly in the end. */
-
-            this.note("object_comprehension").push(gather(0, this).note("map_comprehension"));
-
-            if (on(CloseBrace)) { advance(); return this }
-            else throw new LarkError("expected a CloseBrace", advance(false).location);
-        }
-
         const operands = gatherCompoundExpression(CloseBrace);
 
         if (operands.length === 1 && operands[0].is(OpenBracket)) {
 
-            if (operands[0][0].is(For)) {
-
-                return this.note("set_comprehension").push(...operands[0]);
-
-            } else return this.note("set_literal").push(...operands[0][0]);
+            return this.note("set_literal").push(...operands[0][0]);
 
         } else if (operands.length === 1 && operands[0].is(OpenBrace)) {
 
-            if (operands[0][0]?.map_comprehension) {
-
-                return this.note("map_comprehension").push(...operands[0]);
-
-            } else return this.note("map_literal").push(...operands[0]);
+            return this.note("map_literal").push(...operands[0]);
 
         } else return this.push(...operands);
     }
@@ -2309,17 +2291,10 @@ export class OpenBrace extends Opener {
     validate(validator) {
 
         /* Validate a set, map, object literal or object breakdown, iterating over its operands
-        and checking labels (particularly `__proto__` labels) and `as` operations, as well as
-        any splats and slurps. */
+        and checking labels (particularly `__proto__`) and `proto` and `proto from` operations,
+        as well as any splats and slurps. */
 
         let prototypes = 0;
-
-        if (this.set_comprehension || this.map_comprehension || this.object_comprehension) {
-
-            this.validateFunctional(validator);
-
-            return;
-        }
 
         if (this.set_literal) {                                     // set literals...
 
@@ -2417,15 +2392,7 @@ export class OpenBrace extends Opener {
 
         /* Render a set, map, array literal or array breakdown. */
 
-        if (this.object_comprehension || this.set_comprehension || this.map_comprehension) {
-
-            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier)
-
-            if (this.object_comprehension) return `Object.fromEntries(${literal.js(writer, true)}())`;
-            else if (this.set_comprehension) return `new Set(${literal.js(writer, true)}())`;
-            else return `new Map(${literal.js(writer, true)}())`;
-
-        } else if (this.set_literal) {
+        if (this.set_literal) {
 
             if (this.length === 0) return "new Set()";
             else return `new Set([${this.map(operand => operand.js(writer)).join(comma + space)}])`;
@@ -2459,22 +2426,9 @@ export class OpenBrace extends Opener {
 export class OpenBracket extends Caller {
 
     /* This class implements the open-bracket delimiter, which is used for array literals, array
-    breakdowns and bracket notation. */
+    breakdowns, bracket notation, property descriptors and property descriptions. */
 
-    prefix({advance, gather, gatherCompoundExpression, on}) {
-
-        /* If the parser is `on` an instance of a `Header` subclass (`For`, `While`, `If` and
-        `ElseIf`). */
-
-        if (on(Header)) {
-
-            this.push(gather(0, this));
-
-            if (on(CloseBracket)) { advance(); return this.note("array_comprehension") }
-            else throw new LarkError("expected a CloseBracket", advance(false).location);
-
-        } else return this.push(gatherCompoundExpression(CloseBracket));
-    }
+    prefix({gatherCompoundExpression}) { return this.push(gatherCompoundExpression(CloseBracket)) }
 
     infix({gatherCompoundExpression}, left) { return this.push(left, gatherCompoundExpression(CloseBracket)) }
 
@@ -2482,13 +2436,6 @@ export class OpenBracket extends Caller {
 
         /* Validate an array literal or breakdown, bracket notation or property descriptor, by
         iterating over its operands and validating any splats, slurps, labels etc. */
-
-        if (this.array_comprehension) {
-
-            this.validateFunctional(validator);
-
-            return;
-        }
 
         const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
         const badSplat = location => { throw new LarkError("unexpected Splat", location) }
@@ -2560,26 +2507,18 @@ export class OpenBracket extends Caller {
 
         /* Render an array comprehension, property descriptor or property description, passing any
         array literals, breakdowns and bracket notation up to the generic renderer that `Opener`
-        provides (`super.js`) for compound expressions, and handling comprehensions, property
-        descriptors and property descriptions here.
+        provides (`super.js`) for compound expressions, and handling property descriptors and
+        property descriptions here.
 
         Note: It's not possible to render property descriptors here without the `AssignmentOperator`
         class assisting, as the assigned value is that node's rvalue (this instance is its lvalue),
         so the `js` method of the `AssignmentOperator` class checks for property descriptors, and
         adds a label to the descriptor, where the key is "value" and the value is the rvalue of
-        the assignment, then renders and returns `this` instead of an assignment.
+        the assignment, then renders and returns this `OpenBracket` instead of an assignment.
 
-        Note: Property descriptions do not have an assignment (and must be empty).
+        Note: Property descriptions do not have an assignment (and must be empty). */
 
-        Note: Property descriptors and descriptions both note "property_descriptor". */
-
-        if (this.array_comprehension) {
-
-            const literal = FunctionLiteral.synthesize(this.location, this[0], this.yield_qualifier);
-
-            return `Array.from(${literal.js(writer, true)}())`;
-
-        } else if (this.property_descriptor || this.property_description) {
+        if (this.property_descriptor || this.property_description) {
 
             const left = this[0];
             const recurring = left.property_descriptor || left.property_description;
@@ -2628,11 +2567,9 @@ export class OpenParen extends Caller {
 
         if (this.prefixed) {
 
-            if (this[0].length === 1) return this;
-            else throw new LarkError("unexpected Tuple Literal", this.location);
-        }
+            if (this[0].length !== 1) throw new LarkError("unexpected Tuple Literal", this.location);
 
-        for (const operand of this[1]) if (operand.is(Spread) && operand.infixed) operand.note("validated");
+        } else for (const operand of this[1]) if (operand.is(Spread) && operand.infixed) operand.note("validated");
 
         for (const operand of this) operand.validate(validator);
     }
