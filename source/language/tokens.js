@@ -396,6 +396,7 @@ export class Constant extends Word {
             case "NaN": return new NaNConstant(location, value);
             case "null": return new NullConstant(location, value);
             case "super": return new SuperConstant(location, value);
+            case "this": return new ThisConstant(location, value);
             case "true": return new TrueConstant(location, value);
             case "void": return new VoidConstant(location, value);
         }
@@ -1789,14 +1790,14 @@ export class Do extends Keyword {
 
             if (this.yield_qualifier) {
 
-                if (context === true) return `function *() ${writer.writeBlock(this[0])}()`;
-                else return `(function *() ${writer.writeBlock(this[0])}())`;
+                if (context === true) return `function *() ${writer.writeBlock(this[0])}.call(this)`;
+                else return `(function *() ${writer.writeBlock(this[0])}.call(this))`;
 
             } else if (context === true) {
 
-                return `function() ${writer.writeBlock(this[0])}()`;
+                return `function() ${writer.writeBlock(this[0])}.call(this)`;
 
-            } else return `(function() ${writer.writeBlock(this[0])}())`;
+            } else return `(function() ${writer.writeBlock(this[0])}.call(this))`;
         }
 
         if (this[0].is(Functional)) return `${this[0].js(writer)}()`;
@@ -2908,6 +2909,11 @@ export class Throw extends CommandStatement {
 export class TrueConstant extends Constant {
 
     /* This class implements the `true` constant. */
+}
+
+export class ThisConstant extends Constant {
+
+    /* This class implements the `this` constant. */
 }
 
 export class Var extends Declaration {

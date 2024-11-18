@@ -70,6 +70,7 @@ export const constants = [
     "NaN",
     "null",
     "super",
+    "this",
     "true",
     "void",
 ];
@@ -135,7 +136,6 @@ export const reserved = [
     "finally",
     "find",
     "float",
-    "generator",
     "get",
     "global",
     "go",
@@ -185,7 +185,6 @@ export const reserved = [
     "synchronized",
     "tele",
     "template",
-    "this",
     "throw",
     "throws",
     "thus",
