@@ -550,7 +550,7 @@ export class Declaration extends Keyword {
         }
     }
 
-    prefix({advance, gather, gatherAssignees, gatherExpression, on}) {
+    prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}) {
 
         /* Gather a `let` or `var` declaration, which always has an assignees before the assign
         operator, and always has an expression after it. */
@@ -563,7 +563,7 @@ export class Declaration extends Keyword {
 
         if (on(Then)) { advance() } else return this;
 
-        return this.note("then_statement").push(gather());
+        return this.note("then_statement").push(gatherBlock(true));
     }
 
     validate(validator) {
@@ -578,33 +578,35 @@ export class Declaration extends Keyword {
 
     js(writer) {
 
-        /* Render a Lark `let` or `var` declaration. When declarations include `then` clauses (like
-        `let i = 0 then while i < array.length { console.dir(array[i]), i += 1 }`), then the method
-        wraps the declaration and the statement after the `then` operator in a block statement. For
-        example, the code just mentioned compiles to something like this:
+        /* Render a Lark `let` or `var` declaration, freezing anything declared with `let`. Either
+        declarator may include a `then` clause (`let <assignees> = <value> then <block>`). In that
+        case, this method wraps the declaration and the block that follows it in a block statement
+        that ensures the declared names are cleared up as soon as flow exits the block.
 
-            {
-                let i = 0;
-                while (i < array.length) {
-                    console.dir(array[i]);
-                    i += 1;
-                }
-            }
+        Note: When rendering declarations with `then` statements, we use `unshift` to insert `this`
+        at the start of the `Block` operand (`this[2]`), then delete the "then_statement" note, so
+        this instance looks like a regular declaration, then call `writeBlock` to render the block,
+        and return the result. When `writeBlock` renders `this`, this method is invoked again, and
+        branches to the code for declarations without `when` statements, which only references the
+        first two operands (ignoring the block). The declaration's followed by the contents of the
+        block, so the block that follows `then` is rendered directly below the declaration.
 
-        Note: As Lark's `let` and `var` declarations are regular statements, you can use the `then`
-        operator recursively (like `let max = 0xFF then var [x, y] = [0, 0] then while x { etc }`)
-        to define any number of locals (which can be further combined with other formal statements,
-        as well as the `do` qualifier, `return`, `yield` and `yield from`, in various ways). */
+        Note: The recursion described above is also why noting "terminated" is deferred until after
+        we write the block: If we did it before, the declaration would not be terminated properly,
+        and if we omitted it entirely, the block would be followed by a redudant empty statement.
+
+        TODO: Freezing the values of `let` declared names is broken when destructuring. */
 
         if (this.then_statement) {
 
-            this.notes.delete("then_statement");
+            try { // defer
 
-            const block = writer.writeBlock(new Block(this.location).push(this, this[2]));
+                this[2].unshift(this);
+                this.notes.delete("then_statement");
 
-            this.note("terminated");
+                return writer.writeBlock(this[2]);
 
-            return block;
+            } finally { this.note("terminated") }
 
         } else {
 
@@ -1937,13 +1939,10 @@ export class For extends Header {
 
         Note: In Lark, `for n in n { etc }` is not just valid, it's simple and intuitive: All of
         Lark's declarators (`let` `var` and `for`) introduce bindings at the exact moment they
-        execute, and the binding does not exist prior to that point, so references reference
-        outer scopes (see the note below that describes the output):
+        execute, and the binding does not exist prior to that point, so references resolve to
+        outer scopes. For example, this logs `0` then `1`:
 
-            let x = 0
-            do { console.log(x), let x = 1, console.log(x) }
-
-        Note: That example logs `0`, then `1`. */
+            let x = 0 then do { console.log(x), let x = 1, console.log(x) }                     */
 
         const {blockstack, loopstack, scopestack} = validator;
 
