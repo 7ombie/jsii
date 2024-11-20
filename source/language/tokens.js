@@ -646,6 +646,11 @@ export class Declaration extends Keyword {
 
             const [names, declarator] = [this.slice(2), this instanceof Let ? "const" : "let"];
 
+            if (this instanceof Let && this[0].is(Variable)) {
+
+                return `const ${this[0].value} = Object.freeze(${this[1].js(writer, true)})`;
+            }
+
             writer.preamble(`${declarator} ${this[0].js(writer)} = ${this[1].js(writer)}`);
 
             if (this instanceof Let) names.map(name => writer.proamble(`Object.freeze(${name.value})`));
@@ -1128,7 +1133,7 @@ export class StringLiteral extends Terminal {
     LBP = 16;
     expression = true;
 
-    static * lex({advance, at, gather, gatherUntil, locate, on, read, terminate}, location) {
+    static * lex({advance, at, gather, locate, on, read, terminate}, location) {
 
         /* Lex and yield a string literal as a token stream that contains a `StringLiteral`, plus
         for every interpolation, an `OpenInterpolation` token, followed by each token within the
