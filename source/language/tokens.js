@@ -30,6 +30,7 @@ import {
     openBrace,
     openBracket,
     openParen,
+    pound,
     quote,
     slash,
     space,
@@ -1127,7 +1128,7 @@ export class StringLiteral extends Terminal {
     LBP = 16;
     expression = true;
 
-    static * lex({advance, at, gather, locate, on, read, terminate}, location) {
+    static * lex({advance, at, gather, gatherUntil, locate, on, read, terminate}, location) {
 
         /* Lex and yield a string literal as a token stream that contains a `StringLiteral`, plus
         for every interpolation, an `OpenInterpolation` token, followed by each token within the
@@ -1156,20 +1157,31 @@ export class StringLiteral extends Terminal {
         }
 
         const [head, characters] = [match(quote, quote), []];
-        const StringClass = head.length > 1 ? TextLiteral : StringLiteral;
+        const StringType = head.length > 1 ? TextLiteral : StringLiteral;
 
         advance();
+
+        if (StringType === TextLiteral && not(on(newline))) {
+
+            // this block throws on anything that follows the opening quotes of a text literal,
+            // except for insignificant whitespace and commentary (which is discarded)...
+
+            while (on(space)) advance();
+
+            if (on(pound)) do { advance() } while (not(on(newline)));
+            else if (not(on(newline))) throw new LarkError("invalid Text Literal", locate());
+        }
 
         while (read()) {
 
             // this loop can yield any number of tokens, as it yields every token within each
-            // interpolation, as well any number of substrings...
+            // interpolation, as well any number of substrings between them...
 
             if (on(backslash) && at(openParen)) {
 
                 // this block handles streams of interpolated tokens...
 
-                yield new StringClass(location, characters.join(empty));
+                yield new StringType(location, characters.join(empty));
 
                 advance(2n);
                 characters.length = 0;
@@ -1189,14 +1201,14 @@ export class StringLiteral extends Terminal {
 
                 if (tailCount > headCount) {            // too many closing quotes...
 
-                    const message = `${headCount} opening Quotes with ${tailCount} closing Quotes`;
+                    const message = `${headCount} Opening Quotes with ${tailCount} Closing Quotes`;
 
                     throw new LarkError(message, location);
                 }
 
                 if (tailCount === headCount) {          // exactly the right number of quotes...
 
-                    return yield new StringClass(location, characters.join(empty));
+                    return yield new StringType(location, characters.join(empty));
 
                 } else characters.push(candidate);      // too few quotes (part of the string)
 
@@ -1280,10 +1292,7 @@ export class TextLiteral extends StringLiteral {
             They are manually removed (the first newline is removed at the beginning of the code,
             following this function, and the last newline towards the end (see `chunks`). */
 
-            const value = (this.at(-1) ?? this).value;
-            const index = value.lastIndexOf(newline);
-
-            return value.slice(index);
+            return this.value.slice(this.value.lastIndexOf(newline));
         });
 
         // initialize the array of string `chunks` using the `value` property (though removing the
