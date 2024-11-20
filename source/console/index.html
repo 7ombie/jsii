@@ -1,2 +1,54 @@
-<style> body { margin: 0; background: black } </style>
+<style>
+
+    body {
+        margin: 0;
+        margin-left: -26px; /* negative margin to allow for `26px` of `padding-left` on `child`. */
+        background: black;
+        font-family: "IBM Plex Mono", "monospace";
+    }
+
+    token, child {
+        display: block;
+    }
+
+    child {
+        padding-left: 26px;
+    }
+
+    child title { /* the title bar contains everything except the children */
+        color: #D4BCBC;
+        font-size: 16px;
+        font-weight: 400;
+        display: block;
+    }
+
+    child title value { /* the value is the `value` property of the token  */
+        color: #75D5FF;
+        padding-left: 12px;
+    }
+
+    child title notes { /* a list of notes from the token's `notes` set */
+        color: #608ACE;
+        font-variant: all-petite-caps;
+        padding-left: 12px;
+    }
+
+    child title place { /* the `location` (rendered like `[line:column]`) */
+        color: #B5B5B5;
+        font-weight: 100;
+        padding-left: 4px;
+        position: absolute;
+        right: 2px;
+    }
+
+    token:hover { /* highlight a token (with its children) on hover */
+        background-color: #00BFC433;
+    }
+
+    token:has(token:hover) { /* only the innermost token should be highlighted */
+        background-color: black;
+    }
+
+</style>
+
 <script type=module src=main.js></script>

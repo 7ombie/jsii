@@ -106,20 +106,15 @@ export class Token extends Array {
     notes = new Set();
 
     static notables = Object.freeze(new Set([
-        "prefixed", "infixed", "lvalue",
         "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
+        "tagged_template", "proto_label", "yield_from", "proto_from", "at_name", "at_parameter",
+        "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
-        "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if",
+        "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal",
+        "ignored", "labelled", "validated", "terminated", "then_statement",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
-        "ignored", "labelled", "validated", "terminated",
         "property_descriptor", "property_description",
-        "oo_literal", "set_literal", "map_literal",
-        "tagged_template", "proto_label",
-        "yield_from", "proto_from",
-        "at_name", "at_parameter",
-        "not_in", "not_of",
-        "then_statement",
     ]));
 
     constructor(location, value=empty) {
@@ -252,38 +247,43 @@ export class Token extends Array {
         return false;
     }
 
-    validateFunctional(validator) { // internal helper
+    render(upperElement) {
 
-        /* Configure the `yieldstack`, `awaitstack` and `callstack` just like a function literal,
-        noting `yield`, as a function will need to be synthesized by the Writer Stage to compile
-        the block that belongs to the instance that uses this method, an instance of `OpenBrace`,
-        `OpenBracket` or `Do` that converts a compound statement to an IIFE (which automatically
-        becomes a generator if the block yields). IIFEs (including comprehensions) use this logic
-        to ensure that the blocks of the branches and loops they convert to functions are able to
-        use `return`, `yield` and `yield from`.
+        /* Recursively render the token to the given HTML element (`upperElement`). Each token gets
+        rendered as a `token` element that contains a `title` element with all the token's details,
+        and an optional `child` element that contains the token's children when it has any (which
+        is never the case when rendering the token stream from the lexer). When the token has a
+        `child` element, the element is passed to each child as its `upperElement` argument.
 
-        Note: The actual `FunctionLiteral` class has its own, more extensive version of the logic
-        in this method, as a proper `function` can have attributes (like `@0`) and can be `async`
-        qualified.
+        This makes it much easier to read through the token stream or parse tree (especially as the
+        `Proxy` wrapper nests everything horribly in DevTools).
 
-        Note: This is defined here because it's used by a diverse set of subclasses, without an
-        obvious intermediate base class to provide this logic. */
+        Note: The small amount of CSS required is in `index.html` (inline). As the console evolves,
+        it will get broken out into separate files. */
 
-        const {yieldstack, awaitstack, callstack, atstack} = validator;
+        const tokenElement = document.createElement("token"); // a container for everything below
+        const titleElement = document.createElement("title"); // title bar [type value notes place]
+        const valueElement = document.createElement("value"); // the token's `value`
+        const notesElement = document.createElement("notes"); // the token's `notes`
+        const placeElement = document.createElement("place"); // the token's line and column
+        const childElement = document.createElement("child"); // a container for nesting children
 
-        callstack.top = true;
-        yieldstack.top = true;
-        awaitstack.top = false;
-        atstack.top = false;
+        titleElement.innerText = this.is(Keyword) ? "Keyword" : this.constructor.name;
+        valueElement.innerText = this.is(StringLiteral, TextLiteral) ? empty : this.value;
+        notesElement.innerHTML = Array.from(this.notes).map(note => `<note>${note}</note>`).join(space);
+        placeElement.innerText = `[${(this.location >> 8n) + 1n}:${(this.location % 256n) + 1n}]`;
 
-        for (const operand of this) operand.validate(validator);
+        upperElement.append(tokenElement); /// <token>
+        tokenElement.append(titleElement); ///   <title> Type <value/> <notes/> <place/> </title>
+        titleElement.append(valueElement); ///   <child?> <token/> <token/> <token/> ... </child>
+        titleElement.append(notesElement); /// </token>
+        titleElement.append(placeElement);
 
-        callstack.pop;
-        awaitstack.pop;
+        if (this.length === 0) return; // only include a `child` element when required...
 
-        if (atstack.top.is?.(At)) throw new LarkError("unexpected Attribute", atstack.pop.location);
+        tokenElement.append(childElement);
 
-        if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+        for (const operand of this) operand.render(childElement);
     }
 }
 
@@ -342,7 +342,7 @@ export class Opener extends Delimiter {
 
         const join = operands => operands.map(operand => operand.js(writer, true)).join(comma + space);
 
-        if (this.infixed) return this[0].js(writer) + opener + join(this[1]) + closer;
+        if (this.led) return this[0].js(writer) + opener + join(this[1]) + closer;
         else return opener + join(this[0]) + closer;
     }
 }
@@ -555,7 +555,7 @@ export class Declaration extends Keyword {
 
                 Declaration.validate(validator, assignee, results);
 
-            } else if (assignee.is(Spread) && assignee.prefixed && assignee === assignees.at(-1)) {
+            } else if (assignee.is(Spread) && assignee.nud && assignee === assignees.at(-1)) {
 
                 results.push(Declaration.declare(validator, assignee.note("validated")[0]));
 
@@ -860,7 +860,7 @@ export class GeneralOperator extends Operator {
 
         /* Render a generic prefix or infix operation, as required. */
 
-        if (this.infixed) return `${this[0].js(writer)} ${this.spelling} ${this[1].js(writer)}`;
+        if (this.led) return `${this[0].js(writer)} ${this.spelling} ${this[1].js(writer)}`;
 
         const separator = lowers.includes(this.spelling[0]) ? space : empty;
 
@@ -914,7 +914,7 @@ export class AssignmentOperator extends InfixOperator {
             return;
         }
 
-        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].infixed)); // ignore
+        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // ignore
         else Declaration.validate(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
@@ -1767,7 +1767,7 @@ export class Delete extends Keyword {
 
         const expression = gatherExpression();
 
-        if (expression.is(Dot, OpenBracket) && expression.infixed) return this.push(expression);
+        if (expression.is(Dot, OpenBracket) && expression.led) return this.push(expression);
         else throw new LarkError("can only delete Properties, Keys and Indices", this.location);
     }
 
@@ -1807,7 +1807,34 @@ export class Do extends Keyword {
         else return this.push(gatherBlock(true));
     }
 
-    validate(validator) { this.validateFunctional(validator) }
+    validate(validator) {
+
+        /* Configure the `yieldstack`, `awaitstack` and `callstack` just like a function literal,
+        noting `yield`, as a function will need to be synthesized by the Writer Stage to compile
+        the block to an IIFE (which automatically becomes a generator if the block yields). This
+        allows blocks inside do-blocks to use `return`, `yield` and `yield from` statements that
+        are normally only valid in `function` literals.
+
+        Note: The actual `FunctionLiteral` class has its own, more extensive version of the logic
+        in this method, as a proper `function` can be named, take arguments, use attributes (like
+        `@0`) and be `async` qualified. */
+
+        const {yieldstack, awaitstack, callstack, atstack} = validator;
+
+        callstack.top = true;
+        yieldstack.top = true;
+        awaitstack.top = false;
+        atstack.top = false;
+
+        for (const operand of this) operand.validate(validator);
+
+        callstack.pop;
+        awaitstack.pop;
+
+        if (atstack.top.is?.(At)) throw new LarkError("unexpected Attribute", atstack.pop.location);
+
+        if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
+    }
 
     js(writer, context=undefined) {
 
@@ -1943,7 +1970,7 @@ export class For extends Header {
 
         if (expression.is(Spread)) {
 
-            if (this.for_in && expression.infixed) expression.note("validated", "for_loop");
+            if (this.for_in && expression.led) expression.note("validated", "for_loop");
             else throw new LarkError("unexpected Slurp", expression.location);
         }
 
@@ -2334,7 +2361,7 @@ export class OpenBrace extends Opener {
 
             } else for (const operand of this) {
 
-                if (operand.is(Spread) && operand.infixed) operand.note("validated");
+                if (operand.is(Spread) && operand.led) operand.note("validated");
             }
 
         } else if (this.map_literal) {                              // map literals...
@@ -2348,7 +2375,7 @@ export class OpenBrace extends Opener {
 
             } else for (const operand of this) {
 
-                if (operand.is(Label) || (operand.is(Spread) && operand.infixed)) operand.note("validated");
+                if (operand.is(Label) || (operand.is(Spread) && operand.led)) operand.note("validated");
                 else throw new LarkError("expected a Label or Splat", operand.location);
             }
 
@@ -2360,7 +2387,7 @@ export class OpenBrace extends Opener {
 
                 if (left.is(Variable)) left.note("lvalue");
                 else if (left.is(StringLiteral, Constant));
-                else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
+                else if (left.is(OpenBracket) && left.nud && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
                 else throw new LarkError("expected a Key or Slurp", left.location);
 
@@ -2372,7 +2399,7 @@ export class OpenBrace extends Opener {
 
                 operand.note("lvalue");
 
-            } else if (operand.is(Spread) && operand.prefixed) {
+            } else if (operand.is(Spread) && operand.nud) {
 
                 if (this.at(-1) === operand) operand.note("validated");
                 else throw new LarkError("a Slurp must always be the last operand", operand.location);
@@ -2385,14 +2412,14 @@ export class OpenBrace extends Opener {
 
             operand.note("validated");
 
-            if (operand.is(Proto) || (operand.is(Spread) && operand.infixed));
+            if (operand.is(Proto) || (operand.is(Spread) && operand.led));
             else if (operand.is(Label)) {
 
                 const left = operand[0];
 
                 if (left.is(Variable)) left.note("lvalue");
                 else if (left.is(StringLiteral, Constant));
-                else if (left.is(OpenBracket) && left.prefixed && left.length === 1);
+                else if (left.is(OpenBracket) && left.nud && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
                 else {
 
@@ -2467,7 +2494,7 @@ export class OpenBracket extends Caller {
         const badSlurp = location => { throw new LarkError("unexpected Slurp", location) }
         const badSplat = location => { throw new LarkError("unexpected Splat", location) }
 
-        const notation = this.infixed;
+        const notation = this.led;
         const operands = this[notation ? 1 : 0];
 
         const flags = Object.freeze(new Set(["configurable", "enumerable", "writable"]));
@@ -2495,7 +2522,7 @@ export class OpenBracket extends Caller {
 
             } else if (operand.is(Spread)) {
 
-                const slurpOperation = operand.note("validated").prefixed;
+                const slurpOperation = operand.note("validated").nud;
                 const splatOperation = not(slurpOperation);
                 const lvalue = this.lvalue || operand.lvalue;
                 const rvalue = not(lvalue);
@@ -2550,7 +2577,7 @@ export class OpenBracket extends Caller {
             const left = this[0];
             const recurring = left.property_descriptor || left.property_description;
 
-            if (left.is(Dot) || (left.is(OpenBracket) && left.infixed && not(recurring))) {
+            if (left.is(Dot) || (left.is(OpenBracket) && left.led && not(recurring))) {
 
                 if (this[1].map(label => label[0].value).includes("value")) {               // descriptor...
 
@@ -2592,11 +2619,11 @@ export class OpenParen extends Caller {
 
     validate(validator) {
 
-        if (this.prefixed) {
+        if (this.nud) {
 
             if (this[0].length !== 1) throw new LarkError("unexpected Tuple Literal", this.location);
 
-        } else for (const operand of this[1]) if (operand.is(Spread) && operand.infixed) operand.note("validated");
+        } else for (const operand of this[1]) if (operand.is(Spread) && operand.led) operand.note("validated");
 
         for (const operand of this) operand.validate(validator);
     }
@@ -2808,7 +2835,7 @@ export class Spread extends Operator {
             if (this.for_loop) return this[0].js(writer);
             else return this[0].safe ? `...${this[0].js(writer)}` : `...(${this[0].js(writer)})`;
 
-        } else if (this.prefixed) {
+        } else if (this.nud) {
 
             throw new LarkError("unexpected Slurp", this.location);
 
@@ -2922,16 +2949,11 @@ export class Variable extends Word {
         /* Update any variables that have not noted "lvalue" on their way through the parser, so
         the `scopestack` is correct. */
 
-        if (this.lvalue) {
+        const {scopestack} = validator;
 
-            for (const operand of this) operand.validate(validator);
+        if (not(this.lvalue)) loop: for (let index = scopestack.end; index >= 0; index--) {
 
-            return;
-        }
-
-        loop: for (let index = validator.scopestack.end; index >= 0; index--) {
-
-            const scope = validator.scopestack[index];
+            const scope = scopestack[index];
             const value = scope[this.value];
 
             if (Object.hasOwn(scope, this.value)) {
@@ -2989,11 +3011,13 @@ export class While extends PredicatedBlock {
 
         const {blockstack, loopstack} = validator;
 
-        blockstack.top = true; loopstack.top = true;
+        blockstack.top = true;
+        loopstack.top = true;
 
         for (const operand of this) operand.validate(validator);
 
-        loopstack.pop; blockstack.pop;
+        blockstack.pop;
+        loopstack.pop;
     }
 }
 

@@ -270,5 +270,5 @@ async function of x, y = foo(x.y[foo()]) { await x + y }
 for spagetti of spagetti { log(spagetti) }
 let spagetti = 0
 
-let tdz = 0
+let tdz = [0, ~, 3]
 do { console.log(tdz), let tdz = 1, console.log(tdz) }

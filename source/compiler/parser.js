@@ -126,7 +126,7 @@ export function * parse(source, {dev=false}={}) {
 
         current = token;
         token = advance();
-        result = current.prefix(api, context).note("prefixed");
+        result = current.note("nud").prefix(api, context);
 
         if (result.expression) while (RBP < token.LBP) {
 
@@ -134,7 +134,7 @@ export function * parse(source, {dev=false}={}) {
 
             current = token;
             token = advance();
-            result = current.infix(api, result).note("infixed");
+            result = current.note("led").infix(api, result);
         }
 
         return result;
