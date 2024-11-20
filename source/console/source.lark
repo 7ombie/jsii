@@ -1,3 +1,7 @@
+[x10, y10, ...[a10, b10, {c10}]] = foo
+[f10, g10, ...{h10, j10, [k10]}] = foo
+let d10 = 1
+
 function of x, y, {a, b, ...c} {
 
 }
@@ -224,18 +228,10 @@ em = {{y..., z...}}
 {[]}
 []
 {jimmy, james, jimbob} = foo
-[k, [l, [m, [n]]]] = bar
+[k, [l, [p, [q]]]] = bar
 {x: 1, y: 2}
 {{y: 2, __proto__: Array, foo: bar}}
-
-
-while true continue
-
-[]
-{}
-{[]}
 {{x: 1}}
-
 
 {foo: 1, bar: 2, metavars.x...}
 point2 = {x: 1, y: 2}

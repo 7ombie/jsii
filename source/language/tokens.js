@@ -561,19 +561,15 @@ export class Declaration extends Keyword {
 
             assignee.note("lvalue");
 
-            if (assignee.is(Variable, OpenBrace, CompoundExpression)) {
+            if (assignee.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
 
                 Declaration.validate(validator, assignee, results);
 
-            } else if (assignee.is(Spread) && assignee.nud && assignee === assignees.at(-1)) {
+            } else if (assignee.is(Assign, Spread)) {
 
-                results.push(Declaration.declare(validator, assignee.note("validated")[0]));
+                Declaration.validate(validator, assignee[0], results);
 
-            } else if (assignee.is(Label)) {
-
-                Declaration.validate(validator, assignee[1], results);
-
-            } else if (assignee.is(Assign)) Declaration.validate(validator, assignee[0], results);
+            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], results);
         }
 
         return results;
@@ -2412,7 +2408,11 @@ export class OpenBrace extends Opener {
 
         } else if (this.lvalue) for (const operand of this) {       // object breakdowns...
 
-            if (operand.is(Label)) {
+            if (operand.is(Variable, OpenBrace, OpenBracket)) {
+
+                operand.note("lvalue");
+
+            } else if (operand.is(Label)) {
 
                 const [left, right] = operand.note("validated");
 
@@ -2422,13 +2422,8 @@ export class OpenBrace extends Opener {
                 else if (left.is(NumberLiteral) && left.integer_notation);
                 else throw new LarkError("expected a Key or Slurp", left.location);
 
-                if (right.is(Variable));
-                else if (right.is(OpenBrace, OpenBracket)) right.note("lvalue");
+                if (right.is(Variable, OpenBrace, OpenBracket)) right.note("lvalue");
                 else throw new LarkError("expected a Name or nested Breakdown", right.location);
-
-            } else if (operand.is(Variable)) {
-
-                operand.note("lvalue");
 
             } else if (operand.is(Spread) && operand.nud) {
 
@@ -2855,7 +2850,7 @@ export class Spread extends Operator {
 
     LBP = 2;
 
-    prefix({gatherVariable}) { return this.push(gatherVariable()) }
+    prefix({gather}) { return this.push(gather().note("lvalue")) }
 
     infix(_, left) { return this.push(left) }
 
