@@ -501,13 +501,13 @@ export class Declaration extends Keyword {
     freezing a *primitive object*, freezes the object (though the resulting value is still equal
     to its primitive equivalent, according to Lark equality). */
 
-    static declare(validator, assignee) {
+    static declare(validator, lvalue) {
 
-        /* Take a reference to the Validator Stage API and an assignee belonging to a declaration
-        or parameter. Note "lvalue" for the assignee, then figure out its place within the block,
+        /* Take a reference to the Validator Stage API and an lvalue belonging to a declaration
+        or parameter. Note "lvalue" for the lvalue, then figure out its place within the block,
         updating the `scopestack` as required.
 
-        If the name of the assignee's not present in the current namespace, it's declared there
+        If the name of the lvalue's not present in the current namespace, it's declared there
         with its value set to "<declared>".
 
         If the name exists in the current namespace, and has the value "<declared>" or the name
@@ -530,43 +530,43 @@ export class Declaration extends Keyword {
         names that use registers get copied to all of their references (updating their `value`
         properties to the name of the register). */
 
-        const [value, scope] = [assignee.value, validator.scopestack.top];
+        const [value, scope] = [lvalue.value, validator.scopestack.top];
 
         if (scope[value] === "<shadowed>") { // the same name is referenced through this block
 
             scope[value] = Variable.register();
-            assignee.value = scope[value];
+            lvalue.value = scope[value];
 
         } else if (scope[value] !== undefined) { // the name is declared or registered here
 
-            throw new LarkError(`duplicate declaration (${assignee.value})`, assignee.location);
+            throw new LarkError(`duplicate declaration (${lvalue.value})`, lvalue.location);
 
         } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
 
-        return assignee;
+        return lvalue;
     }
 
-    static validateAssignees(validator, assignees, results=[]) {
+    static validateAssignees(validator, lvalues, results=[]) {
 
-        /* Take a reference to the Validator Stage API object, an assignees token and an optional
-        array of `results`. Recursively walk the `assignees` and register any declared names with
+        /* Take a reference to the Validator Stage API object, an lvalues token and an optional
+        array of `results`. Recursively walk the `lvalues` and register any declared names with
         the (static) `Declaration.declare` helper, gathering the declared names (each an instance
         of `Variable`) into the `results` array, which is returned.
 
-        Note: The caller is responsible for noting "lvalue" on the initial `assignees` argument. */
+        Note: The caller is responsible for noting "lvalue" on the initial `lvalues` argument. */
 
-        if (assignees.is(Variable)) results.push(Declaration.declare(validator, assignees));
-        else for (const assignee of assignees) {
+        if (lvalues.is(Variable)) results.push(Declaration.declare(validator, lvalues));
+        else for (const lvalue of lvalues) {
 
-            if (assignee.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
+            if (lvalue.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
 
-                Declaration.validateAssignees(validator, assignee.note("lvalue"), results);
+                Declaration.validateAssignees(validator, lvalue.note("lvalue"), results);
 
-            } else if (assignee.is(Assign, Spread)) {
+            } else if (lvalue.is(Assign, Spread)) {
 
-                Declaration.validateAssignees(validator, assignee[0].note("lvalue"), results);
+                Declaration.validateAssignees(validator, lvalue[0].note("lvalue"), results);
 
-            } else if (assignee.is(Label)) Declaration.validateAssignees(validator, assignee[1].note("lvalue"), results);
+            } else if (lvalue.is(Label)) Declaration.validateAssignees(validator, lvalue[1].note("lvalue"), results);
         }
 
         return results;
@@ -574,7 +574,7 @@ export class Declaration extends Keyword {
 
     prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}) {
 
-        /* Gather a `let` or `var` declaration, which always has an assignees before the assign
+        /* Gather a `let` or `var` declaration, which always has an lvalues before the assign
         operator, and always has an expression after it. */
 
         this.push(gatherAssignees());
@@ -590,32 +590,32 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Validate the operands, then call `Declaration.validateAssignees` on the assignees.
+        /* Validate the operands, then call `Declaration.validateAssignees` on the lvalues.
 
         Note: As with `For`, we must validate the operands before `Declaration.validateAssignees`
         is invoked to ensure TDZ elimination works correctly with edgecases like `let x = x`. */
 
-        iife(this[0], function walk(assignees) {
+        iife(this[0], function walk(lvalues) {
 
             /* Recursively walk and note "validated" and "lvalue" on any slurps anywhere within the
             parameters. Slurps cannot be validated by `gatherParameters` (which is not aware of the
             context).
 
-            We also need to validate the operands *before* declaring the assignees (like `For`), so
+            We also need to validate the operands *before* declaring the lvalues (like `For`), so
             TDZ elimination happens in the right order.
 
             We also note "lvalue" here early, as the (now early) breakdown validation would choke
             on slurps otherwise. */
 
-            if (assignees.is(Variable)) return;
+            if (lvalues.is(Variable)) return;
 
-            for (const assignee of assignees) {
+            for (const lvalue of lvalues) {
 
-                if (assignee.is(Spread) && assignee.nud && assignee === assignees.at(-1)) {
+                if (lvalue.is(Spread) && lvalue.nud && lvalue === lvalues.at(-1)) {
 
-                    assignee.note("validated", "lvalue");
+                    lvalue.note("validated", "lvalue");
 
-                } else if (assignee.is(OpenBrace, OpenBracket, CompoundExpression)) walk(assignee);
+                } else if (lvalue.is(OpenBrace, OpenBracket, CompoundExpression)) walk(lvalue);
             }
         });
 
@@ -627,7 +627,7 @@ export class Declaration extends Keyword {
     js(writer) {
 
         /* Render a Lark `let` or `var` declaration, freezing anything declared with `let`. Either
-        declarator may include a `then` clause (`let <assignees> = <value> then <block>`). In that
+        declarator may include a `then` clause (`let <lvalues> = <value> then <block>`). In that
         case, this method wraps the declaration and the block that follows it in a block statement
         that ensures the declared names are cleared up as soon as flow exits the block.
 
@@ -939,15 +939,15 @@ export class AssignmentOperator extends InfixOperator {
     validate(validator) {
 
         /* If this instance is a plain assignment operation (using `=`, so not including inplace
-        assignment operations), then iterate over the assignees, and make sure that every nested
-        breakdown notes "lvalue", and that slurps note "validated", if they're the last assignee
+        assignment operations), then iterate over the lvalues, and make sure that every nested
+        breakdown notes "lvalue", and that slurps note "validated", if they're the last lvalue
         within their respective breakdown, complaining if they are not.
 
-        Plain assignments pass their assignees to `Declaration.validateAssignees`, unless they're
+        Plain assignments pass their lvalues to `Declaration.validateAssignees`, unless they're
         qualified (using a breadcrumb or bracket notation) or the assignment is a parameter (as
         `Parameter` already declares and validates it).
 
-        The same logic is applied to the assignees of `let` and `var` declarations. */
+        The same logic is applied to the lvalues of `let` and `var` declarations. */
 
         if (not(this.is(Assign))) {
 
@@ -1702,13 +1702,13 @@ export class Break extends BranchStatement {
 export class CloseBrace extends Closer {
 
     /* This class implements the `}` delimiter, which is used for closing blocks, as well as object
-    expressions and destructured assignees. */
+    expressions and destructured lvalues. */
 }
 
 export class CloseBracket extends Closer {
 
     /* This class implements the `]` delimiter, which is used for closing array expressions, as well
-    as destructured assignees. */
+    as destructured lvalues. */
 }
 
 export class CloseInterpolation extends Closer {
@@ -1951,7 +1951,7 @@ export class Else extends PredicatedBlock {
 
 export class SkipAssignee extends PrefixOperator {
 
-    /* This class is used to represent an empty slot in an array literal or empty assignee in
+    /* This class is used to represent an empty slot in an array literal or empty lvalue in
     a sequence. Lark uses a tilde instead of an empty space: `[x, ~, ~, y]` */
 
     prefix() { return this }
@@ -2028,7 +2028,7 @@ export class For extends Header {
     validate(validator) {
 
         /* Add another level to the block, loop and scope stacks, before validating the iterable,
-        *then* passing the assignees to `Declaration.validateAssignees`, and *then* validating the
+        *then* passing the lvalues to `Declaration.validateAssignees`, and *then* validating the
         block, before restoring all of the stacks to their prior state.
 
         Note: The sequence iterable-declaration-block is important for TDZ to work correctly with
@@ -2056,19 +2056,19 @@ export class For extends Header {
         unless the iterable is a spread operation, in which case, leave it to `Spread` to render
         the iterable, which knows it's inside a for-loop. */
 
-        const [assignees, iterable, statements] = this;
+        const [lvalues, iterable, statements] = this;
         const block = writer.writeBlock(statements);
 
-        if (iterable.is(Spread)) return `for (const ${assignees.js(writer)} of ƥentries(${iterable.js(writer)})) ${block}`;
+        if (iterable.is(Spread)) return `for (const ${lvalues.js(writer)} of ƥentries(${iterable.js(writer)})) ${block}`;
 
-        if (this.for_in) return `for (const ${assignees.js(writer)} of ƥvalues(${iterable.js(writer)})) ${block}`;
+        if (this.for_in) return `for (const ${lvalues.js(writer)} of ƥvalues(${iterable.js(writer)})) ${block}`;
 
-        if (this.for_of) return `for (const ${assignees.js(writer)} of ƥkeys(${iterable.js(writer)}))) ${block}`;
+        if (this.for_of) return `for (const ${lvalues.js(writer)} of ƥkeys(${iterable.js(writer)}))) ${block}`;
 
         const keyword = this.for_from ? "for await" : "for";
         const operator = this.for_on ? "in" : "of";
 
-        return `${keyword} (const ${assignees.js(writer)} ${operator} ${iterable.js(writer)}) ${block}`;
+        return `${keyword} (const ${lvalues.js(writer)} ${operator} ${iterable.js(writer)}) ${block}`;
     }
 }
 

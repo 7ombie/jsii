@@ -205,9 +205,9 @@ export function * parse(source, {dev=false}={}) {
 
     function gatherAssignees() { // api function
 
-        /* This function is used for gathering a single group of one or more assignees, which
+        /* This function is used for gathering a single group of one or more lvalues, which
         need to be parsed carefully, as assignments, declarations and the various for-loops
-        use grammars with an operator after the assignees. */
+        use grammars with an operator after the lvalues. */
 
         token.expression = false;
 
