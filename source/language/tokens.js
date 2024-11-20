@@ -546,7 +546,7 @@ export class Declaration extends Keyword {
         return lvalue;
     }
 
-    static validateAssignees(validator, lvalues, results=[]) {
+    static walk(validator, lvalues, results=[]) {
 
         /* Take a reference to the Validator Stage API object, an lvalues token and an optional
         array of `results`. Recursively walk the `lvalues` and register any declared names with
@@ -560,13 +560,13 @@ export class Declaration extends Keyword {
 
             if (lvalue.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
 
-                Declaration.validateAssignees(validator, lvalue.note("lvalue"), results);
+                Declaration.walk(validator, lvalue.note("lvalue"), results);
 
             } else if (lvalue.is(Assign, Spread)) {
 
-                Declaration.validateAssignees(validator, lvalue[0].note("lvalue"), results);
+                Declaration.walk(validator, lvalue[0].note("lvalue"), results);
 
-            } else if (lvalue.is(Label)) Declaration.validateAssignees(validator, lvalue[1].note("lvalue"), results);
+            } else if (lvalue.is(Label)) Declaration.walk(validator, lvalue[1].note("lvalue"), results);
         }
 
         return results;
@@ -590,10 +590,10 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Validate the operands, then call `Declaration.validateAssignees` on the lvalues.
+        /* Validate the operands, then call `Declaration.walk` on the lvalues.
 
-        Note: As with `For`, we must validate the operands before `Declaration.validateAssignees`
-        is invoked to ensure TDZ elimination works correctly with edgecases like `let x = x`. */
+        Note: As with `For`, we must validate the operands before `Declaration.walk` is invoked to
+        ensure TDZ elimination works correctly with edgecases like `let x = x`. */
 
         iife(this[0], function walk(lvalues) {
 
@@ -621,7 +621,7 @@ export class Declaration extends Keyword {
 
         for (const operand of this) operand.validate(validator, this);
 
-        this.push(...Declaration.validateAssignees(validator, this[0].note("lvalue")));
+        this.push(...Declaration.walk(validator, this[0].note("lvalue")));
     }
 
     js(writer) {
@@ -943,9 +943,9 @@ export class AssignmentOperator extends InfixOperator {
         breakdown notes "lvalue", and that slurps note "validated", if they're the last lvalue
         within their respective breakdown, complaining if they are not.
 
-        Plain assignments pass their lvalues to `Declaration.validateAssignees`, unless they're
-        qualified (using a breadcrumb or bracket notation) or the assignment is a parameter (as
-        `Parameter` already declares and validates it).
+        Plain assignments pass their lvalues to `Declaration.walk`, unless they're qualified
+        (using a breadcrumb or bracket notation) or the assignment is a parameter (as the
+        `Parameter` class already declares and validates it).
 
         The same logic is applied to the lvalues of `let` and `var` declarations. */
 
@@ -957,7 +957,7 @@ export class AssignmentOperator extends InfixOperator {
         }
 
         if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // qualified lvalue
-        else if (not(validator.paramstack.top)) Declaration.validateAssignees(validator, this[0].note("lvalue"));
+        else if (not(validator.paramstack.top)) Declaration.walk(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
@@ -2028,8 +2028,8 @@ export class For extends Header {
     validate(validator) {
 
         /* Add another level to the block, loop and scope stacks, before validating the iterable,
-        *then* passing the lvalues to `Declaration.validateAssignees`, and *then* validating the
-        block, before restoring all of the stacks to their prior state.
+        *then* passing the lvalues to `Declaration.walk`, and *then* validating the block, before
+        restoring all of the stacks to their prior state.
 
         Note: The sequence iterable-declaration-block is important for TDZ to work correctly with
         for-loops. In JavaScript, `for (const x of x) { etc }` is illegal, but in Lark it's valid,
@@ -2043,7 +2043,7 @@ export class For extends Header {
         blockstack.top = true;
         scopestack.top = Object.create(null);
         this[1].validate(validator);
-        Declaration.validateAssignees(validator, this[0].note("lvalue"));
+        Declaration.walk(validator, this[0].note("lvalue"));
         this[2].validate(validator);
         scopestack.pop;
         blockstack.pop;
@@ -2701,7 +2701,7 @@ export class Parameters extends Token {
 
         paramstack.top = true;
         scopestack.top = Object.create(null);
-        Declaration.validateAssignees(validator, this.note("lvalue"));
+        Declaration.walk(validator, this.note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
