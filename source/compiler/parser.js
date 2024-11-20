@@ -3,6 +3,7 @@ import { LarkError } from "../compiler/error.js"
 import { lex } from "../compiler/lexer.js"
 
 import {
+    Assign,
     Block,
     CloseBrace,
     CloseBracket,
@@ -19,6 +20,7 @@ import {
     Operator,
     Parameters,
     Reserved,
+    Spread,
     Terminator,
     Variable,
     Word
@@ -220,9 +222,10 @@ export function * parse(source, {dev=false}={}) {
         /* This function gathers the parameters for a function into a `Parameters` instance, which
         is returned.
 
-        Note: This function ensures that parameters are always valid expressions, but does not check
-        for `yield` or `await` expressions in default arguments (as that's handled by the Validator
-        Stage).
+        Note: This function ensures that parameters are always variables, plain assignments, slurps
+        or compound literals using open parens or braces, but does not check for `yield` or `await`
+        expressions in default arguments (as that's handled by the Validator Stage), or that slurps
+        are correctly positioned, or that compound expressions are internally valid.
 
         Note: Lark parameters do not use parens (so are not parsed as compound expressions).
 
@@ -239,7 +242,10 @@ export function * parse(source, {dev=false}={}) {
 
         while (true) {
 
-            result.push(gatherExpression());
+            const expression = gatherExpression();
+
+            if (expression.is(Variable, Assign, OpenBrace, OpenBracket, Spread)) result.push(expression);
+            else throw new LarkError("invalid Parameter", expression.location);
 
             if (on(Comma)) advance();
             else if (on(OpenBrace, Keyword)) break;

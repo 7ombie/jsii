@@ -40,9 +40,7 @@ import {
     underscore,
 } from "../compiler/ascii.js"
 
-/* -------------------------------------------------------------------------------------------- */
-/* -------------------------------{ THE ABSTRACT TOKEN CLASSES }------------------------------- */
-/* -------------------------------------------------------------------------------------------- */
+// MARK: THE TOKEN SUPERCLASS
 
 export class Token extends Array {
 
@@ -107,7 +105,6 @@ export class Token extends Array {
     notes = new Set();
 
     static notables = Object.freeze(new Set([
-        "array_comprehension", "object_comprehension", "set_comprehension", "map_comprehension",
         "tagged_template", "proto_label", "yield_from", "proto_from", "at_name", "at_parameter",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
@@ -296,6 +293,8 @@ export class Token extends Array {
         for (const operand of this) operand.render(childElement);
     }
 }
+
+// MARK: THE ABSTRACT BASE CLASSES
 
 export class Terminal extends Token {
 
@@ -547,29 +546,27 @@ export class Declaration extends Keyword {
         return assignee;
     }
 
-    static validate(validator, assignees, results=[]) {
+    static validateAssignees(validator, assignees, results=[]) {
 
-        /* Take a reference to the Validator Stage API object and an assignees token. Note "lvalue"
-        on the `assignees` argument, then recursively walk any breakdowns, as well as the lefthand
-        operand of labels, to note "validate" and "lvalue" on slurps, complaining if any are not
-        the last operand in their respective breakdown (`[[x, ...y], ...z] = arrays`). When an
-        assignee is an instance of `Variable`, it's passed to `Declaration.declare` , which
-        declares the name and eliminates any associated TDZ. */
+        /* Take a reference to the Validator Stage API object, an assignees token and an optional
+        array of `results`. Recursively walk the `assignees` and register any declared names with
+        the (static) `Declaration.declare` helper, gathering the declared names (each an instance
+        of `Variable`) into the `results` array, which is returned.
+
+        Note: The caller is responsible for noting "lvalue" on the initial `assignees` argument. */
 
         if (assignees.is(Variable)) results.push(Declaration.declare(validator, assignees));
         else for (const assignee of assignees) {
 
-            assignee.note("lvalue");
-
             if (assignee.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
 
-                Declaration.validate(validator, assignee, results);
+                Declaration.validateAssignees(validator, assignee.note("lvalue"), results);
 
             } else if (assignee.is(Assign, Spread)) {
 
-                Declaration.validate(validator, assignee[0], results);
+                Declaration.validateAssignees(validator, assignee[0].note("lvalue"), results);
 
-            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], results);
+            } else if (assignee.is(Label)) Declaration.validateAssignees(validator, assignee[1].note("lvalue"), results);
         }
 
         return results;
@@ -593,12 +590,38 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Intercept the Validation Stage, and apply the (static) `Declaration.validate` method to
-        the declaration's assignees, before continuing the validation walk. */
+        /* Validate the operands, then call `Declaration.validateAssignees` on the assignees.
 
-        this.push(...Declaration.validate(validator, this[0].note("lvalue")));
+        Note: As with `For`, we must validate the operands before `Declaration.validateAssignees`
+        is invoked to ensure TDZ elimination works correctly with edgecases like `let x = x`. */
 
-        for (const operand of this) operand.validate(validator);
+        iife(this[0], function walk(assignees) {
+
+            /* Recursively walk and note "validated" and "lvalue" on any slurps anywhere within the
+            parameters. Slurps cannot be validated by `gatherParameters` (which is not aware of the
+            context).
+
+            We also need to validate the operands *before* declaring the assignees (like `For`), so
+            TDZ elimination happens in the right order.
+
+            We also note "lvalue" here early, as the (now early) breakdown validation would choke
+            on slurps otherwise. */
+
+            if (assignees.is(Variable)) return;
+
+            for (const assignee of assignees) {
+
+                if (assignee.is(Spread) && assignee.nud && assignee === assignees.at(-1)) {
+
+                    assignee.note("validated", "lvalue");
+
+                } else if (assignee.is(OpenBrace, OpenBracket, CompoundExpression)) walk(assignee);
+            }
+        });
+
+        for (const operand of this) operand.validate(validator, this);
+
+        this.push(...Declaration.validateAssignees(validator, this[0].note("lvalue")));
     }
 
     js(writer) {
@@ -920,11 +943,11 @@ export class AssignmentOperator extends InfixOperator {
         breakdown notes "lvalue", and that slurps note "validated", if they're the last assignee
         within their respective breakdown, complaining if they are not.
 
-        When the instance is a plain assignment, its lvalue is passed to `Declaration.validate`,
-        unless the lvalue is qualified (uses a breadcrumb or bracket notation) or the assignment
-        is a parameter (as `Parameter` already declares and validates it).
+        Plain assignments pass their assignees to `Declaration.validateAssignees`, unless they're
+        qualified (using a breadcrumb or bracket notation) or the assignment is a parameter (as
+        `Parameter` already declares and validates it).
 
-        The same logic is applied to the lvalues of `let` and `var` declarations. */
+        The same logic is applied to the assignees of `let` and `var` declarations. */
 
         if (not(this.is(Assign))) {
 
@@ -934,7 +957,7 @@ export class AssignmentOperator extends InfixOperator {
         }
 
         if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // qualified lvalue
-        else if (not(validator.paramstack.top)) Declaration.validate(validator, this[0].note("lvalue"));
+        else if (not(validator.paramstack.top)) Declaration.validateAssignees(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
@@ -986,9 +1009,7 @@ export class GeneralDotOperator extends DotOperator {
     prefix({gatherExpression}) { return this.push(gatherExpression(this.RBP)) }
 }
 
-/* -------------------------------------------------------------------------------------------- */
-/* -------------------------------{ THE CONCRETE TOKEN CLASSES }------------------------------- */
-/* -------------------------------------------------------------------------------------------- */
+// MARK: THE CONCRETE TOKEN CLASSES
 
 export class NumberLiteral extends Terminal {
 
@@ -2007,20 +2028,14 @@ export class For extends Header {
     validate(validator) {
 
         /* Add another level to the block, loop and scope stacks, before validating the iterable,
-        passing the assignees to `Declaration.validate`, validating the block, then restoring all
-        of the stacks to their prior state.
+        *then* passing the assignees to `Declaration.validateAssignees`, and *then* validating the
+        block, before restoring all of the stacks to their prior state.
 
         Note: The sequence iterable-declaration-block is important for TDZ to work correctly with
-        for-loops. In JavaScript, `for (const x of x) { etc }` is illegal as it references `x` on
-        the righthand side, but `x` was clobbered by the (hoisted, but uninitialized) declaration
-        `for (const x ...` that preceds it (lexically).
-
-        Note: In Lark, `for n in n { etc }` is not just valid, it's simple and intuitive: All of
-        Lark's declarators (`let` `var` and `for`) introduce bindings at the exact moment they
-        execute, and the binding does not exist prior to that point, so references resolve to
-        outer scopes. For example, this logs `0` then `1`:
-
-            let x = 0 then do { console.log(x), let x = 1, console.log(x) }                     */
+        for-loops. In JavaScript, `for (const x of x) { etc }` is illegal, but in Lark it's valid,
+        simple and intuitive: All of Lark's declarators (`let` `var` and `for`) introduce bindings
+        at the exact moment they execute, and the binding does not exist prior to that point, so
+        references resolve to names in outer scopes. */
 
         const {blockstack, loopstack, scopestack} = validator;
 
@@ -2028,7 +2043,7 @@ export class For extends Header {
         blockstack.top = true;
         scopestack.top = Object.create(null);
         this[1].validate(validator);
-        Declaration.validate(validator, this[0]);
+        Declaration.validateAssignees(validator, this[0].note("lvalue"));
         this[2].validate(validator);
         scopestack.pop;
         blockstack.pop;
@@ -2380,27 +2395,12 @@ export class OpenBrace extends Opener {
         if (this.set_literal) {                                     // set literals...
 
             if (this.lvalue) throw new LarkError("a Set cannot be an lvalue", this.location);
-            else if (this.set_comprehension) {
-
-                for (const operand of this) operand.validate(validator);
-
-                return;
-
-            } else for (const operand of this) {
-
-                if (operand.is(Spread) && operand.led) operand.note("validated");
-            }
+            else for (const operand of this) if (operand.is(Spread) && operand.led) operand.note("validated");
 
         } else if (this.map_literal) {                              // map literals...
 
             if (this.lvalue) throw new LarkError("a Map cannot be an lvalue", this.location);
-            else if (this.map_comprehension) {
-
-                for (const operand of this) operand.validate(validator);
-
-                return;
-
-            } else for (const operand of this) {
+            else for (const operand of this) {
 
                 if (operand.is(Label) || (operand.is(Spread) && operand.led)) operand.note("validated");
                 else throw new LarkError("expected a Label or Splat", operand.location);
@@ -2585,10 +2585,9 @@ export class OpenBracket extends Caller {
 
     js(writer) {
 
-        /* Render an array comprehension, property descriptor or property description, passing any
-        array literals, breakdowns and bracket notation up to the generic renderer that `Opener`
-        provides (`super.js`) for compound expressions, and handling property descriptors and
-        property descriptions here.
+        /* Render a property descriptor or property description, passing array literals, breakdowns
+        and bracket notation up to the generic renderer that `Opener` provides (`super.js`) for
+        compound expressions.
 
         Note: It's not possible to render property descriptors here without the `AssignmentOperator`
         class assisting, as the assigned value is that node's rvalue (this instance is its lvalue),
@@ -2683,11 +2682,26 @@ export class Parameters extends Token {
         default arguments know to complain, validate all of the operands (as declarations), then
         restore the previous state of the stack. */
 
+        iife(this, function walk(parameters) {
+
+            /* Recursively walk and note "validated" and "lvalue" for any spreads within the
+            parameters, as this is cannot be handled by `gatherParameters`. */
+
+            for (const parameter of parameters) {
+
+                if (parameter.is(Spread) && parameter.nud && parameter === parameters.at(-1)) {
+
+                    parameter.note("validated", "lvalue");
+
+                } else if (parameter.is(OpenBrace, OpenBracket, CompoundExpression)) walk(parameter);
+            }
+        });
+
         const {paramstack, scopestack} = validator;
 
         paramstack.top = true;
         scopestack.top = Object.create(null);
-        Declaration.validate(validator, this);
+        Declaration.validateAssignees(validator, this.note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
