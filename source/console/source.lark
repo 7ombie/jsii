@@ -1,3 +1,7 @@
+function of x, y, {a, b, ...c} {
+
+}
+
 let [x0, x1, ...x2] = foo
 let [x3, x4, ...x5] = bar then { etc }
 let [x6, x7, ...x8] = bar then var test = 0 then { etc }

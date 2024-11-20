@@ -7,13 +7,11 @@ import { put } from "../compiler/helpers.js"
 const result = await fetch("source.lark");
 const source = await result.text();
 const underline = Array(128).fill("-").join("");
-const child = document.createElement("child");
 
-document.body.append(child);
 put(`SOURCE...\n${underline}\n${source}\n${underline}`);
 
 // for (const token of lex(source)) token.render(child);
-for (const statement of validate(source, {dev: true})) statement.render(child);
+// for (const statement of validate(source, {dev: true})) statement.render();
 
 // for (const token of lex(source)) put("Token:", token);
 // for (const statement of parse(source, {dev: true})) put("Parse Tree:", statement);

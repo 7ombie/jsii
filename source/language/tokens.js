@@ -248,7 +248,7 @@ export class Token extends Array {
         return false;
     }
 
-    render(upperElement) {
+    render(upperElement=undefined) {
 
         /* Recursively render the token to the given HTML element (`upperElement`). Each token gets
         rendered as a `token` element that contains a `title` element with all the token's details,
@@ -256,11 +256,20 @@ export class Token extends Array {
         is never the case when rendering the token stream from the lexer). When the token has a
         `child` element, the element is passed to each child as its `upperElement` argument.
 
+        If `upperElement` is `undefined`, this function creates a new `child` element, and appends
+        it to `document.body`. A `child` root element is required for the CSS to work correctly.
+
         This makes it much easier to read through the token stream or parse tree (especially as the
         `Proxy` wrapper nests everything horribly in DevTools).
 
         Note: The small amount of CSS required is in `index.html` (inline). As the console evolves,
         it will get broken out into separate files. */
+
+        if (upperElement === undefined) {
+
+            upperElement = document.createElement("child");
+            document.body.append(upperElement);
+        }
 
         const tokenElement = document.createElement("token"); // a container for everything below
         const titleElement = document.createElement("title"); // title bar [type value notes place]
@@ -560,7 +569,11 @@ export class Declaration extends Keyword {
 
                 results.push(Declaration.declare(validator, assignee.note("validated")[0]));
 
-            } else if (assignee.is(Label)) Declaration.validate(validator, assignee[1], results);
+            } else if (assignee.is(Label)) {
+
+                Declaration.validate(validator, assignee[1], results);
+
+            } else if (assignee.is(Assign)) Declaration.validate(validator, assignee[0], results);
         }
 
         return results;
@@ -911,17 +924,21 @@ export class AssignmentOperator extends InfixOperator {
         breakdown notes "lvalue", and that slurps note "validated", if they're the last assignee
         within their respective breakdown, complaining if they are not.
 
+        When the instance is a plain assignment, its lvalue is passed to `Declaration.validate`,
+        unless the lvalue is qualified (uses a breadcrumb or bracket notation) or the assignment
+        is a parameter (as `Parameter` already declares and validates it).
+
         The same logic is applied to the lvalues of `let` and `var` declarations. */
 
-        if (this.spelling !== equals) {
+        if (not(this.is(Assign))) {
 
             for (const operand of this) operand.validate(validator);
 
             return;
         }
 
-        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // ignore
-        else Declaration.validate(validator, this[0].note("lvalue"));
+        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // qualified lvalue
+        else if (not(validator.paramstack.top)) Declaration.validate(validator, this[0].note("lvalue"));
 
         for (const operand of this) operand.validate(validator);
 
@@ -2668,8 +2685,8 @@ export class Parameters extends Token {
     validate(validator) {
 
         /* Update the `paramstack`, so any `await` and `yield` expressions that've been used as
-        default arguments know to complain, fix any operands, then restore the previous state of
-        the stack. */
+        default arguments know to complain, validate all of the operands (as declarations), then
+        restore the previous state of the stack. */
 
         const {paramstack, scopestack} = validator;
 
