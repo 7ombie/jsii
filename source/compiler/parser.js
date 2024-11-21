@@ -65,22 +65,41 @@ export function * parse(source, {dev=false}={}) {
 
     function advance(returnNext=true) { // api function
 
-        /* Advance the token stream by one token, updating the nonlocal `token`, then return the
-        new token if the `returnNext` argument is truthy (the default). Otherwise, return the
-        token that was current when the invocation was made. */
+        /* Advance the token stream by one token, updating the nonlocal `token` and `nextToken`
+        variables, then return the new `token` if the `returnNext` argument is truthy (default).
+        Otherwise, return the `token` that was current when the invocation was made. */
 
-        [previous, token] = [token, tokens.next().value];
+        let priorToken = token;
+
+        [token, nextToken] = [nextToken, tokens.next().value];
 
         ignoreInsignificantNewlines();
 
-        return returnNext ? token : previous;
+        return returnNext ? token : priorToken;
+    }
+
+    function ignoreInsignificantNewlines() { // internal
+
+        /* Advance the parser state until `token` and `nextToken` are significant. When newlines
+        are significant, all tokens are significant, so this is a noop. Otherwise, it skips over
+        any newlines, stopping on the first non-newline token. */
+
+        if (whitespace.top === true) return;
+
+        while (on(LineFeed)) advance();
+
+        while (at(LineFeed)) nextToken = tokens.next().value;
     }
 
     function on(...Classes) { // api function
 
         /* Optionally take one or more `Token` subclasses, if the current `token` is one of them,
-        return it. If none of the subclasses match, return `false`. If no arguments are given, the
-        function acts as a getter, just returning the current `token`. */
+        return that (truthy) class. If none of the subclasses match, return `false`. If called
+        without arguments, the function acts as a getter, returning the current `token`.
+
+        Note: The ability to use this function (and `at`) as a getter is only provided as it can
+        be useful *while* implementing a grammar (for print-debugging). The final implementation
+        should never need to call `on` (or `at`) as a getter. */
 
         if (Classes.length === 0) return token;
 
@@ -89,13 +108,15 @@ export function * parse(source, {dev=false}={}) {
         return false;
     }
 
-    function ignoreInsignificantNewlines() { // internal
+    function at(...Classes) { // api function
 
-        /* Advance the parser state until the current token is significant. When newlines are
-        significant, all tokens are significant, so this is a noop. Otherwise, it skips over any
-        newlines, stopping on the first non-newline token. */
+        /* This compliments `on`, but refers to the `nextToken` (instead of `token`). */
 
-        if (whitespace.top === false) while (on(LineFeed)) advance();
+        if (Classes.length === 0) return nextToken;
+
+        for (const Class of Classes) if (token.is(Class)) return Class;
+
+        return false;
     }
 
     function gather(RBP=0, context=undefined) { // api function
@@ -353,6 +374,7 @@ export function * parse(source, {dev=false}={}) {
 
     const api = {
         advance,
+        at,
         dev,
         gather,
         gatherVariable,
@@ -372,12 +394,14 @@ export function * parse(source, {dev=false}={}) {
         top of the stack changes (`ignoreInsignificantNewlines` only ignores newlines if they are
         actually insignificant at the momemnt it's invoked). */
 
+        get top() { return super.top }
         set top(value) {
 
             super.top = value;
             ignoreInsignificantNewlines();
         }
 
+        get pop() { return super.pop }
         set pop(value) {
 
             super.pop = value;
@@ -391,7 +415,7 @@ export function * parse(source, {dev=false}={}) {
     const whitespace = new WhitespaceStack(true);
     const tokens = lex(source, {dev});
 
-    let token, previous;
+    let token, nextToken; advance(); // `LIST` will call `advance` again initializing both tokens
 
     yield * LIST(false);
 }
