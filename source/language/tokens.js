@@ -108,7 +108,7 @@ export class Token extends Array {
         "tagged_template", "proto_label", "yield_from", "proto_from", "at_name", "at_parameter",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
-        "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal",
+        "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal", "parameter",
         "ignored", "labelled", "validated", "terminated", "then_statement",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
@@ -550,26 +550,57 @@ export class Declaration extends Keyword {
 
         /* Take a reference to the Validator Stage API object, an lvalues token and an optional
         array of `results`. Recursively walk the `lvalues` and register any declared names with
-        the (static) `Declaration.declare` helper, gathering the declared names (each an instance
-        of `Variable`) into the `results` array, which is returned.
-
-        Note: The caller is responsible for noting "lvalue" on the initial `lvalues` argument. */
+        the `Declaration.declare` helper, gathering the declared names (each an instance of
+        Variable`) into the `results` array, which is returned. */
 
         if (lvalues.is(Variable)) results.push(Declaration.declare(validator, lvalues));
         else for (const lvalue of lvalues) {
 
-            if (lvalue.is(Variable, OpenBrace, OpenBracket, CompoundExpression)) {
+            if (lvalue.is(Variable, OpenBrace, OpenBracket, CompoundExpression, Parameters)) {
 
-                Declaration.walk(validator, lvalue.note("lvalue"), results);
+                Declaration.walk(validator, lvalue, results);
 
             } else if (lvalue.is(Assign, Spread)) {
 
-                Declaration.walk(validator, lvalue[0].note("lvalue"), results);
+                Declaration.walk(validator, lvalue[0], results);
 
-            } else if (lvalue.is(Label)) Declaration.walk(validator, lvalue[1].note("lvalue"), results);
+            } else if (lvalue.is(Label)) {
+
+                Declaration.walk(validator, lvalue[1], results);
+            }
         }
 
         return results;
+    }
+
+    static validate(lvalues) {
+
+        /* Recursively walk the lvalues, and ensure correctly positioned slurps and labels are
+        validated, and that everything notes "lvalue" (which needs to happen before we validate
+        the operands, else slurps and labels in breakdowns will not parse correctly).
+
+        Note: This is used by declarations, plain assignments and for-loops, while `Parameters`
+        implements its own, similar logic. */
+
+        lvalues.note("lvalue");
+
+        if (lvalues.is(Variable)) return;
+
+        for (const lvalue of lvalues) {
+
+            if (lvalue.is(OpenBrace, OpenBracket, CompoundExpression)) {
+
+                Declaration.validate(lvalue);
+
+            } else if (lvalue.is(Spread) && lvalue.nud && lvalue === lvalues.at(-1)) {
+
+                Declaration.validate(lvalue.note("validated")[0]);
+
+            } else if (lvalue.is(Label)) {
+
+                Declaration.validate(lvalue.note("validated")[1]);
+            }
+        }
     }
 
     prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}) {
@@ -579,7 +610,8 @@ export class Declaration extends Keyword {
 
         this.push(gatherAssignees());
 
-        if (on(Assign)) { advance() } else throw new LarkError("expected the Assigment Symbol", advance(false).location);
+        if (on(Assign)) advance();
+        else throw new LarkError("expected the Assigment Symbol", advance(false).location);
 
         this.push(gatherExpression());
 
@@ -590,38 +622,18 @@ export class Declaration extends Keyword {
 
     validate(validator) {
 
-        /* Validate the operands, then call `Declaration.walk` on the lvalues.
+        /* Validate the lvalue, then validate each operand, then call `Declaration.walk` on the
+        lvalue to walk it and declare any variables.
 
-        Note: As with `For`, we must validate the operands before `Declaration.walk` is invoked to
-        ensure TDZ elimination works correctly with edgecases like `let x = x`. */
+        Note: The operands must be validated before passing the lvalue to `Declaration.walk`, else
+        TDZ elimination will fail on edgecases like `let x = x` (this is analogous to `For`, which
+        has the same issue with stuff like `for n in n { etc }`). */
 
-        iife(this[0], function walk(lvalues) {
-
-            /* Recursively walk and note "validated" and "lvalue" on any slurps anywhere within the
-            parameters. Slurps cannot be validated by `gatherParameters` (which is not aware of the
-            context).
-
-            We also need to validate the operands *before* declaring the lvalues (like `For`), so
-            TDZ elimination happens in the right order.
-
-            We also note "lvalue" here early, as the (now early) breakdown validation would choke
-            on slurps otherwise. */
-
-            if (lvalues.is(Variable)) return;
-
-            for (const lvalue of lvalues) {
-
-                if (lvalue.is(Spread) && lvalue.nud && lvalue === lvalues.at(-1)) {
-
-                    lvalue.note("validated", "lvalue");
-
-                } else if (lvalue.is(OpenBrace, OpenBracket, CompoundExpression)) walk(lvalue);
-            }
-        });
+        Declaration.validate(this[0]);
 
         for (const operand of this) operand.validate(validator, this);
 
-        this.push(...Declaration.walk(validator, this[0].note("lvalue")));
+        this.push(...Declaration.walk(validator, this[0]));
     }
 
     js(writer) {
@@ -957,7 +969,11 @@ export class AssignmentOperator extends InfixOperator {
         }
 
         if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // qualified lvalue
-        else if (not(validator.paramstack.top)) Declaration.walk(validator, this[0].note("lvalue"));
+        else if (not(validator.paramstack.top)) { // ignoring default-argument assignments...
+
+            Declaration.validate(this[0]);
+            Declaration.walk(validator, this[0]);
+        }
 
         for (const operand of this) operand.validate(validator);
 
@@ -2043,7 +2059,8 @@ export class For extends Header {
         blockstack.top = true;
         scopestack.top = Object.create(null);
         this[1].validate(validator);
-        Declaration.walk(validator, this[0].note("lvalue"));
+        Declaration.validate(this[0]);
+        Declaration.walk(validator, this[0]);
         this[2].validate(validator);
         scopestack.pop;
         blockstack.pop;
@@ -2684,16 +2701,28 @@ export class Parameters extends Token {
 
         iife(this, function walk(parameters) {
 
-            /* Recursively walk and note "validated" and "lvalue" for any spreads within the
-            parameters, as this is cannot be handled by `gatherParameters`. */
+            /* Recursively walk the parameters, and ensure correctly positioned slurps and labels
+            are validated, and that everything notes "lvalue" (which needs to happen before we
+            validate the operands, else slurps and labels in breakdowns will not parse). */
+
+            parameters.note("lvalue", "parameter");
+
+            if (parameters.is(Variable)) return;
 
             for (const parameter of parameters) {
 
-                if (parameter.is(Spread) && parameter.nud && parameter === parameters.at(-1)) {
+                if (parameter.is(OpenBrace, OpenBracket, CompoundExpression)) {
 
-                    parameter.note("validated", "lvalue");
+                    walk(parameter);
 
-                } else if (parameter.is(OpenBrace, OpenBracket, CompoundExpression)) walk(parameter);
+                } else if (parameter.is(Spread) && parameter.nud && parameter === parameter.at(-1)) {
+
+                    walk(parameter.note("validated")[0]);
+
+                } else if (parameter.is(Assign)) {
+
+                    walk(parameter[0]);
+                }
             }
         });
 
@@ -2701,7 +2730,7 @@ export class Parameters extends Token {
 
         paramstack.top = true;
         scopestack.top = Object.create(null);
-        Declaration.walk(validator, this.note("lvalue"));
+        Declaration.walk(validator, this);
 
         for (const operand of this) operand.validate(validator);
 

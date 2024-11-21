@@ -1,32 +1,5 @@
-function of x, {y}, ...z {
-    console.log(x, y, z)
-    let x = x
-    let y = x
-    let z = y
-}
-
-function of x, y, {a, b, ...c} return 1
-
-let [x0, x1, ...x2] = foo
-let [x3, x4, ...x5] = bar then { etc }
-let [x6, x7, ...x8] = bar then var test = 0 then { etc }
-
-pud.david[enumerable: true] = 1
-jackie[ted][] = 1
-pud["david"][enumerable: true] = 1
-jackie["ted"][]
-
-console.log(x, y)
 [...x] = foo
-[foo, {x: y}] = foo
-console.log(x)
-foo.x[enumerable: true] = 1
-
-function return 1
-function f return 1
-function j of a, b, c return 1
 function of x = foo.bar return 1
-function of y = 1 return y
 
 do for number of Array(8).fill(0) yield number * 2
 Array.from(do for number in numbers yield 2 ** number)
