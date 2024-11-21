@@ -105,10 +105,10 @@ export class Token extends Array {
     notes = new Set();
 
     static notables = Object.freeze(new Set([
+        "tagged_template", "proto_label", "yield_from", "at_name", "at_parameter", "if_else",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal", "parameter",
-        "tagged_template", "proto_label", "yield_from", "at_name", "at_parameter",
         "ignored", "labelled", "validated", "terminated", "then_statement",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
@@ -967,7 +967,7 @@ export class AssignmentOperator extends InfixOperator {
             return;
         }
 
-        if (this[0].is(DotOperator) || (this[0].is(OpenBracket) && this[0].led)); // qualified lvalue
+        if (this[0].is(DotOperator) || this[0].is(OpenBracket) && this[0].led); // qualified lvalue
         else if (not(validator.paramstack.top)) { // ignoring default-argument assignments...
 
             Declaration.validate(this[0]);
@@ -1281,7 +1281,7 @@ export class StringLiteral extends Terminal {
                 terminate();
                 characters.push(read() + match(space));
 
-            } else if (on(backtick) || (on(dollar) && at(openBrace))) {
+            } else if (on(backtick) || on(dollar) && at(openBrace)) {
 
                 // this block handles characters that are meaningful in a js template-literal, but
                 // have no special meaning in a lark string or text literal...
@@ -2126,7 +2126,30 @@ export class Greater extends InfixOperator {
 
 export class If extends PredicatedBlock {
 
-    /* This class implements `if` statements. */
+    /* This class implements `if` statements with optional `else` clauses.
+
+    Note: If-statements simply have one optional else-clause. The `else if` case is just the*/
+
+    prefix(parser, context) {
+
+        /* Parse the `if` block as a conventional predicated block, then check for an `else` clause
+        (which can follow the closing brace of the `if` block, when it's braced, and can be on the
+        next line (ignoring whitelines) in any case. When present, the `else` clause is gathered
+        as an operand, as Lark treats clauses as part of the same statement (so any clauses are
+        included as part of a single formal statement in unbraced blocks). */
+
+        super.prefix(parser, context);
+
+        const {advance, at, gather, on} = parser;
+
+        if (on(Else) || on(Terminator) && at(Else)) {
+
+            if (on(Terminator)) advance();
+
+            return this.note("if_else").push(gather(0, context));
+
+        } else return this;
+    }
 
     validate(validator) {
 
@@ -2138,6 +2161,15 @@ export class If extends PredicatedBlock {
         for (const operand of this) operand.validate(validator);
 
         validator.blockstack.pop;
+    }
+
+    js(writer) {
+
+        /* Render the `if` block as a predicated block, adding an `else` clause when
+        one is present. */
+
+        if (this.if_else) return super.js(writer) + space + this[2].js(writer);
+        else return super.js(writer);
     }
 }
 

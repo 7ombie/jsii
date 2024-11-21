@@ -1,5 +1,5 @@
-if x { 1 }
-else { 2 }
+do if x { 1 }
+else { return 2 }
 
 [...x] = foo
 function of x = foo.bar return 1

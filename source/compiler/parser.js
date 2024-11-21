@@ -12,7 +12,6 @@ import {
     Comma,
     CompoundExpression,
     EOF,
-    Header,
     Keyword,
     LineFeed,
     OpenBrace,
@@ -84,11 +83,7 @@ export function * parse(source, {dev=false}={}) {
         are significant, all tokens are significant, so this is a noop. Otherwise, it skips over
         any newlines, stopping on the first non-newline token. */
 
-        if (whitespace.top === true) return;
-
-        while (on(LineFeed)) advance();
-
-        while (at(LineFeed)) nextToken = tokens.next().value;
+        if (whitespace.top === false) while (on(LineFeed)) advance();
     }
 
     function on(...Classes) { // api function
@@ -114,7 +109,7 @@ export function * parse(source, {dev=false}={}) {
 
         if (Classes.length === 0) return nextToken;
 
-        for (const Class of Classes) if (token.is(Class)) return Class;
+        for (const Class of Classes) if (nextToken.is(Class)) return Class;
 
         return false;
     }
