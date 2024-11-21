@@ -1,3 +1,6 @@
+if x { 1 }
+else { 2 }
+
 [...x] = foo
 function of x = foo.bar return 1
 
@@ -122,7 +125,9 @@ bar(1, 2, 3 + 3)
 x == 4
 y != z
 
-if p0 { foo } else if p1 { bar } else { spam }
+if p0 { foo }
+else if p1 { bar }
+else { spam }
 
 do async function { return await true }
 
@@ -262,4 +267,6 @@ format.template """ # a comment
     back to same level
     """ # another comment
 
-# another one here
+if x { 1 }
+else { 2 }
+

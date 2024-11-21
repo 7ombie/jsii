@@ -2130,8 +2130,8 @@ export class If extends PredicatedBlock {
 
     validate(validator) {
 
-        /* Add a valid level to the block stack, affix the operands, then restore the stack to its
-        original state. */
+        /* Add a valid level to the block stack, validate the operands, then restore the stack to
+        its original state. */
 
         validator.blockstack.top = true;
 

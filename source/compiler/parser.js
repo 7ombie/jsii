@@ -47,25 +47,16 @@ export function * parse(source, {dev=false}={}) {
         ends on a terminator when the following statement is allowed to follow the previous without
         requiring a comma or newline (like the `else` statement in `if x {...} else {...}`). */
 
-        let statement, skip = false;
-
-        while (skip || advance()) {
-
-            skip = false;
+        while (advance()) {
 
             if (on(EOF)) break;
+            else if (on(Terminator)) continue;
+            else if (on(CloseBrace) && nested) return advance();
 
-            if (on(CloseBrace) && nested) return advance();
-
-            if (on(Terminator)) continue;
-
-            yield statement = gather();
+            yield gather();
 
             if (on(Terminator)) continue;
-
-            if (on(CloseBrace) && nested) return advance();
-
-            if (statement.is(Header) && previous.is(CloseBrace)) skip = true;
+            else if (on(CloseBrace) && nested) return advance();
             else throw new LarkError("expected a Terminator", token.location);
         }
 

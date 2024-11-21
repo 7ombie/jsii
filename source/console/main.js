@@ -11,7 +11,7 @@ const underline = Array(128).fill("-").join("");
 put(`SOURCE...\n${underline}\n${source}\n${underline}`);
 
 // for (const token of lex(source)) token.render(child);
-for (const statement of validate(source, {dev: true})) statement.render();
+// for (const statement of validate(source, {dev: true})) statement.render();
 
 // for (const token of lex(source)) put("Token:", token);
 // for (const statement of parse(source, {dev: true})) put("Parse Tree:", statement);
