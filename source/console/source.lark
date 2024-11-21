@@ -216,7 +216,7 @@ while true continue
 
 
 {foo: 1, bar: 2, metavars.x...}
-point2 = {x: 1, y: 2}
+point2 = {x: 1, y: 200_000}
 {sam, jam, mam, ...rest} = people
 {__proto__: proto, length: 2, 0: false, 1: true}
 {__proto__: proto.prototype, name: "John", salary: 50000}

@@ -1134,9 +1134,9 @@ export class NumberLiteral extends Terminal {
             throw new LarkError("a Number Literal cannot end on an underscore", this.location);
         }
 
-        // finally, check for a numeric unit xor an exponentiation pseudo-operator - on units, use
-        // the appropriate unit-helper to expand the `value` property to a JavaScript literal, and
-        // on operators, lex the characters and convert to JavaScript exponentiation notation - in
+        // now, check for a numeric unit xor an exponentiation pseudo-operator - on units, use the
+        // appropriate unit-helper to expand the `value` property to a JavaScript literal, and on
+        // operators, lex the characters and convert to JavaScript exponentiation notation - in
         // either case, update the `value` property with the result...
 
         const atDouble = character => at(character) && peek(2n, character);
@@ -1159,6 +1159,14 @@ export class NumberLiteral extends Terminal {
             this.note("exponentiation_notation").value += operator + exponent.value;
 
         } else if (not(this.float)) this.note("integer_notation");
+
+        // finally, check for illegal, adjacent underscore separators, and complain if found...
+
+        if (this.value.indexOf(underscore + underscore) < 0) return;
+
+        const index = BigInt(this.value.indexOf(underscore + underscore));
+
+        throw new LarkError("invalid adjacent Separators", location + index);
     }
 
     prefix(_) { return this }
