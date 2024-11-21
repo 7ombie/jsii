@@ -3,9 +3,47 @@ Lark: A Modern JavaScript Dialect
 
 **IGNORE | THIS IS AN IDEAS-DOC WITH TODO LISTS AND API SKETCHES ETC | IT IS OUTDATED AND WRONG**
 
-Lark combines a very high-level, dynamically-typed dialect (optimized for productivity) with a very
-low-level, statically-typed dialect (optimized for performance and tight control over memory), in a
-single language.
+Lark combines a very high-level, dynamically-typed scripting language (optimized for productivity
+and convenience) with a very low-level, statically-typed computer programming language (optimized
+for performance, tight control over memory and access to low-level features, such as SIMD), in a
+single, unified language with two complimentray dialects that seamlessly interoperate. For
+example, you can call low-level functions from high-level code (in the same file):
+
+    let sum = asm function of x: i32, y: i32 returns i32 { return x + y }   # low-level code
+    console.log(sum(10, 20))                                                # high-level code
+
+Note: Technically, the declaration `let sum = ...` is high-level code. The low-level code begins
+on the `asm` qualifier, and the result is assigned to `sum` (a high-level constant).
+
+Note: In Lark, `let` declares block-scoped, immutable constants (equivalent to a JavaScript `const`
+declaration that passes the assigned value to `Object.freeze`). Lark also eliminates temporal dead
+zones (nothing is ever *hoisted*). The `var` declarator is used to declare block-scoped variables,
+which are mutable by default, but you can explicitly *pack*, *seal* or *freeze* an object with the
+corresponding (prefix) operator (`pack`, `seal` or `freeze`) to make it less mutable (Lark uses
+the term *packing* to refer to preventing extensions):
+
+    var a = [1, 2, 3]               # mutable variable
+    var o = pack {x: 1, y: 2}       # packed variable
+    var s = seal {[1, 2, 3]}        # sealed variable
+    var m = freeze {{1: 2, 3: 4}}   # frozen variable
+
+Note: Lark has set-literals that use brackets in braces (empty set: `{[]}`) and map-literals that
+use braces in braces (empty map: `{{}}`). These literals support splats etc.
+
+Note: Lark object literals infer `null` as the prototype, unless you explicitly set it to something
+else. You can use JavaScript's magic `__proto__` key for that. However, Lark provides `proto` and
+a `proto from` prefix operators that can be used to set the prototype more succinctly:
+
+    {}              # {__proto__: null}
+    {proto p}       # {__proto__: p}
+    {proto from T}  # {__proto__: T.prototype}
+
+Note: Lark replaces JavaScript's ASI (*Automatic Semicolon Insertion*) with *LIST*, which stands
+for *Linewise Implicit Statement Termination*. LIST works like Python or Swift (correctly), so
+semicolons are never required. In fact, Lark doesn't use semicolons at all. Instead, multiple
+statements can be grouped on the same line with commas, just like expressions in JavaScript:
+
+    let checkScore = function if @0 > 10_000 { return true } else return false
 
 The high-level dialect is substantially higher-level than JavaScript (while retaining all of its
 important performance characteristics). The grammar and semantics are both less complicated, more

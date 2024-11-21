@@ -105,10 +105,10 @@ export class Token extends Array {
     notes = new Set();
 
     static notables = Object.freeze(new Set([
-        "tagged_template", "proto_label", "yield_from", "proto_from", "at_name", "at_parameter",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal", "parameter",
+        "tagged_template", "proto_label", "yield_from", "at_name", "at_parameter",
         "ignored", "labelled", "validated", "terminated", "then_statement",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
@@ -803,7 +803,6 @@ export class Operator extends Token {
             case "or": return new Or(location, value);
             case "pack": return new Pack(location, value);
             case "packed": return new Packed(location, value);
-            case "proto": return new Proto(location, value);
             case "seal": return new Seal(location, value);
             case "sealed": return new Sealed(location, value);
             case "then": return new Then(location, value);
@@ -2404,8 +2403,7 @@ export class OpenBrace extends Opener {
     validate(validator) {
 
         /* Validate a set, map, object literal or object breakdown, iterating over its operands
-        and checking labels (particularly `__proto__`) and `proto` and `proto from` operations,
-        as well as any splats and slurps. */
+        and checking labels (particularly `__proto__`), as well as any splats and slurps. */
 
         let prototypes = 0;
 
@@ -2455,7 +2453,7 @@ export class OpenBrace extends Opener {
 
             operand.note("validated");
 
-            if (operand.is(Proto) || (operand.is(Spread) && operand.led));
+            if (operand.is(Spread) && operand.led);
             else if (operand.is(Label)) {
 
                 const left = operand[0];
@@ -2464,21 +2462,15 @@ export class OpenBrace extends Opener {
                 else if (left.is(StringLiteral, Constant));
                 else if (left.is(OpenBracket) && left.nud && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
-                else {
+                else throw new LarkError("expected a Key or Spread", left.location);
 
-                    if (prototypes === 0) throw new LarkError("expected a Key or Spread", left.location);
-                    else throw new LarkError("expected a Key, Spread or Prototype", left.location);
-                }
+            } else throw new LarkError("expected a Key or Splat", operand.location);
 
-            } else throw new LarkError("expected a Key, Splat or Prototype", operand.location);
-
-            if (operand.is(Proto) || operand.proto_label) {
+            if (operand.proto_label) {
 
                 if (++prototypes < 2) { this.note("oo_literal"); continue operandsLoop }
 
-                const location = operand.is(Proto) ? operand.location : operand[0].location;
-
-                throw new LarkError("duplicate Prototypes", location);
+                throw new LarkError("duplicate magic __proto__ keys", operand[0].location);
             }
         }
 
@@ -2771,40 +2763,6 @@ export class Private extends ClassQualifier {
     which are referenced using the `!` infix dot operator. */
 }
 
-export class Proto extends PrefixOperator {
-
-    /* This class implements the `proto` and `proto from` prefix-operators, which provide a nicer
-    way of setting the prototype in object literals. The `proto` operator uses the expression as
-    the prototype, while `proto from` uses its `prototype` property. For example:
-
-        {proto o, x: 1, y: 2}          -> {__proto__: o, x: 1, y: 2}
-        {proto from T, x: 1, y: 2}     -> {__proto__: T.prototype, x: 1, y: 2}
-
-    Note: Lark still recognizes `__proto__` keys as magical.
-
-    Note: While rare in practice, JavaScript accepts `__proto__` keys as magical even when they're
-    expressed indirectly. Lark cannot reliably detect that expressions like `o["__\("proto")__"]`
-    are magical, so cannot enforce the requirement that object literals only specify prototypes
-    once. Still, we detect keys directly named `__proto__` and the string "__proto__" (outside
-    of brackets), and include them with `proto` and `proto from` expressions in the count, so
-    more than one obvious prototype specifier is a syntax error. */
-
-    prefix({advance, on, gatherExpression}) {
-
-        if (on(From)) { advance(); this.note("proto_from") }
-
-        return this.push(gatherExpression());
-    }
-
-    js(writer) {
-
-        if (not(this.validated)) throw new LarkError("unexpected Prototype", this.location);
-
-        if (this.proto_from) return `__proto__: ${this[0].js(writer)}.prototype`;
-        else return `__proto__: ${this[0].js(writer)}`;
-    }
-}
-
 export class Raise extends InfixOperator {
 
     /* This class implements the raise operator (`**`), which is right-associative. */
@@ -2940,12 +2898,13 @@ export class Type extends PrefixOperator {
     /* This class implements Lark's `type of` operator, which is similar to JavaScript's `typeof`,
     except better, supporting tag strings (including "Null" and "Undefined"), as well as API types
     (like "HTMLAudioElement" and "GPUInternalError"), hidden types (like "AsyncGeneratorFunction"),
-    the names of user defined classes (like "Type" and "PrefixOperator"), as well as returning the
+    the names of user defined classes (like "Player" and "SpaceInvader"), as well as returning the
     type "Object" for any object with a null prototype. */
 
     prefix({advance, on, gatherExpression}) {
 
-        if (on(Of)) { advance() } else throw new LarkError("expected an Of Operator", advance(false).location);
+        if (on(Of)) advance();
+        else throw new LarkError("expected an Of Operator", advance(false).location);
 
         return this.push(gatherExpression());
     }

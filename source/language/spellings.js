@@ -43,7 +43,6 @@ export const operators = [
     "or",
     "pack",
     "packed",
-    "proto",
     "seal",
     "sealed",
     "then",

@@ -19,7 +19,7 @@ point = {x: 1, y: 2}
 {23: {x: {y: {z: needMoreNames}}}, ali, bob, cal, ...others} = people
 {proto Array, length: 2, 0: false, 1: true}
 {__proto__: o, name: "John", salary: 50000}
-john = {proto from Object, name: "John", salary: 50000}
+john = {__proto__: Object.prototype, name: "John", salary: 50000}
 
 {[a, b, c, __proto__...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
@@ -218,8 +218,8 @@ while true continue
 {foo: 1, bar: 2, metavars.x...}
 point2 = {x: 1, y: 2}
 {sam, jam, mam, ...rest} = people
-{__proto__: Array, length: 2, 0: false, 1: true}
-{proto from Object, name: "John", salary: 50000}
+{__proto__: proto, length: 2, 0: false, 1: true}
+{__proto__: proto.prototype, name: "John", salary: 50000}
 johno = {proto p, name: "John", salary: 50000}
 
 {[a, b, c, d...]}
@@ -235,11 +235,11 @@ conspiracy_theory is not Types[20 * 8.x]
 
 foo bar spam eggs (1, 2, 3)
 
-let name = 0
+let x99 = 0
 function {
-    let y = name + 1
-    let name = y
-    let z = name + 1
+    let x99 = x99
+    let y99 = x99
+    let z99 = y99
 }
 
 x when y else throw new Foo("spam and eggs")
