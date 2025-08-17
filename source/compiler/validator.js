@@ -17,15 +17,55 @@ export function * validate(source, {dev=false}={}) {
         for (const statement of statements) { statement.validate(api, null); yield statement }
     }
 
+    class Namespace { // api class
+
+        /* This class is part of the public API. Instances are pushed to the `scopestack` whenever
+        a namespace is added to the current scope, and popped when exiting the block (this happens
+        twice inside class literals, once for public bindings, and once again for privates).
+
+        The constructor takes two optional bools. The first determines whether this namespace is a
+        class block (`true`) or a regular block (`false`, the default). The second argument's used
+        to indicate when the instance is used to store public properties (`true`, the default) and
+        private properties (`false`).
+
+        API users access the actual namespace associated with an instance via the computed `scope`
+        property, which returns the appropriate hash of names, either `blockSpace` or `classSpace`.
+
+        The API also exposes the `classstack`, which is a stack of bools. The top indicates when we
+        are validating (static) class properties (`true`). It is `false` in any other context. When
+        the top of the `classstack` is `true`, the `scope` property of `Namespace` instances refers
+        to the (private) `classSpace` hash, and refers to `blockSpace` otherwise. This allows those
+        classes that use the API (mainly `Declaration` and `Variable`) to simply access the correct
+        namespace via `scope`, instead of manually checking whether we're in a class block, and if
+        so, whether we're currently declaring or referencing an instance or class property.
+
+        Regular blocks use a `Namespace` instance that only ever uses its `blockSpace` hash, while
+        class blocks use a `Namespace` that stores instance properties in `blockSpace` and class
+        properties in `classSpace`. */
+
+        #blockSpace = Object.create(null);
+        #classSpace = Object.create(null);
+
+        constructor(_class=false, _public=true) {
+
+            this.class = _class;
+            this.public = _public;
+        }
+
+        get scope() { return api.classstack.top ? this.#classSpace : this.#blockSpace }
+    }
+
     const api = {
-        atstack:    new Stack(),                    // find attributed parameters inside functions
-        yieldstack: new Stack(),                    // find `yield` and `yield from` inside functions
-        awaitstack: new Stack(true),                // whether we're in an async function or onside
-        paramstack: new Stack(false),               // whether we're currently in a parameters list
-        blockstack: new Stack(false),               // whether we're in a block (within a function)
-        loopstack:  new Stack(false),               // whether we're in a loop (within in function)
-        callstack:  new Stack(false),               // whether we're in any kind of function at all
-        scopestack: new Stack(Object.create(null)), // store the namespaces that form the scope
+        Namespace,
+        scopestack: new Stack(new Namespace()), // store the namespaces that form the current scope
+        classstack: new Stack(false),           // whether we're declaring a static class field
+        blockstack: new Stack(false),           // whether we're in a block (within a function)
+        loopstack:  new Stack(false),           // whether we're in a loop (within in function)
+        callstack:  new Stack(false),           // whether we're in any kind of function at all
+        paramstack: new Stack(false),           // whether we're currently in a parameters list
+        awaitstack: new Stack(true),            // whether we're in an async function or onside
+        yieldstack: new Stack(),                // find `yield` and `yield from` inside functions
+        atstack:    new Stack(),                // find attributed parameters inside functions
     };
 
     yield * walk(parse(source, {dev}));

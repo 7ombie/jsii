@@ -269,30 +269,8 @@ export function * parse(source, {dev=false}={}) {
         optional argument that determines whether to parse the block as a functon body (`true`) or
         a control-flow block (`false`, the default).
 
-        Note: To this function, the only difference between bodies and blocks is that bodies create
-        a new scope for labels, while blocks don't. The fact that bodies require braces is enforced
-        by `gatherParameters`. This function specifically ignores that requirement, so expressions
-        like this generator comprehension are legal without braces around `yield n * 2`:
-
-            do for n in numbers yield n * 2
-
-        However, this remains illegal (braces are required around `return x * 2`):
-
-            function of x return x * 2
-
-        The `do` qualifier in the first example causes the statement `yield n * 2` to be parsed as
-        the body of a function (hence the validity of `return`, `yield` and `yield from` there). We
-        want that behavior, but it's confusing, inconvenient and pedantic to require braces in this
-        case, so we just ignore that requirement here.
-
-        Note: Braces around bodies could plausibly become optional (leaving it to user preference),
-        but functions in the statically typed dialects will probably use `returns` for their result
-        types. For example:
-
-            let sum = asm function of x: i32, y: i32 returns i32 { return x + y }
-
-        On balance, it seems best to require braces around explicit function bodies, but not around
-        bodies that're only implied by the `do` qualifier (or the skinny arrow operator). */
+        Note: The only lexical difference between function bodies and control-flow blocks is that
+        function bodies create a new scope for labels. */
 
         function gatherFormalStatement() {
 

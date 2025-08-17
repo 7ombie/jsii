@@ -105,14 +105,17 @@ export class Token extends Array {
     notes = new Set();
 
     static notables = Object.freeze(new Set([
+        "nud", "led", "lvalue", "parameter", "subclass", "class_field", "void_declaration", "private",
+        "implicit_qualifier", "class_qualifier", "instance_qualifier", "prototype_qualifier",
         "tagged_template", "proto_label", "yield_from", "at_name", "at_parameter", "if_else",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
+        "ignored", "labelled", "validated", "terminated", "then_statement", "destructures",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
-        "nud", "led", "lvalue", "oo_literal", "set_literal", "map_literal", "parameter",
-        "ignored", "labelled", "validated", "terminated", "then_statement",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
+        "explicit_constructor", "function_declaration",
         "property_descriptor", "property_description",
+        "oo_literal", "set_literal", "map_literal",
     ]));
 
     constructor(location, value=empty) {
@@ -245,7 +248,7 @@ export class Token extends Array {
         return false;
     }
 
-    render(upperElement=undefined) {
+    put(upperElement=undefined) {
 
         /* Recursively render the token to the given HTML element (`upperElement`). Each token gets
         rendered as a `token` element that contains a `title` element with all the token's details,
@@ -290,7 +293,7 @@ export class Token extends Array {
 
         tokenElement.append(childElement);
 
-        for (const operand of this) operand.render(childElement);
+        for (const operand of this) operand.put(childElement);
     }
 }
 
@@ -439,16 +442,18 @@ export class Keyword extends Word {
             case "for": return new For(location, value);
             case "from": return new From(location, value);
             case "function": return new FunctionLiteral(location, value);
+            case "get": return new GetDeclaration(location, value);
             case "if": return new If(location, value);
             case "import": return new Import(location, value);
-            case "let": return new Let(location, value);
+            case "instance": return new Instance(location, value);
+            case "let": return new LetDeclaration(location, value);
             case "pass": return new Pass(location, value);
             case "private": return new Private(location, value);
+            case "prototype": return new Prototype(location, value);
             case "return": return new Return(location, value);
-            case "static": return new Static(location, value);
-            case "subclass": return new SubclassLiteral(location, value);
+            case "set": return new SetDeclaration(location, value);
             case "throw": return new Throw(location, value);
-            case "var": return new Var(location, value);
+            case "var": return new VarDeclaration(location, value);
             case "while": return new While(location, value);
             case "yield": return new Yield(location, value);
         }
@@ -488,60 +493,42 @@ export class CommandStatement extends Keyword {
 
 export class Declaration extends Keyword {
 
-    /* This abstract base class implements `let` and `var` declarations. Lark's `let` declarations
-    compile to `const` with freezing, while `var compiles to `let`. For example:
-
-        let x = y       -> const x = Object.freeze(y);
-        var x = y       -> let x = y;
-
-    Note: Lark also shadows variables that would otherwise create a temporal dead zone, so there
-    is nothing like hoisting in Lark.
-
-    Note: Freezing true primitives (which are intrinsically immutable) is always a noop. However,
-    freezing a *primitive object*, freezes the object (though the resulting value is still equal
-    to its primitive equivalent, according to Lark equality). */
+    /* This abstract base class implements `let`, `var`, `get` and `set` declarations, used for
+    local and property declarations. It also has static methods that are are used by this class,
+    as well as `Parameters` and `For`, to walk assignees and declare any names. */
 
     static declare(validator, lvalue) {
 
         /* Take a reference to the Validator Stage API and an lvalue belonging to a declaration
-        or parameter. Note "lvalue" for the lvalue, then figure out its place within the block,
-        updating the `scopestack` as required.
+        or parameter. Note "lvalue" for the lvalue, then declare it in the current namespace[1],
+        unless it already exists, complaining if so.
 
-        If the name of the lvalue's not present in the current namespace, it's declared there
-        with its value set to "<declared>".
+        [1] The current namespace is the namespace on top of the `scopestack`, unless the lvalue
+        notes "private". In that case, the current namespace is `scopestack.at(-2)`.
 
-        If the name exists in the current namespace, and has the value "<declared>" or the name
-        of a register ("ƥ0", "ƥ1", "ƥ2"...), then it's a syntax error to declare it again.
+        Note: Class literals push two namespaces, one private, then one public. This ensures that
+        public properties shadow private properties (when referenced as variables from within the
+        class).
 
-        If the name exists, and the value is "<shadowed>", it's nonlocal, and there are one or
-        more references to it inside some nested block above this declaration, so declaring it
-        here would create a temporal dead zone. Instead, we generate a register name, then set
-        the `value` property of this declaration to the register name, and store *that* value
-        (instead of "<declared") in the namespace on top of the `scopestack`.
+        Each entry in a namespace is a hash with `state` and `value` properties. The `state` is
+        always either "declared" or "mangled". When "mangled", the `Variable` class will copy
+        the `value` property to its own `value` property. This allows properties referenced
+        as variables (within a class) to copy over the extra code they need to qualify the
+        reference (`foo` becomes `this.foo` or `ƥprivate(this).foo` when private). */
 
-        The `Variable` class walks the `scopestack` backwards (from innermost to outermost) and
-        adds its name to every namespace that does not declare it, setting the value associated
-        with that name to "<shadowed>", up to (but not including) whichever namespace declares
-        the name, if any do, and tagging every namespace on the `scopestack` when `Variable`
-        fails to find its declaration.
+        const name = lvalue.value;
+        const space = validator.scopestack.at(lvalue.private ? -2 : -1);
 
-        If a given `Variable` finds its declaration (and breaks), it first checks for any value
-        other than "<declared>", and when present, the `Variable` instance copies the value, so
-        names that use registers get copied to all of their references (updating their `value`
-        properties to the name of the register). */
+        if (space.scope[name] === undefined) {
 
-        const [value, scope] = [lvalue.value, validator.scopestack.top];
+            if (space.class) {
 
-        if (scope[value] === "<shadowed>") { // the same name is referenced through this block
+                if (space.public) space.scope[name] = {state: "mangled", value: `this.${name}`};
+                else space.scope[name] = {state: "mangled", value: lark(`private(this).${name}`)};
 
-            scope[value] = Variable.register();
-            lvalue.value = scope[value];
+            } else space.scope[name] = {state: "declared", value: name};
 
-        } else if (scope[value] !== undefined) { // the name is declared or registered here
-
-            throw new LarkError(`duplicate declaration (${lvalue.value})`, lvalue.location);
-
-        } else scope[value] = "<declared>"; // the name is not referenced here (in any sense)
+        } else throw new LarkError(`duplicate declaration (${name})`, lvalue.location);
 
         return lvalue;
     }
@@ -575,12 +562,14 @@ export class Declaration extends Keyword {
 
     static validate(lvalues) {
 
-        /* Recursively walk the lvalues, and ensure correctly positioned slurps and labels are
-        validated, and that everything notes "lvalue" (which needs to happen before we validate
-        the operands, else slurps and labels in breakdowns will not parse correctly).
+        /* Recursively walk the given token, which represents the lvalue in a `let`, `var`, `get`
+        `set` or `for` declaration or an assignment, and ensure that (correctly positioned) slurps
+        and labels are made valid, and that everything notes "lvalue" (which has to happen before
+        we validate the operands, else slurps and breakdown labels will not validate correctly).
 
-        Note: This is used by declarations, plain assignments and for-loops, while `Parameters`
-        implements its own, similar logic. */
+        Note: Declarations, plain assignments and for-loops all defer to this helper to (fully or
+        partially) implement their `validate(validator)` methods. `Parameters` implements its own,
+        similar logic (that doesn't use this helper). */
 
         lvalues.note("lvalue");
 
@@ -603,37 +592,83 @@ export class Declaration extends Keyword {
         }
     }
 
-    prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}) {
+    prefix({advance, gatherAssignees, gatherBlock, gatherExpression, on}, context=undefined) {
 
-        /* Gather a `let` or `var` declaration, which always has an lvalues before the assign
-        operator, and always has an expression after it. */
+        /* Gather a `let`, `var`, `get` or `set` declaration, which may have a namespace qualifier
+        (one of `instance`, `class` or `prototype`) after the declarator, may or may not include an
+        initializer expression, and may (when there's an initializer without a namespace qualifier)
+        have a `then` clause. */
+
+        if (on(ClassLiteral)) { advance(); this.note("class_qualifier") }
+        else if (on(Instance)) { advance(); this.note("instance_qualifier") }
+        else if (on(Prototype)) { advance(); this.note("prototype_qualifier") }
+        else this.note("implicit_qualifier");
 
         this.push(gatherAssignees());
 
-        if (on(Assign)) advance();
-        else throw new LarkError("expected the Assigment Symbol", advance(false).location);
+        if (on(Assign)) { advance() } else return this.note("void_declaration");
 
         this.push(gatherExpression());
 
-        if (on(Then)) { advance() } else return this;
+        if (not(on(Then))) return this;
+
+        advance();
 
         return this.note("then_statement").push(gatherBlock(true));
     }
 
     validate(validator) {
 
-        /* Validate the lvalue, then validate each operand, then call `Declaration.walk` on the
-        lvalue to walk it and declare any variables.
+        /* Make sure the lvalue of this `let`, `var`, `get` or `set` declaration is valid, then go
+        over the operands and validate them, before calling `Declaration.walk` on the lvalue, so
+        any names get declared, noting "destructures" as appropriate.
 
-        Note: The operands must be validated before passing the lvalue to `Declaration.walk`, else
-        TDZ elimination will fail on edgecases like `let x = x` (this is analogous to `For`, which
-        has the same issue with stuff like `for n in n { etc }`). */
+        Note: This method checks that the source does not destructure property declarations, does
+        not destructure without an initializer, and only uses namespace qualifiers, `get` or
+        `set` declarations, or uninitialized `let` declarations inside class blocks. */
 
+        const complain = message => { throw new LarkError(message, this.location) }
+
+        if (this[1]?.is(FunctionLiteral)) { // function literal declarations...
+
+            if (this.class_field && this.implicit_qualifier && not(this[1][0].is(SkipAssignee))) {
+
+                complain("Method Sugar cannot use Named Functions");
+
+            } else this.note("function_declaration");
+        }
+
+        if (not(this[0].is(Variable))) { // destructuring declarations...
+
+            this.note("destructures");
+
+            if (this.void_declaration) complain("cannot Destructure a Void Declaration");
+
+            if (this.class_field) complain("cannot Destructure a Property Declaration");
+        }
+
+        if (this.class_field) { // property declarations...
+
+            if (this.then_statement) complain("Property Declaration with Then-Clause");
+
+        } else { // local declarations...
+
+            if (this.is(GetDeclaration)) complain("Get Declaration outside Class Literal");
+
+            if (this.is(SetDeclaration)) complain("Set Declaration outside Class Literal");
+
+            if (this.namespace_qualifier) complain("Namespaced Declaration outside Class Literal");
+        }
+
+        validator.classstack.top = this.class_qualifier;
         Declaration.validate(this[0]);
 
         for (const operand of this) operand.validate(validator, this);
 
+        if (this.private) this[0].note("private"); // make the lvalue "private" so it gets declared properly
+
         this.push(...Declaration.walk(validator, this[0]));
+        validator.classstack.pop;
     }
 
     js(writer) {
@@ -652,10 +687,8 @@ export class Declaration extends Keyword {
         block, so the block that follows `then` is rendered directly below the declaration.
 
         Note: The recursion described above is also why noting "terminated" is deferred until after
-        we write the block: If we did it before, the declaration would not be terminated properly,
-        and if we omitted it entirely, the block would be followed by a redudant empty statement.
-
-        TODO: Freezing the values of `let` declared names is broken when destructuring. */
+        we write the block: If we do it before, the declaration will not be terminated properly; if
+        we omit it entirely, the block will be followed by a redudant empty statement. */
 
         if (this.then_statement) {
 
@@ -668,14 +701,17 @@ export class Declaration extends Keyword {
                 block that follows the declaration. The result is a single block with all of the
                 declarations, followed by the block that follows `then`. This is instead of each
                 declaration nesting the next declaration and the final block in a redundant tree
-                of block statements. */
+                of block statements (when using let-then and var-then statements). */
 
                 const location = declaration[0].location;
                 const args = declaration.slice(0, 2);
                 const names = declaration.slice(3);
 
-                if (declaration instanceof Var) block.push(new Var(location).push(...args, ...names));
-                else block.push(new Let(location).push(...args, ...names));
+                if (declaration.is(VarDeclaration)) {
+
+                    block.push(new VarDeclaration(location).push(...args, ...names));
+
+                } else block.push(new LetDeclaration(location).push(...args, ...names));
 
                 if (declaration[2]?.[0]?.is(Token)) {
 
@@ -688,23 +724,62 @@ export class Declaration extends Keyword {
 
         } else {
 
-            const [names, declarator] = [this.slice(2), this instanceof Let ? "const" : "let"];
+            if (this.class_field) { // this set of branches renders (and returns) a property declaration...
 
-            if (this instanceof Let && this[0].is(Variable)) {
+                if (this.instance_qualifier) {
+
+                    if (this.void_declaration) {
+
+                        if (this.private) return `ƥ = ƥprivate(this).${this[0].value} = undefined`;
+                        else return this[0].value;
+
+                    } else {
+
+                        if (this.private) return `ƥ = ƥprivate(this).${this[0].value} = ${this[1].js(writer)}`;
+                        else return `${this[0].value} = ${this[1].js(writer)}`
+                    }
+
+                } else if (this.class_qualifier) {
+
+                    if (this.void_declaration) return `static ${this[0].value}`;
+                    else return `static ${this[0].value} = ${this[1].js(writer)}`;
+
+                } else if (this.prototype_qualifier) {
+
+                    this.note("terminated");
+
+                    if (this.void_declaration) return `static { this.prototype.${this[0].value} = undefined }`;
+                    else return `static { this.prototype.${this[0].value} = ${this[1].js(writer)} }`;
+
+                } else { // implicit namespace qualifiers...
+
+                    if (this.void_declaration) return `${this[0].value}`;
+                    else if (this.function_declaration) return this[1].jsMethod(writer, this);
+                    else return `${this[0].value} = ${this[1].js(writer)}`;
+                }
+            }
+
+            // the rest of this method renders local declarations...
+
+            const [names, declarator] = [this.slice(2), this.is(LetDeclaration) ? "const" : "let"];
+
+            if (this.void_declaration) return `let ${this[0].value}`;
+
+            if (this.is(LetDeclaration) && this[0].is(Variable)) {
 
                 return `const ${this[0].value} = Object.freeze(${this[1].js(writer, true)})`;
             }
 
             writer.preamble(`${declarator} ${this[0].js(writer)} = ${this[1].js(writer)}`);
 
-            if (this instanceof Let) names.map(name => writer.proamble(`Object.freeze(${name.value})`));
+            if (this.is(LetDeclaration)) names.map(name => writer.proamble(`Object.freeze(${name.value})`));
         }
     }
 }
 
 export class Functional extends Keyword {
 
-    /* Used to group `Async`, `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
+    /* Used to group `FunctionLiteral`, `ClassLiteral` and `SubclassLiteral`. */
 }
 
 export class ClassQualifier extends Keyword {
@@ -951,12 +1026,12 @@ export class AssignmentOperator extends InfixOperator {
 
         /* If this instance is a plain assignment operation (using `=`, so not including inplace
         assignment operations), then iterate over the lvalues, and make sure that every nested
-        breakdown notes "lvalue", and that slurps note "validated", if they're the last lvalue
-        within their respective breakdown, complaining if they are not.
+        breakdown notes "lvalue", and that slurps note "validated" (assuming they're the last
+        lvalue within their respective breakdown, complaining if they are not).
 
-        Plain assignments pass their lvalues to `Declaration.walk`, unless they're qualified
-        (using a breadcrumb or bracket notation) or the assignment is a parameter (as the
-        `Parameter` class already declares and validates it).
+        Plain assignments pass their lvalues to `Declaration.walk`, unless they're qualified by
+        a breadcrumb or bracket notation, or the assignment is a parameter (as the `Parameter`
+        class already declares and validates it).
 
         The same logic is applied to the lvalues of `let` and `var` declarations. */
 
@@ -1387,7 +1462,7 @@ export class TextLiteral extends StringLiteral {
 
 export class FunctionLiteral extends Functional {
 
-    /* This class implements function literals. */
+    /* This class implements function literals, which are also used for constructor functions. */
 
     LBP = 1;
     expression = true;
@@ -1442,7 +1517,7 @@ export class FunctionLiteral extends Functional {
 
         if (yieldstack.pop.is?.(Yield)) this.note("yield_qualifier");
 
-        if (atstack.top.is?.(At)) {
+        if (atstack.top.is?.(At)) { // check the function does not mix parameters with attributes...
 
             if (this[1].length === 0) {
 
@@ -1451,22 +1526,45 @@ export class FunctionLiteral extends Functional {
 
             } else throw new LarkError("unexpected Attribute", atstack.pop.location);
         }
+
+        if (this.class_field) { // special-case constructor functions...
+
+            if (this.yield_qualifier) throw new LarkError("illegal Yielding Constructor", this.location);
+            if (not(this[0].is(SkipAssignee))) throw new LarkError("illegal Named Constructor", this.location);
+        }
     }
 
     js(writer, safe=false) {
 
         /* Render a function that may be async, a generator, both or neither. */
 
-        const keyword = this.async_qualifier ? "async function" : "function";
-        const modifier = this.yield_qualifier ? space + asterisk : empty;
-        const name = this[0].is(Variable) ? space + this[0].value : empty;
         const params = this[1].map(parameter => parameter.js(writer)).join(comma + space);
         const parameters = this.at_parameter ? "...ƥargs" : params;
         const block = writer.writeBlock(this[2]);
 
+        if (this.class_field) return `constructor(${parameters}) ${writer.writeBlock(this[2])}`;
+
+        const keyword = this.async_qualifier ? "async function" : "function";
+        const modifier = this.yield_qualifier ? space + asterisk : empty;
+        const name = this[0].is(Variable) ? space + this[0].value : empty;
+
         const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
 
         return safe ? javascript : openParen + javascript + closeParen;
+    }
+
+    jsMethod(writer, declaration) {
+
+        /* Render a method that may be async, a generator, both or neither. */
+
+        const name = declaration[0].value;
+        const keyword = this.async_qualifier ? "async" : empty;
+        const modifier = this.yield_qualifier ? space + asterisk : empty;
+        const params = this[1].map(parameter => parameter.js(writer)).join(comma + space);
+        const parameters = this.at_parameter ? "...ƥargs" : params;
+        const block = writer.writeBlock(this[2]);
+
+        return `${keyword}${modifier}${name}(${parameters}) ${block}`;
     }
 
     static synthesize(location, body, yielding) {
@@ -1488,18 +1586,65 @@ export class FunctionLiteral extends Functional {
 
 export class ClassLiteral extends Functional {
 
-    /* This class implements `class` literals, which cannot extend anything, as we use `subclass`
-    for that. */
+    /* This class implements `class` literals, as well as (static) `class let` and `class var`
+    declarations. */
 
     expression = true;
-}
+    notes = new Set(["terminated"]);
 
-export class SubclassLiteral extends Functional {
+    prefix({advance, on, gatherBlock, gatherExpression, gatherVariable}) {
 
-    /* This class implements `subclass` literals, which are used to extend one class with another
-    (`subclass of Foo {}` -> `class extends Foo {}`). */
+        if (on(Variable)) this.push(gatherVariable());
+        else this.push(new SkipAssignee(this.location));
 
-    expression = true;
+        if (on(Of)) { advance(); this.note("subclass").push(gatherExpression()) }
+        else this.push(new SkipAssignee(this.location));
+
+        return this.push(gatherBlock());
+    }
+
+    validate(validator) {
+
+        /* When present, validate the expression that defines the parent class, then push a pair of
+        namespaces to the `scopestack`, one private, the next public, before validating the members
+        inside the class block. Finally, return the `scopestack` to its prior state.
+
+        Note: Validation also ensures that each field is a valid class field, noting "class_field"
+        if so, and complaining otherwise. */
+
+        const {scopestack, Namespace} = validator;
+
+        this[1].validate(validator);
+
+        scopestack.top = new Namespace(true, false); // class block for (all) private properties
+        scopestack.top = new Namespace(true, true);  // class block for (all) public properties
+
+        let constructors = 0;
+
+        for (const operand of this[2]) {
+
+            if (operand.is(Declaration)) operand.note("class_field").validate(validator);
+            else if (operand.is(FunctionLiteral)) {
+
+                if (++constructors > 1) throw new LarkError("superfluous Constructor Function", operand.location);
+
+                operand.note("class_field").validate(validator);
+                this.note("explicit_constructor");
+
+            } else throw new LarkError(`unexpected ${operand.constructor.name}`, operand.location);
+        }
+
+        scopestack.pop;
+        scopestack.pop;
+    }
+
+    js(writer) {
+
+        const identifier = this[0].is(Variable) ? this[0].js(writer) + space : empty;
+        const extension = this.subclass ? `extends ${this[1].js(writer)} ` : empty;
+
+        return `class ${identifier}${extension}${writer.writeBlock(this[2])}`;
+    }
 }
 
 export class At extends Token {
@@ -1641,7 +1786,7 @@ export class AssignXOR extends AssignmentOperator {
     /* This class implements the inplace-assignment version of the bitwise XOR operator (`||=`). */
 }
 
-export class Async extends Functional {
+export class Async extends Keyword {
 
     /* This class implements the `async` function-qualifier. */
 
@@ -1649,11 +1794,9 @@ export class Async extends Functional {
 
     prefix({gather, on}) {
 
-        if (on(FunctionLiteral)) return this.push(gather(0, this));
+        if (on(FunctionLiteral)) return gather(0, this);
         else throw new LarkError("Async Qualifier without a Function Literal", this.location);
     }
-
-    js(writer) { return this[0].js(writer) }
 }
 
 export class Await extends CommandStatement {
@@ -1691,20 +1834,20 @@ export class Bang extends GeneralDotOperator {
 
 export class Block extends Token {
 
-    /* Used to group statements into a block. */
+    /* Used by parsing methods to group statements into a block. */
 
     validate(validator) {
 
-        /* Push a new namespace to the `scopestack`, then `validate` the statements inside this
-        block, before popping the `scopestack`. This is enough to maintain the correct stack of
-        blocks on the `scopestack`, leaving it to `Variable` and `Declaration` to eliminate any
-        TDZs and that kind of thing. */
+        /* Push a new namespace to the `scopestack`, validate the statements inside this block,
+        then return the `scopestack` to its prior state. */
 
-        validator.scopestack.top = Object.create(null);
+        const {scopestack, Namespace} = validator;
+
+        scopestack.top = new Namespace();
 
         for (const operand of this) operand.validate(validator);
 
-        validator.scopestack.pop;
+        scopestack.pop;
     }
 }
 
@@ -2051,27 +2194,25 @@ export class For extends Header {
     validate(validator) {
 
         /* Add another level to the block, loop and scope stacks, before validating the iterable,
-        *then* passing the lvalues to `Declaration.walk`, and *then* validating the block, before
+        then passing the lvalues to `Declaration.walk`, and then validating the block, before
         restoring all of the stacks to their prior state.
 
-        Note: The sequence iterable-declaration-block is important for TDZ to work correctly with
-        for-loops. In JavaScript, `for (const x of x) { etc }` is illegal, but in Lark it's valid,
-        simple and intuitive: All of Lark's declarators (`let` `var` and `for`) introduce bindings
-        at the exact moment they execute, and the binding does not exist prior to that point, so
-        references resolve to names in outer scopes. */
+        Note: For-loops must introduce an extra namespace to the `scopestack` to store names that
+        are declared for each iteration, otherwise those names would be not be block-scoped (from
+        the validator's perspective). */
 
-        const {blockstack, loopstack, scopestack} = validator;
+        const {blockstack, loopstack, scopestack, Namespace} = validator;
 
-        loopstack.top = true;
-        blockstack.top = true;
-        scopestack.top = Object.create(null);
-        this[1].validate(validator);
-        Declaration.validate(this[0]);
-        Declaration.walk(validator, this[0]);
-        this[2].validate(validator);
-        scopestack.pop;
-        blockstack.pop;
-        loopstack.pop;
+        loopstack.top = true;                   // we are currently in a loop
+        blockstack.top = true;                  // we are currently in a block
+        scopestack.top = new Namespace();       // introduce a new namespace to the current scope
+
+        this[1].validate(validator);            // recursively validate the iterable operand
+        Declaration.validate(this[0]);          // make sure the assignees (slurps etc) are valid
+        Declaration.walk(validator, this[0]);   // walk the assignees and declare the names
+        this[2].validate(validator);            // recursively validate the block operand
+
+        scopestack.pop; blockstack.pop; loopstack.pop;
     }
 
     js(writer) {
@@ -2115,6 +2256,11 @@ export class Frozen extends Operator {
 
     /* This concrete class implements the `frozen` operator, used by `Is` to implement the
     `is frozen` suffix operation, which compiles to an `Object.isFrozen` invocation. */
+}
+
+export class GetDeclaration extends Declaration {
+
+    /* This class implements get-declarations (inside class blocks). */
 }
 
 export class Greater extends InfixOperator {
@@ -2193,6 +2339,11 @@ export class InfinityConstant extends Constant {
     /* This class implements the `Infinity` floating-point constant. */
 }
 
+export class Instance extends ClassQualifier {
+
+    /* This class implements the `instance` qualifier, used in property declarations. */
+}
+
 export class Is extends InfixOperator {
 
     /* This class implements the `is`, `is not`, `is packed`, `is sealed`, `is frozen`,
@@ -2244,7 +2395,7 @@ export class Lesser extends InfixOperator {
     LBP = 9;
 }
 
-export class Let extends Declaration {
+export class LetDeclaration extends Declaration {
 
     /* This class implements let-statements, which compile to const-statements that also freeze the
     initializer (see the `Declaration` base-class).*/
@@ -2729,7 +2880,10 @@ export class Parameters extends Token {
 
         /* Update the `paramstack`, so any `await` and `yield` expressions that've been used as
         default arguments know to complain, validate all of the operands (as declarations), then
-        restore the previous state of the stack. */
+        restore the previous state of the stack.
+
+        Note: Parameters add their own namespace to the `scopestack`, as they are evaluated in a
+        separate scope one level above the function's locals (with access to `this` etc). */
 
         iife(this, function walk(parameters) {
 
@@ -2747,7 +2901,7 @@ export class Parameters extends Token {
 
                     walk(parameter);
 
-                } else if (parameter.is(Spread) && parameter.nud && parameter === parameter.at(-1)) {
+                } else if (parameter.is(Spread) && parameter.nud && parameter === parameters.at(-1)) {
 
                     walk(parameter.note("validated")[0]);
 
@@ -2758,16 +2912,15 @@ export class Parameters extends Token {
             }
         });
 
-        const {paramstack, scopestack} = validator;
+        const {paramstack, scopestack, Namespace} = validator;
 
-        paramstack.top = true;
-        scopestack.top = Object.create(null);
-        Declaration.walk(validator, this);
+        paramstack.top = true;              // we are currently validating parameters
+        scopestack.top = new Namespace();   // add a new namespace to the current scope
+        Declaration.walk(validator, this);  // walk the assignees, and declare any names
 
         for (const operand of this) operand.validate(validator);
 
-        scopestack.pop;
-        paramstack.pop;
+        scopestack.pop; paramstack.pop;
     }
 }
 
@@ -2776,6 +2929,8 @@ export class Pass extends Keyword {
     /* This class implements the `pass` keyword, used to create an explicitly empty statement. */
 
     prefix() { return this }
+
+    js() { return undefined }
 }
 
 export class Plus extends GeneralOperator {
@@ -2801,6 +2956,17 @@ export class Private extends ClassQualifier {
 
     /* This class implements private-statements, used inside classes to declare private properties,
     which are referenced using the `!` infix dot operator. */
+
+    prefix({gather, on}) {
+
+        if (on(Declaration)) return gather().note("private", "class_field");
+        else throw new LarkError("expected a Declaration", this.location);
+    }
+}
+
+export class Prototype extends ClassQualifier {
+
+    /* This class implements the `prototype` qualifier, used in property declarations. */
 }
 
 export class Raise extends InfixOperator {
@@ -2867,6 +3033,11 @@ export class Sealed extends Operator {
     suffix operation, which uses `Object.isSealed`. */
 }
 
+export class SetDeclaration extends Declaration {
+
+    /* This class implements set-declarations (inside class blocks). */
+}
+
 export class SkinnyArrow extends ArrowOperator {
 
     /* This class implements the skinny-arrow function operator (`->`). */
@@ -2915,11 +3086,6 @@ export class Star extends InfixOperator {
     /* This class implements the star operator (`*`), used for multiplication. */
 
     LBP = 12;
-}
-
-export class Static extends ClassQualifier {
-
-    /* This class implements static-statements, used inside classes. */
 }
 
 export class SuperConstant extends Constant {
@@ -2975,7 +3141,7 @@ export class ThisConstant extends Constant {
     /* This class implements the `this` constant. */
 }
 
-export class Var extends Declaration {
+export class VarDeclaration extends Declaration {
 
     /* This class implements `var` declarations, which compile to `let` declarations. */
 }
@@ -3014,22 +3180,21 @@ export class Variable extends Word {
 
     validate(validator) {
 
-        /* Update any variables that have not noted "lvalue" on their way through the parser, so
-        the `scopestack` is correct. */
+        /* Walk the `scopestack` from innermost to outermost, looking for the block that declares
+        this variable (or constant). If the name is found and its `state` property is "mangled",
+        copy the `value` property of the entry to the `value` property of this instance. This
+        fixes properties that are referenced as variables (inside classes). */
 
-        const {scopestack} = validator;
+        if (not(this.lvalue)) for (let index = validator.scopestack.end; index >= 0; index--) {
 
-        if (not(this.lvalue)) loop: for (let index = scopestack.end; index >= 0; index--) {
-
-            const scope = scopestack[index];
-            const value = scope[this.value];
+            const scope = validator.scopestack[index].scope;
 
             if (Object.hasOwn(scope, this.value)) {
 
-                if (value === "<shadowed>" || value === "<declared>") break loop;
-                else this.value = value;
+                if (scope[this.value].state === "mangled") this.value = scope[this.value].value;
 
-            } else scope[this.value] = "<shadowed>";
+                break;
+            }
         }
 
         for (const operand of this) operand.validate(validator);
