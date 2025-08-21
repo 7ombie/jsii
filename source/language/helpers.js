@@ -1,6 +1,8 @@
 /* This module defines and exports and bunch of unrelated stuff that is useful everywhere. */
 
-export function lark(name) { return `ƥ${name}` } // prefix the argument with a lark character
+import { Constant, ThisConstant, SuperConstant, NumberLiteral, StringLiteral } from "./tokens.js"
+
+export function lark(name="") { return `ƥ${name}` } // prefix the argument with a lark character
 
 export function iife(...args) {
 
@@ -14,6 +16,24 @@ export function iife(...args) {
 export function not(arg) { return ! arg } // replace the logical-not operator
 
 export const put = console.log;
+
+export function freeze(token, ...args) {
+
+    /* This helper takes a `Token` instance and the arguments required to render it (the arguments
+    that the token's `js` method expects). The helper renders the token, and wraps the output in a
+    call to `Object.freeze`, unless it's obvious that freezing the value would be redudant (it's a
+    literal for a primitive value). In either case, the generated JS string is returned.
+
+    Note: This helper will never prevent freezing an object. It only omits calls to `Object.freeze`
+    that are implied by `let` declarations, and only when the value is obviously a primitive (so
+    cannot be frozen). It just removes obvious no-ops from the output. */
+
+    if (token.is(Constant, NumberLiteral, StringLiteral) && not(token.is(ThisConstant, SuperConstant))) {
+
+        return token.js(...args);
+
+    } else return `Object.freeze(${token.js(...args)})`;
+}
 
 export class Stack extends Array {
 
@@ -48,3 +68,4 @@ export class Stack extends Array {
 
     push() { throw new TypeError("Cannot 'push' to a 'Stack' instance") }
 }
+

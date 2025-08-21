@@ -1,6 +1,6 @@
-import { empty, space, openBrace, closeBrace, semicolon, newline } from "../compiler/ascii.js"
-import { put, not, Stack } from "../compiler/helpers.js"
-import { validate } from "../compiler/validator.js"
+import { put, not, Stack } from "../language/helpers.js"
+import { empty, space, openBrace, closeBrace, semicolon, newline } from "./ascii.js"
+import { validate } from "./validator.js"
 
 import { Header, Label } from "../language/tokens.js"
 

@@ -1,5 +1,5 @@
-import { put, not } from "../compiler/helpers.js"
-import { LarkError } from "../compiler/error.js"
+import { put, not } from "../language/helpers.js"
+import { LarkError } from "./error.js"
 
 import {
     atSign,

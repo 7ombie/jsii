@@ -49,26 +49,18 @@ The high-level dialect is substantially higher-level than JavaScript (while reta
 important performance characteristics). The grammar and semantics are both less complicated, more
 consistent and more convenient.
 
-For example, in Lark, everything's an object, except `null` and `void` (which are the Lark spellings
-for `null` and `undefined`). The distinction between primitive types (like `number` and `string`)
-and OOP types (like `Number` and `String`) is an implementation detail. We think of primitive
-types like specialized functions: It's all done under the hood to improve performance.
-
 Lark replaces the `typeof` and `instanceof` operators with a single `is` operator that just works.
 For example, the expression `x is Array` equates to `Array.isArray(x)`, while `x is String` equates
 to `typeof x === "string" || x instanceof String`. You can even do stuff like `x is NaN`, which
 compiles to `Number.isNaN(x)`.
 
-Lark does have a `type` operator that returns the type of its only operand (like JavaScript's `typeof`),
-`type` is a suffix operator that compliments `is` by returning the constructor of its only operand. For
-example:
+Lark also has a `type` suffix-operator that returns the type of its only operand. For example:
 
     let numbers = [1, 2, 3, 4, 5]
     put numbers is Array                        # true
     put numbers type == Array                   # true
 
-There's also an `is not` operator that inverts the semantics of `is`, but doesn't introduce distinct
-semantics. For example, `x is not Array`
+There's also an `is not` operator that inverts `is`. For example, `numbers is not Array`.
 
 The `put` operator just wraps `console.log` so it's easy to type.
 
@@ -137,7 +129,9 @@ braces around control-flow blocks and function bodies do not effect the signific
 Note: Lark does not provide a continuation symbol for escaping newlines (like the `\` symbol in
 Python). In practice, there are just always better options.
 
-Note: Using 100-column source files is strongly recommended.
+Note: Using 128-column source files is recommended.
+
+Note: Source files cannot contain more than 256 columns (it's a syntax error).
 
 Lark does not use semicolons. However, it is still possible to have more than one statement on
 the same line. You just use commas between the statements instead. This works especially well
@@ -160,10 +154,9 @@ As a consequence, naming a function (or class) simply sets the `name` property (
 is hardcoded or computed at runtime). It will never declare a variable of the same name. You can
 only declare names using `let` or `var`.
 
-I'm not sure what to do about temporal dead zones. We could detect them and swap out the name of
-the hoisted declaration for a register (updating any references), so any references that appear
-before a declaration, will (attempt to) reference the outer scope. I need to look into the
-ratioanal for JavaScript's current design. I may be missing something.
+Note: The logic required to completely eliminate temporal dead zones conflicted with the way that
+instance properties can be referenced inside the class without qualifiers (like in Swift), so
+Lark inherits JavaScript semantics for TDZs.
 
 Keywords
 --------
@@ -233,7 +226,7 @@ etc) are all proper statements (which are always formal). Therefore, when we hav
 statement that only contains one other compound statement, we can inline the headers. For
 example:
 
-    for row in rows for column in columns { console.log(row, column) }
+    for row in rows for cell in row { console.log(cell) }
 
     for candidate in candidates if eligible(candidate) yield candidate
 
@@ -1134,7 +1127,7 @@ Nonetheless, a loop that executes once unconditionally, then zero or more times 
 be useful. To that end, Lark provides a `repeat` qualifier that qualifies `while` statements, to
 form the `repeat while <predicate> <block>` grammar. For example:
 
-    with var x = 8 repeat while x > 0 { put(x -= 1) }           # 7, 6, 5, 4, 3, 2, 1, 0
+    let var x = 8 then repeat while x > 0 { put(x -= 1) }           # 7, 6, 5, 4, 3, 2, 1, 0
 
 That code would compile to this JavaScript:
 
@@ -1840,3 +1833,4 @@ Lark Operator Precedence
     Thread Operators: `yield tokens`, `yield * tokens`
     Rest Operator: `...args`
 01) Comma: `x, y, z`
+

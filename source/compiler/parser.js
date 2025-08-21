@@ -1,6 +1,6 @@
-import { put, not, Stack } from "../compiler/helpers.js"
-import { LarkError } from "../compiler/error.js"
-import { lex } from "../compiler/lexer.js"
+import { put, not, Stack } from "../language/helpers.js"
+import { LarkError } from "./error.js"
+import { lex } from "./lexer.js"
 
 import {
     Assign,

@@ -1,9 +1,10 @@
+
 do if x { return 1 }
 else if y { return 2 }
 else if z { return 3 }
 else { yield 4 }
 
-[...x] = foo
+let [x, ...y] = foo
 function of x = foo.bar return 1
 
 do for number of Array(8).fill(0) yield number * 2
@@ -22,7 +23,7 @@ let stuff = [x, y, {foo, bar, spam: x, __proto__: Number}, x]
 {foo: 1, bar: 2, metavars...}
 point = {x: 1, y: 2}
 {23: {x: {y: {z: needMoreNames}}}, ali, bob, cal, ...others} = people
-{proto Array, length: 2, 0: false, 1: true}
+{__proto__: Array, length: 2, 0: false, 1: true}
 {__proto__: o, name: "John", salary: 50000}
 john = {__proto__: Object.prototype, name: "John", salary: 50000}
 
@@ -31,7 +32,7 @@ john = {__proto__: Object.prototype, name: "John", salary: 50000}
 
 let map = {{y: 2, __proto__: Array, foo: bar}}
 var array = [1, 2, 3]
-var object = {x: 45, boo: 56, proto Object}
+var object = {x: 45, boo: 56, __proto__: Object.prototype}
 let index = x[x]
 
 {__proto__: Array, x: snake, y: apple, z: garden, ...Eden} = obj
@@ -213,7 +214,6 @@ em = {{y..., z...}}
 {x: 1, y: 2}
 {{y: 2, __proto__: Array, foo: bar}}
 
-
 while true continue
 
 []
@@ -221,13 +221,12 @@ while true continue
 {[]}
 {{x: 1}}
 
-
 {foo: 1, bar: 2, metavars.x...}
 point2 = {x: 1, y: 200_000}
 {sam, jam, mam, ...rest} = people
 {__proto__: proto, length: 2, 0: false, 1: true}
 {__proto__: proto.prototype, name: "John", salary: 50000}
-johno = {proto p, name: "John", salary: 50000}
+johno = {__proto__: p, name: "John", salary: 50000}
 
 {[a, b, c, d...]}
 {{__proto__: Player, score: 0, lives: 3, gameObject...}}
@@ -239,8 +238,6 @@ theory.com() is Types[1]
 conspiracy_theory is not Types[20 * 8.x]
 
 0xFF.toString(16)
-
-foo bar spam eggs (1, 2, 3)
 
 let x99 = 0
 function {
@@ -285,28 +282,26 @@ function of ...args {
 
 class SpaceInvader {
 
-    let x
-    var y = 1_000
-    let instance x2
-    var instance y2 = 1_000
+    let let_first
+    let let_second = 0x00FF00
+    let let_third = this
+    var var_fourth = 1_000
+    let instance let_fifth
+    var instance var_sixth = 1_000
 
-    let m = function of ...args return args.sum()
-    let m2 = async function of ...args yield args.sum()
+    let let_seventh = function of ...args return args.sum()
+    let let_eighth = async function of ...args yield args.sum()
 
     function { new Proxy() }
 
-    let class x
-    var class y = 1_000
-    let prototype x3
-    var prototype y3 = 1_000
+    let class let_ninth = 1_000
+    var prototype var_twelth = 3_000
 
-    private let x
-    private var y = 1_000
-    private let instance x2
-    private var instance y2 = 1_000
+    private let let_thirtheenth
+    private var var_fourteenth = 1_000
+    private let instance let_fifteenth
+    private var instance var_sixteenth = 1_000
 
-    private let class x
-    private var class y = 1_000
-    private let prototype x3
-    private var prototype y3 = 1_000
+    private var class var_eigtheenth = 1_000
+    private var prototype var_twentieth = 1_000
 }

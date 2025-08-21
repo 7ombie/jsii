@@ -1,9 +1,8 @@
 /* This module defines `Token` and all of its subclasses, forming a single token hierarchy that
 implements all of the language specifics. */
 
-import { constants, keywords, operators, reserved } from "../language/spellings.js"
-
-import { put, not, iife, lark } from "../compiler/helpers.js"
+import { constants, keywords, operators, reserved } from "./spellings.js"
+import { put, not, iife, lark, freeze } from "./helpers.js"
 import { LarkError } from "../compiler/error.js"
 
 import {
@@ -83,11 +82,13 @@ export class Token extends Array {
     implement both prefix operators and infix/suffix operators.
 
     The `notes` property is an (initially empty) set of strings that subclasses use to note various
-    details regarding the specifics of that instance. Each note must belong to a static, frozen set
-    named `notables`, as after being noted (by calling the `note` helper method on one or more note
-    strings), the note effectively becomes a property of that instance (as instances get wrapped by
-    a proxy in `Token.constructor`, then explicitly returned, replacing `this`), so would clobber
-    properties and methods otherwise.
+    details regarding the specifics of a given instance. Each note is a string.
+
+    To be valid, a note must belong to frozen set of note-strings, named `notables`, which is stored
+    as a static property of this class. Checking that each note belongs to `notables` prevents notes
+    from being misspelled, and prevents collisions with the names of token properties, which matters
+    because notes effectively become properties of the instance (as instances get wrapped by a proxy
+    inside `Token.constructor`), so they would clobber properties and methods otherwise.
 
     The `expression` property is set to `true` by anything that is a valid expression, and left
     `false` otherwise. The property is required by the Parser API.
@@ -116,6 +117,7 @@ export class Token extends Array {
         "explicit_constructor", "function_declaration",
         "property_descriptor", "property_description",
         "oo_literal", "set_literal", "map_literal",
+        "freeze_members", "freeze"
     ]));
 
     constructor(location, value=empty) {
@@ -156,9 +158,11 @@ export class Token extends Array {
     static * token(lexer) { // api method
 
         /* This method instantiates tokens, based on the source. It is the only API method that
-        is invoked by the Lexer Stage. It is static as it wraps the constructor method to allow
-        it to yield zero or more tokens (potentially including instances of a subclass) to the
-        token stream. This naturally requires that `token` is a generator too.
+        is invoked by the Lexer Stage.
+
+        This method is static as it wraps the constructor method to allow it to yield zero or more
+        tokens (potentially including instances of a subclass) to the token stream, which is not
+        possible with a proper `constructor` method.
 
         This method is invariably redefined by the lower classes, so the default implementation
         only contains this docstring. */
@@ -179,7 +183,7 @@ export class Token extends Array {
         or `await`, for example) that are only valid when specific qualifiers apply. */
 
         if (parser.on(Terminator)) throw new LarkError("unexpected Terminator", this.location);
-        else throw new LarkError("invalid Token (in prefix denotation)", this.location);
+        else throw new LarkError("Token is invalid with a null denotation)", this.location);
     }
 
     infix(parser, left) { // api method
@@ -189,7 +193,7 @@ export class Token extends Array {
         node) instead of a context. The default implementation just throws an exception. */
 
         if (parser.on(Terminator)) throw new LarkError("unexpected Terminator", this.location);
-        else throw new LarkError("invalid Token (in infix denotation)", this.location);
+        else throw new LarkError("Token is invalid with a left denotation)", this.location);
     }
 
     validate(validator) {
@@ -197,7 +201,7 @@ export class Token extends Array {
         /* This method takes a reference to the Validator Stage API, and calls this method on each
         operand, passing the API along. By itself, this just walks the AST without doing anything,
         but derived classes are able to override this method with their own validation logic, and
-        then validate their operands the same way as this method to keep the recursion going. */
+        then recursively validate their operands (as shown below). */
 
         for (const operand of this) operand.validate(validator);
     }
@@ -229,8 +233,7 @@ export class Token extends Array {
         `notes` set, which then act as properties of the instance.
 
         As a sanity check, this method also throws if the given note is not in the authorized set
-        (`Token.notables`). This prevents me from creating a note named something like "map" that
-        clobbers the corresponding `Array` method (again). */
+        (`Token.notables`), but this should never throw in production. */
 
         for (const arg of args) if (Token.notables.has(arg)) this.notes.add(arg);
         else throw new ReferenceError("unregistered note");
@@ -369,7 +372,7 @@ export class Caller extends Opener {
 
     /* This is an abstract base class for delimiters that also define a infix grammar (as well as
     starting compound expressions with their prefix grammars). In practice, this implies opening
-    parens and brackets. */
+    parens and opening square brackets. */
 
     LBP = 17;
     expression = true;
@@ -467,8 +470,8 @@ export class BranchStatement extends Keyword {
 
     prefix({gatherVariable, label, on}) {
 
-        /* Gather a `break` or `continue` statement, with an optional label, validating the
-        label when present. */
+        /* Gather a `break` or `continue` statement with an optional label, validating that
+        the label exists when present. */
 
         if (on(Variable)) {
 
@@ -494,8 +497,8 @@ export class CommandStatement extends Keyword {
 export class Declaration extends Keyword {
 
     /* This abstract base class implements `let`, `var`, `get` and `set` declarations, used for
-    local and property declarations. It also has static methods that are are used by this class,
-    as well as `Parameters` and `For`, to walk assignees and declare any names. */
+    local and property declarations. It also has static methods that are used by this class, as
+    well as `Parameters` and `For`, to walk assignees and declare any names. */
 
     static declare(validator, lvalue) {
 
@@ -528,7 +531,7 @@ export class Declaration extends Keyword {
 
             } else space.scope[name] = {state: "declared", value: name};
 
-        } else throw new LarkError(`duplicate declaration (${name})`, lvalue.location);
+        } else throw new LarkError(`duplicate Declaration (${name})`, lvalue.location);
 
         return lvalue;
     }
@@ -651,6 +654,12 @@ export class Declaration extends Keyword {
 
             if (this.then_statement) complain("Property Declaration with Then-Clause");
 
+            if (this.is(LetDeclaration) && this.void_declaration) {
+
+                if (this.class_qualifier) complain("Uninitialized Let Class Declaration");
+                else if (this.prototype_qualifier) complain("Uninitialized Let Prototype Declaration");
+            }
+
         } else { // local declarations...
 
             if (this.is(GetDeclaration)) complain("Get Declaration outside Class Literal");
@@ -661,13 +670,15 @@ export class Declaration extends Keyword {
         }
 
         validator.classstack.top = this.class_qualifier;
+
         Declaration.validate(this[0]);
 
         for (const operand of this) operand.validate(validator, this);
 
-        if (this.private) this[0].note("private"); // make the lvalue "private" so it gets declared properly
+        if (this.private) this[0].note("private"); // ensure the lvalue gets declared properly
 
-        this.push(...Declaration.walk(validator, this[0]));
+        Declaration.walk(validator, this[0]);
+
         validator.classstack.pop;
     }
 
@@ -726,36 +737,37 @@ export class Declaration extends Keyword {
 
             if (this.class_field) { // this set of branches renders (and returns) a property declaration...
 
-                if (this.instance_qualifier) {
+                if (this.instance_qualifier) { // explicit `instance` properties...
 
                     if (this.void_declaration) {
 
-                        if (this.private) return `ƥ = ƥprivate(this).${this[0].value} = undefined`;
+                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = undefined`;
                         else return this[0].value;
 
                     } else {
 
-                        if (this.private) return `ƥ = ƥprivate(this).${this[0].value} = ${this[1].js(writer)}`;
+                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${this[1].js(writer)}`;
                         else return `${this[0].value} = ${this[1].js(writer)}`
                     }
 
-                } else if (this.class_qualifier) {
+                } else if (this.class_qualifier) { // explicit `class` (static) properties...
 
                     if (this.void_declaration) return `static ${this[0].value}`;
                     else return `static ${this[0].value} = ${this[1].js(writer)}`;
 
-                } else if (this.prototype_qualifier) {
+                } else if (this.prototype_qualifier) { // explicit `prototype` properties...
 
                     this.note("terminated");
 
                     if (this.void_declaration) return `static { this.prototype.${this[0].value} = undefined }`;
                     else return `static { this.prototype.${this[0].value} = ${this[1].js(writer)} }`;
 
-                } else { // implicit namespace qualifiers...
+                } else { // properties without an explicit namespace qualifier...
 
-                    if (this.void_declaration) return `${this[0].value}`;
+                    if (this.void_declaration) return this[0].value;
                     else if (this.function_declaration) return this[1].jsMethod(writer, this);
-                    else return `${this[0].value} = ${this[1].js(writer)}`;
+                    else if (this.is(VarDeclaration)) return `${this[0].value} = ${this[1].js(writer)}`;
+                    else return `${lark()} = Object.defineProperty(this, "${this[0].value}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
                 }
             }
 
@@ -767,7 +779,7 @@ export class Declaration extends Keyword {
 
             if (this.is(LetDeclaration) && this[0].is(Variable)) {
 
-                return `const ${this[0].value} = Object.freeze(${this[1].js(writer, true)})`;
+                return `const ${this[0].value} = ${freeze(this[1], writer, true)}`;
             }
 
             writer.preamble(`${declarator} ${this[0].js(writer)} = ${this[1].js(writer)}`);
@@ -1027,27 +1039,16 @@ export class AssignmentOperator extends InfixOperator {
         /* If this instance is a plain assignment operation (using `=`, so not including inplace
         assignment operations), then iterate over the lvalues, and make sure that every nested
         breakdown notes "lvalue", and that slurps note "validated" (assuming they're the last
-        lvalue within their respective breakdown, complaining if they are not).
-
-        Plain assignments pass their lvalues to `Declaration.walk`, unless they're qualified by
-        a breadcrumb or bracket notation, or the assignment is a parameter (as the `Parameter`
-        class already declares and validates it).
-
-        The same logic is applied to the lvalues of `let` and `var` declarations. */
+        lvalue within their respective breakdown, complaining if they are not). */
 
         if (not(this.is(Assign))) {
 
             for (const operand of this) operand.validate(validator);
-
             return;
         }
 
-        if (this[0].is(DotOperator) || this[0].is(OpenBracket) && this[0].led); // qualified lvalue
-        else if (not(validator.paramstack.top)) { // ignoring default-argument assignments...
-
-            Declaration.validate(this[0]);
-            Declaration.walk(validator, this[0]);
-        }
+        if (this[0].is(DotOperator) || this[0].is(OpenBracket) && this[0].led);  // qualified lvalue
+        else if (not(validator.paramstack.top)) Declaration.validate(this[0]);   // plain lvalue
 
         for (const operand of this) operand.validate(validator);
 
@@ -1466,6 +1467,7 @@ export class FunctionLiteral extends Functional {
 
     LBP = 1;
     expression = true;
+    notes = new Set(["terminated"]);
 
     prefix({advance, gatherBlock, gatherParameters, gatherVariable, on}, context) {
 
@@ -1499,7 +1501,7 @@ export class FunctionLiteral extends Functional {
         but not the function's name (if any), before restoring the previous state of the stacks and
         noting "yield_qualifier" as appropriate, before returning. */
 
-        const {awaitstack, yieldstack, blockstack, loopstack, callstack, atstack} = validator;
+        const {awaitstack, yieldstack, blockstack, loopstack, callstack, atstack, scopestack} = validator;
 
         awaitstack.top = this.async_qualifier;
         blockstack.top = false;
@@ -1510,6 +1512,11 @@ export class FunctionLiteral extends Functional {
 
         for (const operand of this.slice(1)) operand.validate(validator);
 
+        // the `validate` method of `Parameter` instances cannot pop the scope it adds to the `scopestack`
+        // (for the parameters), as the body of the function needs validating first, so we pop it here on
+        // behalf of the `validate` method...
+
+        scopestack.pop;
         callstack.pop;
         loopstack.pop;
         blockstack.pop;
@@ -1536,17 +1543,44 @@ export class FunctionLiteral extends Functional {
 
     js(writer, safe=false) {
 
-        /* Render a function that may be async, a generator, both or neither. */
+        /* Render a function that may be async, a generator, both, neither or a constructor function.
+        If it's a constructor function, and its class has one or more properties that need freezing
+        after the constructor returns, the body is wrapped in the try-block of a try-finally, and
+        the frozen properties are frozen inside the finally-block. */
 
         const params = this[1].map(parameter => parameter.js(writer)).join(comma + space);
         const parameters = this.at_parameter ? "...ƥargs" : params;
-        const block = writer.writeBlock(this[2]);
 
-        if (this.class_field) return `constructor(${parameters}) ${writer.writeBlock(this[2])}`;
+        if (this.class_field) { // constructor functions...
+
+            if (this.freeze_members) { // constructor functions with frozen members...
+
+                // create a `Block` containing a `FrozenProperty` instance for each property
+                // that needs freezing, then use this function's body and the block containing
+                // the frozen properties to synthesize each block of a try-finally statement,
+                // then wrap that in another block, so the body of the generated constructor
+                // function contains the try-finally (we use synthesized token-nodes so the
+                // Writer Stage API nests and indents everything properly)...
+ 
+                const frozenProperties = this.slice(3).map(
+                    operand => new JSFrozenProperty(operand.location, operand[0].value)
+                );
+
+                const finallyBlock = new Block(this.location).push(...frozenProperties);
+                const tryFinallyBlock = new JSTryFinally(this.location).push(this[2], finallyBlock);
+                const constructorBlock = new Block(this.location).push(tryFinallyBlock);
+
+                return `constructor(${parameters}) ${writer.writeBlock(constructorBlock)}`;
+
+            } else return `constructor(${parameters}) ${writer.writeBlock(this[2])}`;
+        }
+
+        // the rest of this code handles regular (non-constructor) functions...
 
         const keyword = this.async_qualifier ? "async function" : "function";
         const modifier = this.yield_qualifier ? space + asterisk : empty;
         const name = this[0].is(Variable) ? space + this[0].value : empty;
+        const block = writer.writeBlock(this[2]);
 
         const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
 
@@ -1586,8 +1620,7 @@ export class FunctionLiteral extends Functional {
 
 export class ClassLiteral extends Functional {
 
-    /* This class implements `class` literals, as well as (static) `class let` and `class var`
-    declarations. */
+    /* This class implements `class` literals (`class [<name>] [of <base-class>] <class-block>`). */
 
     expression = true;
     notes = new Set(["terminated"]);
@@ -1614,17 +1647,26 @@ export class ClassLiteral extends Functional {
 
         const {scopestack, Namespace} = validator;
 
-        this[1].validate(validator);
+        this[1].validate(validator); // validate the base-class expression when present
 
         scopestack.top = new Namespace(true, false); // class block for (all) private properties
         scopestack.top = new Namespace(true, true);  // class block for (all) public properties
 
         let constructors = 0;
 
-        for (const operand of this[2]) {
+        for (const operand of this[2]) { // for each declaration/statement in the class body...
 
-            if (operand.is(Declaration)) operand.note("class_field").validate(validator);
-            else if (operand.is(FunctionLiteral)) {
+            if (operand.is(Declaration)) {
+
+                operand.note("class_field").validate(validator);
+
+                if (operand.is(LetDeclaration) && operand.void_declaration && not(operand.private)) {
+
+                    this.note("freeze_members");
+                    operand.note("freeze");
+                }
+
+            } else if (operand.is(FunctionLiteral)) {
 
                 if (++constructors > 1) throw new LarkError("superfluous Constructor Function", operand.location);
 
@@ -1636,6 +1678,40 @@ export class ClassLiteral extends Functional {
 
         scopestack.pop;
         scopestack.pop;
+
+        // the rest of this code handles freezing instance properties that are declared with `let` but
+        // without an initializer, which defers freezing until the constructor returns (by wrapping the
+        // body of the required constructor in a try block, with a finally-clause that handles freezing
+        // the bindings)...
+
+        if (this.freeze_members) {
+
+            // require a constructor function...
+
+            if (not(this.explicit_constructor)) {
+
+                const message = "a Class with uninitialized Let Properties must have an explicit Constructor Function";
+                throw new LarkError(message, this.location);
+            }
+
+            // traverse the block's operands, and establish a reference to the constructor function, as
+            // well as an array containing each of the members that need freezing by the constructor...
+ 
+            let constructorFunction;
+            let voidPublicLetDeclarations = [];
+
+            for (const operand of this[2]) {
+
+                if (operand.is(FunctionLiteral)) constructorFunction = operand;
+                else if (operand.freeze) voidPublicLetDeclarations.push(operand);
+            }
+
+            // append the members that need freezing to the constructor function's operands and note that
+            // the members need freezing, so the function can freeze them when it's rendered (see the `js`
+            // instance method of the `FunctionLiteral` class)...
+
+            constructorFunction.note("freeze_members").push(...voidPublicLetDeclarations);
+        }
     }
 
     js(writer) {
@@ -1926,7 +2002,7 @@ export class Label extends InfixOperator {
 
             super.infix(parser, left);
 
-            if (left.is(Variable, StringLiteral) && left.length === 0 && left.value === "__proto__") {
+            if (left.is(Variable, StringLiteral) && left.value === "__proto__") {
 
                 return this.note("proto_label");
 
@@ -2914,13 +2990,18 @@ export class Parameters extends Token {
 
         const {paramstack, scopestack, Namespace} = validator;
 
-        paramstack.top = true;              // we are currently validating parameters
+        paramstack.top = true;              // switch to parameter validation mode
         scopestack.top = new Namespace();   // add a new namespace to the current scope
         Declaration.walk(validator, this);  // walk the assignees, and declare any names
 
         for (const operand of this) operand.validate(validator);
 
-        scopestack.pop; paramstack.pop;
+        paramstack.pop;
+
+        // the `scopestack` cannot be popped yet, as the body of the function still needs to be
+        // validated by the function these parameters belong to, and the body needs to be able to
+        // see the parameters in scope, so the `validate` method of the `FunctionLiteral` instance
+        // pops the `scopestack` for us (once the body has been validated) 
     }
 }
 
@@ -3150,8 +3231,8 @@ export class Variable extends Word {
 
     /* This class implements (variable) names, which can optionally prefix other names to form an
     expression that invokes the first name on the expression that the second name introduces. The
-    expression may just be the second name, but can be any expression that begin with a name, and
-    this works recursively (so `a b c d(1, 2, 3)` compiles to `a(b(c(d(1, 2, 3))))`). */
+    expression may just be the second name, but can be any expression that begins with a name,
+    and this works recursively (so `a b c d(1, 2, 3)` compiles to `a(b(c(d(1, 2, 3))))`). */
 
     static #counter = 0; // used to generate lark register names (ƥ0, ƥ1, ƥ2...) - see `register`
 
@@ -3166,17 +3247,7 @@ export class Variable extends Word {
     safe = true;
     expression = true;
 
-    prefix({gatherExpression, on}) {
-
-        /* Gather a name, as well as the expression that follows it, if (and only if) the following
-        expression also begins with a name (which also makes this expression unsafe to reuse). */
-
-        if (not(on(Variable))) return this;
-
-        this.safe = false;
-
-        return this.push(gatherExpression());
-    }
+    prefix(parser) { return this }
 
     validate(validator) {
 
@@ -3185,7 +3256,7 @@ export class Variable extends Word {
         copy the `value` property of the entry to the `value` property of this instance. This
         fixes properties that are referenced as variables (inside classes). */
 
-        if (not(this.lvalue)) for (let index = validator.scopestack.end; index >= 0; index--) {
+        for (let index = validator.scopestack.end; index >= 0; index--) {
 
             const scope = validator.scopestack[index].scope;
 
@@ -3196,17 +3267,9 @@ export class Variable extends Word {
                 break;
             }
         }
-
-        for (const operand of this) operand.validate(validator);
     }
 
-    js(writer) {
-
-        /* Render a name, or an invocation of the name (passing the expression that followed it) if
-        the implicit invocation grammar was accepted during the Parser Stage. */
-
-        return this.length ? `${this.value}(${this[0].js(writer)})` : this.value;
-    }
+    js(writer) { return this.value }
 }
 
 export class VoidConstant extends Constant {
@@ -3225,7 +3288,8 @@ export class When extends Operator {
 
         this.push(left, gatherExpression());
 
-        if (on(Else)) { advance() } else throw new LarkError("incomplete When-Else Operation", this.location);
+        if (on(Else)) advance();
+        else throw new LarkError("incomplete When-Else Operation", this.location);
 
         return this.push(gatherExpression(this.LBP - 1));
     }
@@ -3305,3 +3369,31 @@ export class Yield extends Keyword {
         else return `yield${this.length ? space + this[0].js(writer) : empty}`;
     }
 }
+
+class JSFrozenProperty extends Token {
+
+    /* This pseudo-token is used to synthesize a JavaScript `Object.defineProperty` invocation that
+    freezes a property of `this` that has the same name as the `value` of the current instance. */
+
+    js(writer) {
+
+        const value = `Object.freeze(this.${this.value})`;
+        const descriptors = `{value: ${value}, enumerable: true, writable: false, configurable: false}`;
+
+        return `Object.defineProperty(this, "${this.value}", ${descriptors})`;
+    }
+}
+
+class JSTryFinally extends Token {
+
+    /* This pseudo-token is used to synthesize a JavaScript try-finally block, which is used to add
+    code to a function body that must execute when the function returns (for example, freezing and
+    tidying up let-bound members, after the constructor returns). Each instance should have two
+    operands, both blocks. The first becomes the try-block, the second, the finally-block. */
+
+    notes = new Set(["terminated"]);
+
+    js(writer) { return `try ${writer.writeBlock(this[0])} finally ${writer.writeBlock(this[1])}` }
+}
+
+

@@ -1,5 +1,5 @@
+import { put, Stack } from "../language/helpers.js"
 import { parse } from "./parser.js"
-import { put, Stack } from "./helpers.js"
 
 export function * validate(source, {dev=false}={}) {
 
