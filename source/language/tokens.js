@@ -114,10 +114,10 @@ export class Token extends Array {
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "async_qualifier", "yield_qualifier", "not_qualifier",
+        "delete_lark_member", "freeze_members", "freeze",
         "explicit_constructor", "function_declaration",
         "property_descriptor", "property_description",
         "oo_literal", "set_literal", "map_literal",
-        "freeze_members", "freeze"
     ]));
 
     constructor(location, value=empty) {
@@ -1546,42 +1546,32 @@ export class FunctionLiteral extends Functional {
         /* Render a function that may be async, a generator, both, neither or a constructor function.
         If it's a constructor function, and its class has one or more properties that need freezing
         after the constructor returns, the body is wrapped in the try-block of a try-finally, and
-        the frozen properties are frozen inside the finally-block. */
+        the frozen properties are frozen inside the finally-block.
+
+        Note: When an instance of `FunctionLiteral` has three operands, the third operand is its block.
+        When there are four operands, the last two operands are blocks, which are implicitly wrapped in
+        a try-finally (`this[2]` forms the try-block and `this[3]` forms the finally-block), which is
+        then nested inside the function's block.*/
 
         const params = this[1].map(parameter => parameter.js(writer)).join(comma + space);
         const parameters = this.at_parameter ? "...ƥargs" : params;
 
-        if (this.class_field) { // constructor functions...
+        const block = iife(this, this.location, function(self, location) {
 
-            if (this.freeze_members) { // constructor functions with frozen members...
+            if (self.length === 3) return writer.writeBlock(self[2]);
 
-                // create a `Block` containing a `FrozenProperty` instance for each property
-                // that needs freezing, then use this function's body and the block containing
-                // the frozen properties to synthesize each block of a try-finally statement,
-                // then wrap that in another block, so the body of the generated constructor
-                // function contains the try-finally (we use synthesized token-nodes so the
-                // Writer Stage API nests and indents everything properly)...
- 
-                const frozenProperties = this.slice(3).map(
-                    operand => new JSFrozenProperty(operand.location, operand[0].value)
-                );
+            const tryFinally = new JSTryFinally(location).push(self[2], self[3]);
 
-                const finallyBlock = new Block(this.location).push(...frozenProperties);
-                const tryFinallyBlock = new JSTryFinally(this.location).push(this[2], finallyBlock);
-                const constructorBlock = new Block(this.location).push(tryFinallyBlock);
+            return writer.writeBlock(new Block(location).push(tryFinally));
+        });
 
-                return `constructor(${parameters}) ${writer.writeBlock(constructorBlock)}`;
-
-            } else return `constructor(${parameters}) ${writer.writeBlock(this[2])}`;
-        }
+        if (this.class_field) return `constructor(${parameters}) ${block}`;
 
         // the rest of this code handles regular (non-constructor) functions...
 
         const keyword = this.async_qualifier ? "async function" : "function";
         const modifier = this.yield_qualifier ? space + asterisk : empty;
         const name = this[0].is(Variable) ? space + this[0].value : empty;
-        const block = writer.writeBlock(this[2]);
-
         const javascript = `${keyword}${modifier}${name}(${parameters}) ${block}`;
 
         return safe ? javascript : openParen + javascript + closeParen;
@@ -1660,10 +1650,10 @@ export class ClassLiteral extends Functional {
 
                 operand.note("class_field").validate(validator);
 
-                if (operand.is(LetDeclaration) && operand.void_declaration && not(operand.private)) {
+                if (operand.is(LetDeclaration) && not(operand.private)) {
 
-                    this.note("freeze_members");
-                    operand.note("freeze");
+                    if (operand.void_declaration) { this.note("freeze_members"); operand.note("freeze") }
+                    else this.note("delete_lark_member");
                 }
 
             } else if (operand.is(FunctionLiteral)) {
@@ -1695,31 +1685,35 @@ export class ClassLiteral extends Functional {
             }
 
             // traverse the block's operands, and establish a reference to the constructor function, as
-            // well as an array containing each of the members that need freezing by the constructor...
+            // well as an `Block` containing each of the members that need freezing by the constructor...
  
             let constructorFunction;
-            let voidPublicLetDeclarations = [];
+            let block = new Block(this.location); // this will become the function's finally-block
 
             for (const operand of this[2]) {
 
                 if (operand.is(FunctionLiteral)) constructorFunction = operand;
-                else if (operand.freeze) voidPublicLetDeclarations.push(operand);
+                else if (operand.freeze) block.push(new JSFrozenProperty(this.location, operand[0].value));
             }
 
-            // append the members that need freezing to the constructor function's operands and note that
-            // the members need freezing, so the function can freeze them when it's rendered (see the `js`
-            // instance method of the `FunctionLiteral` class)...
+            // if required, append a statement to the block for deleting the lark member, then in any
+            // case, append the block to the function's operands...
 
-            constructorFunction.note("freeze_members").push(...voidPublicLetDeclarations);
+            if (this.delete_lark_member) block.push(Delete.synthesizeLarkMemberDeletion(this.location));
+
+            constructorFunction.push(block); 
         }
     }
 
-    js(writer) {
+    js(writer, safe=false) {
+
+        /* Render a class, wrapping the result in parens, unless it's safe to omit them. */
 
         const identifier = this[0].is(Variable) ? this[0].js(writer) + space : empty;
         const extension = this.subclass ? `extends ${this[1].js(writer)} ` : empty;
+        const source = `class ${identifier}${extension}${writer.writeBlock(this[2])}`;
 
-        return `class ${identifier}${extension}${writer.writeBlock(this[2])}`;
+        return safe ? source : openParen + source + closeParen;
     }
 }
 
@@ -2062,6 +2056,18 @@ export class Delete extends Keyword {
     }
 
     js(writer) { return `delete ${this[0].js(writer)}` }
+
+    static synthesizeLarkMemberDeletion(location) {
+
+        /* This creates and returns a `Delete` instance for cleaning up the lark member in a
+        class by generating the JavaScript `delete this.ƥ`. */
+
+        const thisConstant = new ThisConstant(location, "this");
+        const larkVariable = new Variable(location, lark())
+        const dotOperation = new DotOperator(location, ".").push(thisConstant, larkVariable);
+
+        return new Delete(location, "delete").push(dotOperation);
+    }
 }
 
 export class Dev extends Keyword {
