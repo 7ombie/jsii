@@ -282,17 +282,13 @@ function f of ...args {
 
 class SpaceInvader {
 
-    let let_first
     let let_second = 0x00FF00
     let let_third = 10
     var var_fourth = 1_000
-    let instance let_fifth
     var instance var_sixth = 1_000
 
     let let_seventh = function of ...args return args.sum()
     let let_eighth = async function of ...args yield args.sum()
-
-    function { let_first = 1, let_fifth = 5 }
 
     let class let_ninth = 1_000
     var prototype var_twelth = 3_000

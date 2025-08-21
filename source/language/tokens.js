@@ -1591,20 +1591,22 @@ export class FunctionLiteral extends Functional {
         return `${keyword}${modifier}${name}(${parameters}) ${block}`;
     }
 
-    static synthesize(location, body, yielding) {
+    static synthesize(location, body, generator=false) {
 
-        /* This static helper generates a function literal instance, based on a location, a block
-        of (zero or more) statements that constitute the function body, and a boolean that's used
-        to indicate whether to synthesize a generator function (`true`) or not (`false`). */
+        /* This static helper synthesizes a function literal token, based on a location, a block
+        or formal statement that constitutes the function body, and an optional bool that defaults
+        to `false` and indicates whether to synthesize a generator function (`true`) or a regular
+        function (`false`). */
 
         const literal = new FunctionLiteral(location);
         const name = new SkipAssignee(location);
         const parameters = new Parameters(location);
-        const block = new Block(location).push(body);
 
-        if (yielding) literal.note("yield_qualifier");
+        if (!body.is(Block)) body = new Block(location).push(body);
 
-        return literal.push(name, parameters, block);
+        if (generator) literal.note("yield_qualifier");
+
+        return literal.push(name, parameters, body);
     }
 }
 
@@ -1637,6 +1639,8 @@ export class ClassLiteral extends Functional {
 
         const {scopestack, Namespace} = validator;
 
+        const isInstance = operand => operand.implicit_qualifier || operand.instance_qualifier;
+
         this[1].validate(validator); // validate the base-class expression when present
 
         scopestack.top = new Namespace(true, false); // class block for (all) private properties
@@ -1650,10 +1654,14 @@ export class ClassLiteral extends Functional {
 
                 operand.note("class_field").validate(validator);
 
-                if (operand.is(LetDeclaration) && not(operand.private)) {
+                if (operand.is(LetDeclaration) && isInstance(operand) && not(operand.private)) {
 
-                    if (operand.void_declaration) { this.note("freeze_members"); operand.note("freeze") }
-                    else this.note("delete_lark_member");
+                    if (operand.void_declaration) {
+
+                        this.note("freeze_members");
+                        operand.note("freeze");
+
+                    } else this.note("delete_lark_member");
                 }
 
             } else if (operand.is(FunctionLiteral)) {
@@ -1669,14 +1677,14 @@ export class ClassLiteral extends Functional {
         scopestack.pop;
         scopestack.pop;
 
-        // the rest of this code handles freezing instance properties that are declared with `let` but
-        // without an initializer, which defers freezing until the constructor returns (by wrapping the
-        // body of the required constructor in a try block, with a finally-clause that handles freezing
-        // the bindings)...
+        // when one or more let-bound instance members omit their initializers, the member has to be
+        // frozen after their constructor returns (using a try-finally in the constructor body), and
+        // when there are one or more let-bound members that include initializers, the lark member
+        // gets defined, and needs to deleted too... 
 
         if (this.freeze_members) {
 
-            // require a constructor function...
+            // a constructor function is required when the class contains void let-bound members...
 
             if (not(this.explicit_constructor)) {
 
@@ -1696,12 +1704,45 @@ export class ClassLiteral extends Functional {
                 else if (operand.freeze) block.push(new JSFrozenProperty(this.location, operand[0].value));
             }
 
-            // if required, append a statement to the block for deleting the lark member, then in any
-            // case, append the block to the function's operands...
+            // append the finally-block to the function's operands...
 
-            if (this.delete_lark_member) block.push(Delete.synthesizeLarkMemberDeletion(this.location));
+            constructorFunction.push(block);
 
-            constructorFunction.push(block); 
+            // if required, prepend a statement to start of the function body that deletes the lark member...
+
+            if (this.delete_lark_member) constructorFunction[2].unshift(Delete.larkMember(this.location));
+
+        } else if (this.delete_lark_member) {
+
+            // just delete the lark member (without freezing anything)...
+
+            if (this.explicit_constructor) for (const operand of this[2]) {
+
+                // this loop finds the constructor that is known to exist, then prepends a statement that
+                // deletes the lark member at the start of the constructor body...
+
+                if (!operand.is(FunctionLiteral)) continue;
+
+                operand[2].unshift(Delete.larkMember(this.location));
+
+                break;
+
+            } else {
+
+                // synthesize a constructor function, purely for deleting the lark member (though it must
+                // still call `super` before accessing `this`)...
+
+                const invocation = new OpenParen(this.location, openParen);
+                const deletion = Delete.larkMember(this.location);
+
+                invocation.push(new SuperConstant(this.location, "super"));
+                invocation.push(new CompoundExpression(this.location));
+                invocation.note("led");
+
+                const block = new Block(this.location).push(invocation, deletion);
+
+                this[2].unshift(FunctionLiteral.synthesize(this.location, block).note("class_field"));
+            }
         }
     }
 
@@ -2057,7 +2098,7 @@ export class Delete extends Keyword {
 
     js(writer) { return `delete ${this[0].js(writer)}` }
 
-    static synthesizeLarkMemberDeletion(location) {
+    static larkMember(location) {
 
         /* This creates and returns a `Delete` instance for cleaning up the lark member in a
         class by generating the JavaScript `delete this.ƥ`. */
