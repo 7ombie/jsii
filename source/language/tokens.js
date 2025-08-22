@@ -1591,20 +1591,20 @@ export class FunctionLiteral extends Functional {
         return `${keyword}${modifier}${name}(${parameters}) ${block}`;
     }
 
-    static synthesize(location, body, generator=false) {
+    static synthesize(location, body, yielding, ...params) {
 
-        /* This static helper synthesizes a function literal token, based on a location, a block
-        or formal statement that constitutes the function body, and an optional bool that defaults
-        to `false` and indicates whether to synthesize a generator function (`true`) or a regular
-        function (`false`). */
+        /* This static helper synthesizes an AST node for a function literal, based on a given
+        location, a block or formal statement that constitutes the function body, a bool that
+        indicates whether the new function is yielding (`true`) or not (`false`), as well as
+        zero or more parameters for the new function. */
 
         const literal = new FunctionLiteral(location);
         const name = new SkipAssignee(location);
-        const parameters = new Parameters(location);
+        const parameters = new Parameters(location).push(...params);
 
-        if (!body.is(Block)) body = new Block(location).push(body);
+        if (!body.is(Block)) body = new Block(body.location).push(body);
 
-        if (generator) literal.note("yield_qualifier");
+        if (yielding) literal.note("yield_qualifier");
 
         return literal.push(name, parameters, body);
     }
@@ -1730,18 +1730,25 @@ export class ClassLiteral extends Functional {
             } else {
 
                 // synthesize a constructor function, purely for deleting the lark member (though it must
-                // still call `super` before accessing `this`)...
+                // also call `super` (before accessing `this`) if the class extends another class)...
 
-                const invocation = new OpenParen(this.location, openParen);
-                const deletion = Delete.larkMember(this.location);
+                const name = new Variable(this.location, Variable.register());
+                const splat = new Spread(this.location).push(name).note("led", "validated");
+                const slurp = new Spread(this.location).push(name).note("nud", "validated");
+                const block = new Block(this.location).push(Delete.larkMember(this.location));
 
-                invocation.push(new SuperConstant(this.location, "super"));
-                invocation.push(new CompoundExpression(this.location));
-                invocation.note("led");
+                if (this.subclass) { // synthesize a `super` invocation (passing any args along)...
 
-                const block = new Block(this.location).push(invocation, deletion);
+                    const invocation = new OpenParen(this.location, openParen).note("led");
 
-                this[2].unshift(FunctionLiteral.synthesize(this.location, block).note("class_field"));
+                    invocation.push(new SuperConstant(this.location, "super"));
+                    invocation.push(new CompoundExpression(this.location).push(splat));
+                    block.unshift(invocation);
+                }
+
+                // prepend a constructor function to the class body, using the block created above...
+
+                this[2].unshift(FunctionLiteral.synthesize(this.location, block, false, slurp).note("class_field"));
             }
         }
     }

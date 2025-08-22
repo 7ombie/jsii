@@ -280,7 +280,7 @@ function f of ...args {
     return args
 }
 
-class SpaceInvader {
+class SpaceInvader of Sprite {
 
     let let_second = 0x00FF00
     let let_third = 10
