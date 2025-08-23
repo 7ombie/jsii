@@ -742,41 +742,47 @@ export class Declaration extends Keyword {
 
             if (this.class_field) { // this set of branches renders (and returns) a property declaration...
 
+                const initializer = this.void_declaration ? "undefined" : this[1].js(writer);
+
                 if (this.instance_qualifier) { // explicit `instance` properties...
 
-                    if (this.void_declaration) {
-
-                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = undefined`;
-                        else return this[0].value;
-
-                    } else {
-
-                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${this[1].js(writer)}`;
-                        else return `${this[0].value} = ${this[1].js(writer)}`
-                    }
+                    if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${initializer}`;
+                    else return `${this[0].value} = ${initializer}`
 
                 } else if (this.class_qualifier) { // explicit `class` (static) properties...
 
-                    if (this.void_declaration) return `static ${this[0].value}`;
-                    else return `static ${this[0].value} = ${this[1].js(writer)}`;
+                    if (this.private) return `static { ƥprivate[this].${this[0].value} = ${initializer}`;
+                    else return `static ${this[0].value} = ${initializer}`;
 
                 } else if (this.prototype_qualifier) { // explicit `prototype` properties...
 
                     this.note("terminated");
 
-                    if (this.void_declaration) return `static { this.prototype.${this[0].value} = undefined }`;
-                    else return `static { this.prototype.${this[0].value} = ${this[1].js(writer)} }`;
+                    if (this.private) return `static { ƥprivate[this.prototype].${this[0].value} = ${initializer} }`;
+                    else return `static { this.prototype.${this[0].value} = ${initializer} }`;
 
                 } else { // properties without an explicit namespace qualifier...
 
-                    if (this.void_declaration) {
+                    if (this.function_declaration) return this[1].jsMethod(writer, this);
 
-                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = undefined`;
-                        else return this[0].value;
+                    if (this.is(VarDeclaration)) {
 
-                    } else if (this.function_declaration) return this[1].jsMethod(writer, this);
-                    else if (this.is(VarDeclaration)) return `${this[0].value} = ${this[1].js(writer)}`;
-                    else return `${lark()} = Object.defineProperty(this, "${this[0].value}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
+                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${initializer}`;
+                        else return `${this[0].value} = ${initializer}`;
+
+                    } else {
+
+                        if (this.private) {
+
+                            if (this.void_declaration) `ƥ = Object.defineProperty(ƥprivate[this], "${this[0].value}", {value: ${initializer}, enumerable: true})`;
+                            else return `ƥ = Object.defineProperty(ƥprivate[this], "${this[0].value}", {value: Object.freeze(${initializer}), enumerable: true})`;
+
+                        } else {
+
+                            if (this.void_declaration) return `${this[0].value} = ${initializer}`;
+                            else return `ƥ = Object.defineProperty(this, "${this[0].value}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
+                        }
+                    }
                 }
             }
 
@@ -1787,6 +1793,13 @@ export class ClassLiteral extends Functional {
 
                 this[2].unshift(FunctionLiteral.synthesize(this.location, block, false, slurp).note("class_field"));
             }
+        }
+
+        if (this.private) {
+
+            if (this.private_prototype) this[2].unshift(new JSPrivatePrototype(this.location));
+            if (this.private_class) this[2].unshift(new JSPrivateClass(this.location));
+            if (this.private_instance) this[2].unshift(new JSPrivateInstance(this.location));
         }
     }
 
@@ -3501,4 +3514,32 @@ class JSTryFinally extends Token {
     js(writer) { return `try ${writer.writeBlock(this[0])} finally ${writer.writeBlock(this[1])}` }
 }
 
+class JSPrivatePrototype extends Token {
+
+    /* This pseudo-token is used to synthesize the JavaScript used at the top of class blocks
+    to add the class's prototype to the global `ƥprivate` weak map. */
+
+    notes = new Set(["terminated"]);
+
+    js(writer) { return "static { ƥprivate[this.prototype] = Object.create(null) }" }
+}
+
+class JSPrivateClass extends Token {
+
+    /* This pseudo-token is used to synthesize the JavaScript used at the top of class blocks
+    to add the class to the global `ƥprivate` weak map. */
+
+    notes = new Set(["terminated"]);
+
+    js(writer) { return "static { ƥprivate[this] = Object.create(null) }" }
+}
+
+class JSPrivateInstance extends Token {
+
+    /* This pseudo-token is used to synthesize the JavaScript used at the top of class blocks
+    to add every instance of the class to the global `ƥprivate` weak map. Using a weak map
+    allows instances to be garbage collected when the only reference is the map. */
+
+    js(writer) { return "ƥ = ƥprivate[this] = Object.create(null)" }
+}
 
