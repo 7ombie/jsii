@@ -742,46 +742,73 @@ export class Declaration extends Keyword {
 
             if (this.class_field) { // this set of branches renders (and returns) a property declaration...
 
+                const identifier = this[0].value;
                 const initializer = this.void_declaration ? "undefined" : this[1].js(writer);
 
                 if (this.instance_qualifier) { // explicit `instance` properties...
 
-                    if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${initializer}`;
-                    else return `${this[0].value} = ${initializer}`
+                    if (this.private) return `ƥ = ƥprivate[this].${identifier} = ${initializer}`;
+                    else return `${identifier} = ${initializer}`
 
                 } else if (this.class_qualifier) { // explicit `class` (static) properties...
 
-                    if (this.private) return `static { ƥprivate[this].${this[0].value} = ${initializer}`;
-                    else return `static ${this[0].value} = ${initializer}`;
+                    if (this.is(VarDeclaration)) {
+
+                        if (this.private) {
+
+                            this.note("terminated");
+
+                            return `static { ƥprivate[this].${identifier} = ${initializer} }`;
+
+                        } else return `static ${identifier} = ${initializer}`;
+
+                    } else {
+
+                        this.note("terminated");
+
+                        if (this.private) return `static { Object.defineProperty(ƥprivate[this], "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true}) }`;
+                        else return `static { Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true}) }`;
+                    }
 
                 } else if (this.prototype_qualifier) { // explicit `prototype` properties...
 
                     this.note("terminated");
 
-                    if (this.private) return `static { ƥprivate[this.prototype].${this[0].value} = ${initializer} }`;
-                    else return `static { this.prototype.${this[0].value} = ${initializer} }`;
-
-                } else { // properties without an explicit namespace qualifier...
-
-                    if (this.function_declaration) return this[1].jsMethod(writer, this);
-
                     if (this.is(VarDeclaration)) {
 
-                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = ${initializer}`;
-                        else return `${this[0].value} = ${initializer}`;
+                        if (this.private) return `static { ƥprivate[this.prototype].${identifier} = ${initializer} }`;
+                        else return `static { this.prototype.${identifier} = ${initializer} }`;
 
                     } else {
 
-                        if (this.private) {
+                        if (this.private) return `static { Object.defineProperty(ƥprivate[this.prototype], "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true}) }`;
+                        else return `static { Object.defineProperty(this.prototype, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true}) }`;
+                    }
 
-                            if (this.void_declaration) `ƥ = Object.defineProperty(ƥprivate[this], "${this[0].value}", {value: ${initializer}, enumerable: true})`;
-                            else return `ƥ = Object.defineProperty(ƥprivate[this], "${this[0].value}", {value: Object.freeze(${initializer}), enumerable: true})`;
+                } else { // properties without an explicit namespace qualifier...
 
-                        } else {
+                    if (this.function_declaration) { // methods (declarations with function literal initializers)...
 
-                            if (this.void_declaration) return `${this[0].value} = ${initializer}`;
-                            else return `ƥ = Object.defineProperty(this, "${this[0].value}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
-                        }
+                        this.note("terminated");
+
+                        return this[1].jsMethod(writer, this);
+                    }
+
+                    if (this.is(VarDeclaration)) { // var-declarations...
+
+                        if (this.private) return `ƥ = ƥprivate[this].${identifier} = ${initializer}`;
+                        else return `${identifier} = ${initializer}`;
+                    }
+
+                    if (this.private) { // private let-declarations...
+
+                        if (this.void_declaration) return `ƥ = ƥprivate[this].${identifier} = undefined`;
+                        else return `ƥ = Object.defineProperty(ƥprivate[this], "${identifier}", {value: Object.freeze(${initializer}), enumerable: true})`;
+
+                    } else { // public let-declarations....
+
+                        if (this.void_declaration) return `${identifier} = ${initializer}`;
+                        else return `ƥ = Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
                     }
                 }
             }

@@ -294,7 +294,7 @@ class SpaceInvader {
 
     function { first = 1, fifth = 5 }
 
-    let class ninth = 1_000
+    let class ninth = {a: 1_000}
     var prototype twelth = 3_000
 
     private let thirtheenth
@@ -304,4 +304,6 @@ class SpaceInvader {
 
     private var class eigtheenth = 1_000
     private var prototype twentieth = 1_000
+    private let class twentyOne = [1_000]
+    private let prototype twentyTwo = [1_000]
 }
