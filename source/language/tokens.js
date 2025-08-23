@@ -113,6 +113,7 @@ export class Token extends Array {
         "ignored", "labelled", "validated", "terminated", "then_statement", "destructures",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
+        "private_instance", "private_class", "private_prototype",
         "async_qualifier", "yield_qualifier", "not_qualifier",
         "delete_lark_member", "freeze_members", "freeze",
         "explicit_constructor", "function_declaration",
@@ -230,13 +231,17 @@ export class Token extends Array {
     note(...args) { // internal helper
 
         /* This chainable helper complements `push`, and is used to push zero or more notes to the
-        `notes` set, which then act as properties of the instance.
+        `notes` set, which then act as properties of the instance. Undefined args are ignored.
 
-        As a sanity check, this method also throws if the given note is not in the authorized set
-        (`Token.notables`), but this should never throw in production. */
+        As a sanity check, this method throws if any given note is not in the authorized set
+        (`Token.notables`), but this should never happen. */
 
-        for (const arg of args) if (Token.notables.has(arg)) this.notes.add(arg);
-        else throw new ReferenceError("unregistered note");
+        for (const arg of args) {
+
+            if (arg === undefined) continue;
+            else if (Token.notables.has(arg)) this.notes.add(arg);
+            else throw new ReferenceError("unregistered note");
+        }
 
         return this;
     }
@@ -764,8 +769,12 @@ export class Declaration extends Keyword {
 
                 } else { // properties without an explicit namespace qualifier...
 
-                    if (this.void_declaration) return this[0].value;
-                    else if (this.function_declaration) return this[1].jsMethod(writer, this);
+                    if (this.void_declaration) {
+
+                        if (this.private) return `ƥ = ƥprivate[this].${this[0].value} = undefined`;
+                        else return this[0].value;
+
+                    } else if (this.function_declaration) return this[1].jsMethod(writer, this);
                     else if (this.is(VarDeclaration)) return `${this[0].value} = ${this[1].js(writer)}`;
                     else return `${lark()} = Object.defineProperty(this, "${this[0].value}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
                 }
@@ -1639,8 +1648,6 @@ export class ClassLiteral extends Functional {
 
         const {scopestack, Namespace} = validator;
 
-        const isInstance = operand => operand.implicit_qualifier || operand.instance_qualifier;
-
         this[1].validate(validator); // validate the base-class expression when present
 
         scopestack.top = new Namespace(true, false); // class block for (all) private properties
@@ -1648,13 +1655,36 @@ export class ClassLiteral extends Functional {
 
         let constructors = 0;
 
-        for (const operand of this[2]) { // for each declaration/statement in the class body...
+        for (const operand of this[2]) {
+
+            // this loop iterates over each each top-level construct in the class body, which can
+            // legally contain any number of `let` and `var` declarations, as well as at most one
+            // function literal (which is the constructor function)...
 
             if (operand.is(Declaration)) {
 
                 operand.note("class_field").validate(validator);
 
-                if (operand.is(LetDeclaration) && isInstance(operand) && not(operand.private)) {
+                if (operand.private) {
+
+                    // this block handles all private members, which require a hash in `ƥprivate`
+                    // for each private namespace, and an assignment to the appropriate hash,
+                    // which will also use the lark member...
+
+                    this.note("private", "delete_lark_member");
+
+                    if (operand.class_qualifier) this.note("private_class");
+                    else if (operand.prototype_qualifier) this.note("private_prototype");
+                    else this.note("private_instance");
+                }
+
+                if (operand.is(LetDeclaration) && (operand.implicit_qualifier || operand.instance_qualifier)) {
+
+                    // this block handles all instance let-declarations (public and private), which
+                    // need to be frozen inside a finally-block in the constructor when the `let`
+                    // is uninitialized, and need to use the lark member otherwise (note that
+                    // private members always require the lark member, but that is handled
+                    // by the block above)...
 
                     if (operand.void_declaration) {
 
@@ -1679,8 +1709,8 @@ export class ClassLiteral extends Functional {
 
         // when one or more let-bound instance members omit their initializers, the member has to be
         // frozen after their constructor returns (using a try-finally in the constructor body), and
-        // when there are one or more let-bound members that include initializers, the lark member
-        // gets defined, and needs to deleted too... 
+        // when there is at least one let-bound member that includes an initializer or anything that
+        // is private, the lark member gets defined, and needs to deleted (as well or instead)... 
 
         if (this.freeze_members) {
 
@@ -1701,7 +1731,14 @@ export class ClassLiteral extends Functional {
             for (const operand of this[2]) {
 
                 if (operand.is(FunctionLiteral)) constructorFunction = operand;
-                else if (operand.freeze) block.push(new JSFrozenProperty(this.location, operand[0].value));
+                else if (operand.freeze) {
+
+                    const frozenProperty = new JSFrozenProperty(this.location, operand[0].value);
+
+                    if (operand.private) frozenProperty.note("private");
+
+                    block.push(frozenProperty);
+                }
             }
 
             // append the finally-block to the function's operands...
@@ -3427,14 +3464,28 @@ export class Yield extends Keyword {
 class JSFrozenProperty extends Token {
 
     /* This pseudo-token is used to synthesize a JavaScript `Object.defineProperty` invocation that
-    freezes a property of `this` that has the same name as the `value` of the current instance. */
+    either freezes a property of `this` (when the corresponding declaration is public) or a property
+    of `ƥprivate[this]` (when the declaration is private (it notes "private")). The property name is
+    the `value` of the instance.
+
+    Note: Only uninitialized instance properties are frozen by the constructor. */
 
     js(writer) {
 
-        const value = `Object.freeze(this.${this.value})`;
-        const descriptors = `{value: ${value}, enumerable: true, writable: false, configurable: false}`;
+        if (this.private) {
 
-        return `Object.defineProperty(this, "${this.value}", ${descriptors})`;
+            const value = `Object.freeze(ƥprivate[this].${this.value})`;
+            const descriptors = `{value: ${value}, enumerable: true, writable: false, configurable: false}`;
+
+            return `Object.defineProperty(ƥprivate[this], "${this.value}", ${descriptors})`;
+
+        } else {
+
+            const value = `Object.freeze(this.${this.value})`;
+            const descriptors = `{value: ${value}, enumerable: true, writable: false, configurable: false}`;
+
+            return `Object.defineProperty(this, "${this.value}", ${descriptors})`;
+        }
     }
 }
 
