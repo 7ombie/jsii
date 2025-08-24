@@ -518,11 +518,14 @@ export class Declaration extends Keyword {
         public properties shadow private properties (when referenced as variables from within the
         class).
 
-        Each entry in a namespace is a hash with `state` and `value` properties. The `state` is
-        always either "declared" or "mangled". When "mangled", the `Variable` class will copy
-        the `value` property to its own `value` property. This allows properties referenced
-        as variables (within a class) to copy over the extra code they need to qualify the
-        reference (`foo` becomes `this.foo` or `ƥprivate(this).foo` when private). */
+        Each entry in a namespace maps the name string to an array of zero, one or two strings. A
+        local is represented by an empty array. Non-prototype members are represented by an array
+        with one qualified name. Prototype members are represented by an array of two qualified
+        names, the first for references in the instance namespace (like `this.name`), and the
+        second for references in the prototype namespace (like `this.prototype.name`), with
+        variations for private members.
+
+        Note: The arrays are used by the `validate` instance method of the `Variable` class. */
 
         const name = lvalue.value;
         const space = validator.scopestack.at(lvalue.private ? -2 : -1);
@@ -531,10 +534,18 @@ export class Declaration extends Keyword {
 
             if (space.class) {
 
-                if (space.public) space.scope[name] = {state: "mangled", value: `this.${name}`};
-                else space.scope[name] = {state: "mangled", value: lark(`private[this].${name}`)};
+                if (lvalue.prototype_qualifier) {
 
-            } else space.scope[name] = {state: "declared", value: name};
+                    if (space.public) space.scope[name] = [`this.${name}`, `this.prototype.${name}`];
+                    else space.scope[name] = [lark(`private[this].${name}`), lark(`private[this.prototype].${name}`)];
+
+                } else {
+
+                    if (space.public) space.scope[name] = [`this.${name}`];
+                    else space.scope[name] = [lark(`private[this].${name}`)];
+                }
+
+            } else space.scope[name] = [];
 
         } else throw new LarkError(`duplicate Declaration (${name})`, lvalue.location);
 
@@ -680,7 +691,11 @@ export class Declaration extends Keyword {
 
         if (this.private) this[0].note("private");
 
+        if (this.prototype_qualifier) validator.protostack.top = true;
+
         for (const operand of this) operand.validate(validator, this);
+
+        if (this.prototype_qualifier) validator.protostack.pop;
 
         Declaration.walk(validator, this[0]);
 
@@ -1693,12 +1708,13 @@ export class ClassLiteral extends Functional {
         Note: Validation also ensures that each field is a valid class field, noting "class_field"
         if so, and complaining otherwise. */
 
-        const {scopestack, Namespace} = validator;
+        const {scopestack, protostack, Namespace} = validator;
 
         this[1].validate(validator); // validate the base-class expression when present
 
         scopestack.top = new Namespace(true, false); // class block for (all) private properties
         scopestack.top = new Namespace(true, true);  // class block for (all) public properties
+        protostack.top = false;
 
         let constructors = 0;
 
@@ -1709,6 +1725,11 @@ export class ClassLiteral extends Functional {
             // function literal (which is the constructor function)...
 
             if (operand.is(Declaration)) {
+
+                // if this is a prototype declaration, note that on the variable, so the static
+                // `declare` method can create the appropriate array of mangles when validated...
+
+                if (operand.prototype_qualifier) operand[0].note("prototype_qualifier");
 
                 operand.note("class_field").validate(validator);
 
@@ -1753,11 +1774,13 @@ export class ClassLiteral extends Functional {
 
         scopestack.pop;
         scopestack.pop;
+        protostack.pop;
 
         // when one or more let-bound instance members omit their initializers, the member has to be
         // frozen after their constructor returns (using a try-finally in the constructor body), and
         // when there is at least one let-bound member that includes an initializer or anything that
-        // is private, the lark member gets defined, and needs to deleted (as well or instead)... 
+        // is private, the lark member gets defined, and needs deleting (as well or instead) - the
+        // rest of this method fixes up the class body accordingly... 
 
         if (this.freeze_members) {
 
@@ -3397,17 +3420,18 @@ export class Variable extends Word {
     validate(validator) {
 
         /* Walk the `scopestack` from innermost to outermost, looking for the block that declares
-        this variable (or constant). If the name is found and its `state` property is "mangled",
-        copy the `value` property of the entry to the `value` property of this instance. This
-        fixes properties that are referenced as variables (inside classes). */
+        this variable (or constant). If the name is found, copy over the appropriately mangled
+        version of the name where required. See the static `Declaration.declare` method for
+        more information. */
 
         for (let index = validator.scopestack.end; index >= 0; index--) {
 
             const scope = validator.scopestack[index].scope;
 
-            if (Object.hasOwn(scope, this.value)) {
+            if (Object.hasOwn(scope, this.value)) { // the name was found, handle any mangling, then break...
 
-                if (scope[this.value].state === "mangled") this.value = scope[this.value].value;
+                if (validator.protostack.top && scope[this.value].length === 2) this.value = scope[this.value][1];
+                else if (scope[this.value].length) this.value = scope[this.value][0];
 
                 break;
             }

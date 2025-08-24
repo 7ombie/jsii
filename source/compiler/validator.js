@@ -64,6 +64,7 @@ export function * validate(source, {dev=false}={}) {
         callstack:  new Stack(false),           // whether we're in any kind of function at all
         paramstack: new Stack(false),           // whether we're currently in a parameters list
         awaitstack: new Stack(true),            // whether we're in an async function or onside
+        protostack: new Stack(false),           // whether we're in a `prototype` declaration
         yieldstack: new Stack(),                // find `yield` and `yield from` inside functions
         atstack:    new Stack(),                // find attributed parameters inside functions
     };
