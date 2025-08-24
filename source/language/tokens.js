@@ -532,7 +532,7 @@ export class Declaration extends Keyword {
             if (space.class) {
 
                 if (space.public) space.scope[name] = {state: "mangled", value: `this.${name}`};
-                else space.scope[name] = {state: "mangled", value: lark(`private(this).${name}`)};
+                else space.scope[name] = {state: "mangled", value: lark(`private[this].${name}`)};
 
             } else space.scope[name] = {state: "declared", value: name};
 
@@ -678,9 +678,9 @@ export class Declaration extends Keyword {
 
         Declaration.validate(this[0]);
 
-        for (const operand of this) operand.validate(validator, this);
+        if (this.private) this[0].note("private");
 
-        if (this.private) this[0].note("private"); // ensure the lvalue gets declared properly
+        for (const operand of this) operand.validate(validator, this);
 
         Declaration.walk(validator, this[0]);
 
@@ -747,8 +747,22 @@ export class Declaration extends Keyword {
 
                 if (this.instance_qualifier) { // explicit `instance` properties...
 
-                    if (this.private) return `ƥ = ƥprivate[this].${identifier} = ${initializer}`;
-                    else return `${identifier} = ${initializer}`
+                    if (this.is(VarDeclaration)) { // instance var-declarations...
+
+                        if (this.private) return `ƥ = ƥprivate[this].${identifier} = ${initializer}`;
+                        else return `${identifier} = ${initializer}`;
+                    }
+
+                    if (this.private) { // private instance let-declarations...
+
+                        if (this.void_declaration) return `ƥ = ƥprivate[this].${identifier} = undefined`;
+                        else return `ƥ = Object.defineProperty(ƥprivate[this], "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
+
+                    } else { // public instance let-declarations....
+
+                        if (this.void_declaration) return `${identifier} = ${initializer}`;
+                        else return `ƥ = Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
+                    }
 
                 } else if (this.class_qualifier) { // explicit `class` (static) properties...
 
@@ -787,25 +801,25 @@ export class Declaration extends Keyword {
 
                 } else { // properties without an explicit namespace qualifier...
 
-                    if (this.function_declaration) { // methods (declarations with function literal initializers)...
+                    if (this.function_declaration) { // methods (function literal declarations - implicitly prototype)...
 
                         this.note("terminated");
 
                         return this[1].jsMethod(writer, this);
                     }
 
-                    if (this.is(VarDeclaration)) { // var-declarations...
+                    if (this.is(VarDeclaration)) { // var-declarations (implicitly instance)...
 
                         if (this.private) return `ƥ = ƥprivate[this].${identifier} = ${initializer}`;
                         else return `${identifier} = ${initializer}`;
                     }
 
-                    if (this.private) { // private let-declarations...
+                    if (this.private) { // private let-declarations (implicitly instance)...
 
                         if (this.void_declaration) return `ƥ = ƥprivate[this].${identifier} = undefined`;
-                        else return `ƥ = Object.defineProperty(ƥprivate[this], "${identifier}", {value: Object.freeze(${initializer}), enumerable: true})`;
+                        else return `ƥ = Object.defineProperty(ƥprivate[this], "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
 
-                    } else { // public let-declarations....
+                    } else { // public let-declarations (implicitly instance)....
 
                         if (this.void_declaration) return `${identifier} = ${initializer}`;
                         else return `ƥ = Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
@@ -1802,23 +1816,23 @@ export class ClassLiteral extends Functional {
                 // synthesize a constructor function, purely for deleting the lark member (though it must
                 // also call `super` (before accessing `this`) if the class extends another class)...
 
-                const name = new Variable(this.location, Variable.register());
-                const splat = new Spread(this.location).push(name).note("led", "validated");
-                const slurp = new Spread(this.location).push(name).note("nud", "validated");
                 const block = new Block(this.location).push(Delete.larkMember(this.location));
 
                 if (this.subclass) { // synthesize a `super` invocation (passing any args along)...
 
+                    const name = new Variable(this.location, Variable.register());
+                    const splat = new Spread(this.location).push(name).note("led", "validated");
+                    const slurp = new Spread(this.location).push(name).note("nud", "validated");
                     const invocation = new OpenParen(this.location, openParen).note("led");
+                    const constant = new SuperConstant(this.location, "super");
+                    const parenthesis = new CompoundExpression(this.location).push(splat)
 
-                    invocation.push(new SuperConstant(this.location, "super"));
-                    invocation.push(new CompoundExpression(this.location).push(splat));
+                    invocation.push(constant, parenthesis);
                     block.unshift(invocation);
-                }
 
-                // prepend a constructor function to the class body, using the block created above...
+                    this[2].unshift(FunctionLiteral.synthesize(this.location, block, false, slurp).note("class_field"));
 
-                this[2].unshift(FunctionLiteral.synthesize(this.location, block, false, slurp).note("class_field"));
+                } else this[2].unshift(FunctionLiteral.synthesize(this.location, block, false).note("class_field"));
             }
         }
 
