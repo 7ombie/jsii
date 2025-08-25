@@ -1,13 +1,16 @@
-class Test of Tester {
 
-    let foo = 1
-    let bar = foo + 1
-    let prototype p = 10
-    let prototype q = p + 1
-    let foobar = p + 1
-    let class i = p + 1
-    let class spam = 5
-    let class eggs = do if 1 return spam
+class SpaceInvader {
+
+    let a
+    let b
+    function of b { a = 1, b = 5, c = 10 }
 }
 
+class Test of Tester {
+
+    let prototype foo = 10
+    let prototype bar = foo + 1
+    let spam = foo + bar
+    let eggs = {foo: bar, spam}
+}
 

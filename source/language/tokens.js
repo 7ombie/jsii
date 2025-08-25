@@ -119,6 +119,7 @@ export class Token extends Array {
         "explicit_constructor", "function_declaration",
         "property_descriptor", "property_description",
         "oo_literal", "set_literal", "map_literal",
+        "object_key"
     ]));
 
     constructor(location, value=empty) {
@@ -2882,9 +2883,24 @@ export class OpenBrace extends Opener {
 
             } else throw new LarkError("expected a Name, Label or Slurp", operand.location);
 
-        } else operandsLoop: for (const operand of this) {          // object literals...
+        } else operandsLoop: for (const [index, operand] of this.entries()) {          // object literals...
 
-            if (operand.is(Variable)) { operand.note("lvalue"); continue operandsLoop }
+            if (operand.is(Variable)) {
+
+                // variables inside object literals are sugar for a key-value pair with the
+                // same names - this conflicts with name-mangling (when the `value` of the
+                // variable is "this.foo", the end result is `this.foo: this.foo`), so we
+                // fix that here by expanding the variable to a label, noting that the
+                // synthesized key is an "object_key", so it's handled correctly by
+                // code downstream that already understands labels...
+
+                const key = new Variable(operand.location, operand.value).note("object_key");
+                const label = new Label(operand.location).note("validated")
+
+                this[index] = label.push(key, operand.note("lvalue"));
+
+                continue operandsLoop;
+            }
 
             operand.note("validated");
 
@@ -2893,7 +2909,7 @@ export class OpenBrace extends Opener {
 
                 const left = operand[0];
 
-                if (left.is(Variable)) left.note("lvalue");
+                if (left.is(Variable)) left.note("lvalue", "object_key");
                 else if (left.is(StringLiteral, Constant));
                 else if (left.is(OpenBracket) && left.nud && left.length === 1);
                 else if (left.is(NumberLiteral) && left.integer_notation);
@@ -2914,7 +2930,7 @@ export class OpenBrace extends Opener {
 
     js(writer) {
 
-        /* Render a set, map, array literal or array breakdown. */
+        /* Render a set, map, hash or object literal or an object breakdown. */
 
         if (this.set_literal) {
 
@@ -3423,6 +3439,8 @@ export class Variable extends Word {
         this variable (or constant). If the name is found, copy over the appropriately mangled
         version of the name where required. See the static `Declaration.declare` method for
         more information. */
+
+        if (this.object_key) return; // keys in object literals are never mangled
 
         for (let index = validator.scopestack.end; index >= 0; index--) {
 
