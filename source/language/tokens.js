@@ -107,11 +107,11 @@ export class Token extends Array {
 
     static notables = Object.freeze(new Set([
         "nud", "led", "lvalue", "parameter", "subclass", "class_field", "void_declaration", "private",
-        "implicit_qualifier", "class_qualifier", "instance_qualifier", "prototype_qualifier",
         "tagged_template", "proto_label", "yield_from", "at_name", "at_parameter", "if_else",
         "for_loop", "for_in", "for_of", "for_on", "for_from", "else_if", "not_in", "not_of",
         "ignored", "labelled", "validated", "terminated", "then_statement", "destructures",
         "float_notation", "integer_notation", "unit_notation", "exponentiation_notation",
+        "implicit_member", "class_member", "instance_member", "prototype_member",
         "packed_qualifier", "sealed_qualifier", "frozen_qualifier",
         "private_instance", "private_class", "private_prototype",
         "async_qualifier", "yield_qualifier", "not_qualifier",
@@ -535,7 +535,7 @@ export class Declaration extends Keyword {
 
             if (space.class) {
 
-                if (lvalue.prototype_qualifier) {
+                if (lvalue.prototype_member) {
 
                     if (space.public) space.scope[name] = [`this.${name}`, `this.prototype.${name}`];
                     else space.scope[name] = [lark(`private[this].${name}`), lark(`private[this.prototype].${name}`)];
@@ -619,10 +619,10 @@ export class Declaration extends Keyword {
         initializer expression, and may (when there's an initializer without a namespace qualifier)
         have a `then` clause. */
 
-        if (on(ClassLiteral)) { advance(); this.note("class_qualifier") }
-        else if (on(Instance)) { advance(); this.note("instance_qualifier") }
-        else if (on(Prototype)) { advance(); this.note("prototype_qualifier") }
-        else this.note("implicit_qualifier");
+        if (on(ClassLiteral)) { advance(); this.note("class_member") }
+        else if (on(Instance)) { advance(); this.note("instance_member") }
+        else if (on(Prototype)) { advance(); this.note("prototype_member") }
+        else this.note("implicit_member");
 
         this.push(gatherAssignees());
 
@@ -651,7 +651,7 @@ export class Declaration extends Keyword {
 
         if (this[1]?.is(FunctionLiteral)) { // function literal declarations...
 
-            if (this.class_field && this.implicit_qualifier && not(this[1][0].is(SkipAssignee))) {
+            if (this.class_field && this.implicit_member && not(this[1][0].is(SkipAssignee))) {
 
                 complain("Method Sugar cannot use Named Functions");
 
@@ -673,8 +673,8 @@ export class Declaration extends Keyword {
 
             if (this.is(LetDeclaration) && this.void_declaration) {
 
-                if (this.class_qualifier) complain("Uninitialized Let Class Declaration");
-                else if (this.prototype_qualifier) complain("Uninitialized Let Prototype Declaration");
+                if (this.class_member) complain("Uninitialized Let Class Declaration");
+                else if (this.prototype_member) complain("Uninitialized Let Prototype Declaration");
             }
 
         } else { // local declarations...
@@ -686,17 +686,17 @@ export class Declaration extends Keyword {
             if (this.namespace_qualifier) complain("Namespaced Declaration outside Class Literal");
         }
 
-        validator.classstack.top = this.class_qualifier;
+        validator.classstack.top = this.class_member;
 
         Declaration.validate(this[0]);
 
         if (this.private) this[0].note("private");
 
-        if (this.prototype_qualifier) validator.protostack.top = true;
+        if (this.prototype_member) validator.protostack.top = true;
 
         for (const operand of this) operand.validate(validator, this);
 
-        if (this.prototype_qualifier) validator.protostack.pop;
+        if (this.prototype_member) validator.protostack.pop;
 
         Declaration.walk(validator, this[0]);
 
@@ -761,7 +761,7 @@ export class Declaration extends Keyword {
                 const identifier = this[0].value;
                 const initializer = this.void_declaration ? "undefined" : this[1].js(writer);
 
-                if (this.instance_qualifier) { // explicit `instance` properties...
+                if (this.instance_member) { // explicit `instance` properties...
 
                     if (this.is(VarDeclaration)) { // instance var-declarations...
 
@@ -780,7 +780,7 @@ export class Declaration extends Keyword {
                         else return `ƥ = Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true})`;
                     }
 
-                } else if (this.class_qualifier) { // explicit `class` (static) properties...
+                } else if (this.class_member) { // explicit `class` (static) properties...
 
                     if (this.is(VarDeclaration)) {
 
@@ -800,7 +800,7 @@ export class Declaration extends Keyword {
                         else return `static { Object.defineProperty(this, "${identifier}", {value: ${freeze(this[1], writer)}, enumerable: true}) }`;
                     }
 
-                } else if (this.prototype_qualifier) { // explicit `prototype` properties...
+                } else if (this.prototype_member) { // explicit `prototype` properties...
 
                     this.note("terminated");
 
@@ -1717,61 +1717,83 @@ export class ClassLiteral extends Functional {
         scopestack.top = new Namespace(true, true);  // class block for (all) public properties
         protostack.top = false;
 
+        // define a helper, then iterate over the class body repeatedly, validating everything
+        // in chronological order (class and prototype declarations, instance declarations,
+        // constructor function, methods)...
+
+        const check = member => {
+
+            /* This helper takes a class member, notes "class_field" on it, then validates the
+            member, before noting on the class itself any private namespaces that will need to
+            be initialized (as weak maps) at the start of the class body. */
+
+            member.note("class_field").validate(validator);
+
+            if (not(member.private)) return;
+
+            // private members require a hash in `ƥprivate` for each private namespace, and an
+            // assignment to the appropriate hash (per member), which requires the lark member...
+
+            this.note("private", "delete_lark_member");
+
+            if (member.class_member) this.note("private_class");
+            else if (member.prototype_member) this.note("private_prototype");
+            else this.note("private_instance");
+        };
+
+        // iterate over the class body, validate any class and prototype declarations, skip
+        // instance and implciit declarations, as well as function literals, and throw on
+        // anything else...
+
+        for (const member of this[2]) if (member.class_member || member.prototype_member) {
+
+            if (member.prototype_member) member[0].note("prototype_member");
+
+            check(member);
+
+        } else if (member.implicit_member || member.instance_member || member.is(FunctionLiteral)) {
+
+            continue;
+
+        } else throw new LarkError(`unexpected ${member.constructor.name}`, member.location)
+
+        // iterate over the class body, and validate the implicit and instance declarations...
+
+        for (const member of this[2]) if (member.implicit_member || member.instance_member) {
+
+            check(member);
+
+            if (member.is(LetDeclaration)) {
+
+                // this block handles instance let-declarations (public and private), which need to be
+                // frozen inside a finally-block in the constructor when the `let` is uninitialized,
+                // and need to use the lark member otherwise (note that all private members require
+                // the lark member, but that is handled by the `check` helper above)...
+
+                if (member.void_declaration) {
+
+                    this.note("freeze_members");
+                    member.note("freeze");
+
+                } else this.note("delete_lark_member");
+            }
+        }
+
+        // iterate over the class body and validate the constructor, if there is one, throwing if
+        // there's more than one...
+
         let constructors = 0;
 
-        for (const operand of this[2]) {
+        for (const member of this[2]) if (member.is(FunctionLiteral)) {
 
-            // this loop iterates over each each top-level construct in the class body, which can
-            // legally contain any number of `let` and `var` declarations, as well as at most one
-            // function literal (which is the constructor function)...
+            if (++constructors > 1) throw new LarkError("superfluous Constructor Function", member.location);
 
-            if (operand.is(Declaration)) {
-
-                // if this is a prototype declaration, note that on the variable, so the static
-                // `declare` method can create the appropriate array of mangles when validated...
-
-                if (operand.prototype_qualifier) operand[0].note("prototype_qualifier");
-
-                operand.note("class_field").validate(validator);
-
-                if (operand.private) {
-
-                    // this block handles all private members, which require a hash in `ƥprivate`
-                    // for each private namespace, and an assignment to the appropriate hash,
-                    // which will also use the lark member...
-
-                    this.note("private", "delete_lark_member");
-
-                    if (operand.class_qualifier) this.note("private_class");
-                    else if (operand.prototype_qualifier) this.note("private_prototype");
-                    else this.note("private_instance");
-                }
-
-                if (operand.is(LetDeclaration) && (operand.implicit_qualifier || operand.instance_qualifier)) {
-
-                    // this block handles all instance let-declarations (public and private), which
-                    // need to be frozen inside a finally-block in the constructor when the `let`
-                    // is uninitialized, and need to use the lark member otherwise (note that
-                    // private members always require the lark member, but that is handled
-                    // by the block above)...
-
-                    if (operand.void_declaration) {
-
-                        this.note("freeze_members");
-                        operand.note("freeze");
-
-                    } else this.note("delete_lark_member");
-                }
-
-            } else if (operand.is(FunctionLiteral)) {
-
-                if (++constructors > 1) throw new LarkError("superfluous Constructor Function", operand.location);
-
-                operand.note("class_field").validate(validator);
-                this.note("explicit_constructor");
-
-            } else throw new LarkError(`unexpected ${operand.constructor.name}`, operand.location);
+            member.note("class_field").validate(validator);
+            this.note("explicit_constructor");
         }
+
+        // now, clean up the stacks, before synthesizing any extra code inside the class body or the
+        // constructor function that's required by the members that were encountered above...
 
         scopestack.pop;
         scopestack.pop;

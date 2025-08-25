@@ -8,9 +8,9 @@ class SpaceInvader {
 
 class Test of Tester {
 
-    let prototype foo = 10
-    let prototype bar = foo + 1
     let spam = foo + bar
     let eggs = {foo: bar, spam}
+    let prototype foo = 10
+    let prototype bar = spam + 1
 }
 
