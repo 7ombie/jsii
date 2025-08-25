@@ -1755,11 +1755,14 @@ export class ClassLiteral extends Functional {
 
             continue;
 
-        } else throw new LarkError(`unexpected ${member.constructor.name}`, member.location)
+        } else throw new LarkError(`unexpected ${member.constructor.name}`, member.location);
 
-        // iterate over the class body, and validate the implicit and instance declarations...
+        // iterate over the class body, and validate the implicit and instance declarations,
+        // unless they're methods, which are handled by the next block...
 
         for (const member of this[2]) if (member.implicit_member || member.instance_member) {
+
+            if (member.length > 1 && member[1].is(FunctionLiteral)) continue;
 
             check(member);
 
@@ -1777,6 +1780,14 @@ export class ClassLiteral extends Functional {
 
                 } else this.note("delete_lark_member");
             }
+        }
+
+        // iterate over the class body and validate any implicitly namespaced declarations with function
+        // literals as initializers (AKA methods), and `check` any that are found...
+
+        for (const member of this[2]) {
+
+            if (member.implicit_member && member.length > 1 && member[1].is(FunctionLiteral)) check(member);
         }
 
         // iterate over the class body and validate the constructor, if there is one, throwing if
